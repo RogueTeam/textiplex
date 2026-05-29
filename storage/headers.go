@@ -27,9 +27,12 @@ type FieldHeader struct {
 	// xxh3 hashed representation of the field string
 	Hash uint64
 	// Avgdl used in the BM25 formula
+	// Precomputed so the reader can go directly to queries
 	AvgDocumentLength float64
 	// Number of total tokens the field has
 	TokenCount uint64
+	// Number of document lengths included
+	DocumentLengthCount uint64
 }
 
 const DocumentIdHeaderSize = unsafe.Sizeof(DocumentIdHeader{})
@@ -53,8 +56,7 @@ type TokenFrequencyEntry struct {
 	DocumentIndex uint64
 	// Token frequency on this document
 	// this value is used by BM25
-	Frequency uint32
-	_/*Padding */ [4]byte
+	Frequency uint64
 }
 
 const TokenHeaderSize = unsafe.Sizeof(TokenHeader{})
@@ -63,5 +65,18 @@ type TokenHeader struct {
 	DocumentFrequency uint64
 	PostingListIndex  uint64
 	FrequenciesIndex  uint64
-	Size              uint64
+	Size              uint16
+	_/*Padding */ [6]byte
+}
+
+const DocumentLengthEntrySize = unsafe.Sizeof(DocumentLengthEntry{})
+
+// This is per field
+// Meaning the length only references what the field is actually storing for that particular document
+// Writer must ensure they are sorted based on index
+type DocumentLengthEntry struct {
+	// Index of the document referenced
+	Index uint64
+	// Actual length of the document in number of tokens
+	Length uint64
 }

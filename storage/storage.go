@@ -31,6 +31,9 @@ type Field struct {
 	// This field is stored in memory but most of its references
 	// are direct mmap zero-copied arrays
 	Tokens *btree.BTreeG[*Token]
+	// DocumentLength entries
+	// Keys are indexes of the documents
+	DocumentLengths []DocumentLengthEntry
 }
 
 type DocumentId []byte
@@ -96,11 +99,23 @@ func (s *Storage) LoadBytes(src []byte) (err error) {
 		inUseBuffer = inUseBuffer[FieldHeaderSize:]
 
 		field := &fieldsPrealloc[0]
+		// Assign at once the field so we don't forget about it later
+		s.Fields[fHeader.Hash] = field
+
 		field.AvgDocumentLength = fHeader.AvgDocumentLength
 		field.Tokens = btree.NewBTreeG(TokenLessFunc)
 		fieldsPrealloc = fieldsPrealloc[1:]
-		// Assign at once the field so we don't forget about it later
-		s.Fields[fHeader.Hash] = field
+
+		docsLengthSize := DocumentLengthEntrySize * uintptr(fHeader.DocumentLengthCount)
+		if uintptr(len(inUseBuffer)) < docsLengthSize {
+			return fmt.Errorf("not enough space for loading field's documents lengths from buffer")
+		}
+
+		field.DocumentLengths = unsafe.Slice(
+			(*DocumentLengthEntry)(unsafe.Pointer(&inUseBuffer[0])),
+			fHeader.DocumentLengthCount,
+		)
+		inUseBuffer = inUseBuffer[docsLengthSize:]
 
 		var tokensPrealloc = make([]Token, fHeader.TokenCount)
 		for range fHeader.TokenCount {
@@ -111,7 +126,7 @@ func (s *Storage) LoadBytes(src []byte) (err error) {
 			tHeader := (*TokenHeader)(unsafe.Pointer(&inUseBuffer[0]))
 			inUseBuffer = inUseBuffer[TokenHeaderSize:]
 
-			if uint64(len(inUseBuffer)) < tHeader.Size {
+			if len(inUseBuffer) < int(tHeader.Size) {
 				return fmt.Errorf("not enough space for loading fields from buffer")
 			}
 			contents := inUseBuffer[:tHeader.Size]

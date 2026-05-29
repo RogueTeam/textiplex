@@ -14,13 +14,19 @@
 ├─────────────────────────────────────────────────────┤
 │                 FIELD BLOCKS                        │
 │  ┌───────────────────────────────────────────────┐  │
-│  │  hash (8B) | avgdl (8B f64) | token_count(8B) │  │
+│  │  hash (8B) | avgdl (8B f64)                   │  │
+│  │  token_count (8B) | doc_length_count (8B)     │  │
+│  ├───────────────────────────────────────────────┤  │
+│  │           DOC LENGTH ENTRIES                  │  │
+│  │  [doc_index (8B) | length (8B)]               │  │
+│  │  × doc_length_count                           │  │
+│  │  (sorted by doc_index ascending)              │  │
 │  ├───────────────────────────────────────────────┤  │
 │  │             TOKEN ENTRIES                     │  │
 │  │  [doc_freq (8B) |                             │  │
 │  │   posting_list_index (8B) |                   │  │
 │  │   frequencies_index (8B) |                    │  │
-│  │   token_size (8B) |                           │  │
+│  │   token_size (2B) | padding (6B) |            │  │
 │  │   token_bytes] × token_count                  │  │
 │  │  (sorted alphabetically)                      │  │
 │  └───────────────────────────────────────────────┘  │
@@ -32,7 +38,7 @@
 │  (indexed by posting_list_index)                    │
 ├─────────────────────────────────────────────────────┤
 │           TOKEN FREQUENCIES REGION                  │
-│  [(doc_id u64 | frequency u32 | padding 4B)]        │
+│  [doc_index (8B) | frequency (8B)]                  │
 │  × total_token_frequencies                          │
 │  (indexed by frequencies_index + doc_freq as count) │
 └─────────────────────────────────────────────────────┘

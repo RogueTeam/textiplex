@@ -85,7 +85,82 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 	}
 	s.coldInitialize()
 
-	// TODO: Implement me!
+	s.DocumentsIds = make([]DocumentId, len(docs))
+
+	type postingData struct {
+		bitmap *roaring64.Bitmap
+		freqs  []TokenFrequencyEntry
+	}
+	type fieldAccumulator struct {
+		totalLength uint64
+		docCount    uint64
+		docLengths  []DocumentLengthEntry
+		tokens      map[string]*postingData
+	}
+	accumulators := make(map[uint64]*fieldAccumulator)
+
+	for docIndex, doc := range docs {
+		s.DocumentsIds[docIndex] = doc.Id
+		internalID := uint64(docIndex)
+
+		for _, fieldDef := range doc.Fields {
+			acc, ok := accumulators[fieldDef.Hash]
+			if !ok {
+				acc = &fieldAccumulator{tokens: make(map[string]*postingData)}
+				accumulators[fieldDef.Hash] = acc
+			}
+
+			if fieldDef.Length > 0 {
+				acc.docLengths = append(acc.docLengths, DocumentLengthEntry{
+					Index:  internalID,
+					Length: fieldDef.Length,
+				})
+				acc.totalLength += fieldDef.Length
+				acc.docCount++
+			}
+
+			for _, tokenDef := range fieldDef.Tokens {
+				key := string(tokenDef.Value)
+				pd, ok := acc.tokens[key]
+				if !ok {
+					pd = &postingData{bitmap: roaring64.New()}
+					acc.tokens[key] = pd
+				}
+				pd.bitmap.Add(internalID)
+				pd.freqs = append(pd.freqs, TokenFrequencyEntry{
+					DocumentIndex: internalID,
+					Frequency:     tokenDef.Frequency,
+				})
+			}
+		}
+	}
+
+	for fieldHash, acc := range accumulators {
+		field := &Field{
+			Tokens:          btree.NewBTreeG(TokenLessFunc),
+			DocumentLengths: acc.docLengths,
+		}
+		if acc.docCount > 0 {
+			field.AvgDocumentLength = float64(acc.totalLength) / float64(acc.docCount)
+		}
+
+		for value, pd := range acc.tokens {
+			plIndex := uint64(len(s.PostingLists))
+			s.PostingLists = append(s.PostingLists, PostingList{Bitmap: *pd.bitmap})
+
+			freqIndex := uint64(len(s.TokenFrequencies))
+			s.TokenFrequencies = append(s.TokenFrequencies, pd.freqs...)
+
+			field.Tokens.Set(&Token{
+				DocumentFrequencyCount: pd.bitmap.GetCardinality(),
+				PostingListIndex:       plIndex,
+				FrequenciesIndex:       freqIndex,
+				Value:                  []byte(value),
+			})
+		}
+
+		s.Fields[fieldHash] = field
+	}
 }
 
 func (s *Storage) BuildFrom(docs ...*Document) {
@@ -223,7 +298,7 @@ func (s *Storage) LoadBytes(src []byte) (err error) {
 	inUseBuffer := s.Buffer
 
 	if uintptr(len(inUseBuffer)) < HeaderSize {
-		return fmt.Errorf("passed buffer doesn't even have enough size for the file header")
+		return fmt.Errorf("passed buffer doesn't even have enough space for the file header")
 	}
 
 	// Zero copy access to the underlying buffer
@@ -333,7 +408,10 @@ func (s *Storage) LoadBytes(src []byte) (err error) {
 		return fmt.Errorf("not enough space for loading token frequencies from buffer")
 	}
 
-	s.TokenFrequencies = unsafe.Slice((*TokenFrequencyEntry)(unsafe.Pointer(&inUseBuffer[0])), header.TotalTokenFrequencies)
+	if tokenFreqsSize > 0 {
+		s.TokenFrequencies = unsafe.Slice((*TokenFrequencyEntry)(unsafe.Pointer(&inUseBuffer[0])), header.TotalTokenFrequencies)
+		inUseBuffer = inUseBuffer[tokenFreqsSize:]
+	}
 
 	s.Size = len(src) - len(inUseBuffer)
 

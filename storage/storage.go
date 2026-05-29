@@ -27,7 +27,7 @@ func TokenLessFunc(a, b *Token) (less bool) {
 }
 
 type Field struct {
-	// User for BM25 calculation
+	// Used for BM25 calculation
 	AvgDocumentLength float64
 	// Tokens present on the file
 	// This field is stored in memory but most of its references
@@ -64,9 +64,29 @@ type Storage struct {
 	PostingLists []PostingList
 	// Token frequencies
 	TokenFrequencies []TokenFrequencyEntry
+	// Used to determine if the storage was already initialized or not
+	Initialized bool
+}
+
+func (s *Storage) coldInitialize() {
+	s.Version = VersionV1
+	s.Fields = make(map[uint64]*Field)
+	s.Initialized = true
+}
+
+// Sets new documents or update existing ones
+func (s *Storage) Apply(delta *Delta) {
+	if !s.Initialized {
+		s.coldInitialize()
+	}
+
 }
 
 func (s *Storage) Save(dst []byte) (out []byte) {
+	if !s.Initialized {
+		s.coldInitialize()
+	}
+
 	out = dst
 
 	// File Header
@@ -177,6 +197,9 @@ func (s *Storage) Save(dst []byte) (out []byte) {
 }
 
 func (s *Storage) LoadBytes(src []byte) (err error) {
+	if s.Initialized {
+		s.Initialized = false
+	}
 	// Referencing the buffer permits the GC always have some part of the code pointing to it.
 	// Meaning we can "safely" do unsafe references over it
 	s.Buffer = src
@@ -209,6 +232,7 @@ func (s *Storage) LoadBytes(src []byte) (err error) {
 
 		// Insert the reference into the table
 		s.DocumentsIds = append(s.DocumentsIds, inUseBuffer[:docIdHeader.Length])
+
 		inUseBuffer = inUseBuffer[docIdHeader.Length:]
 	}
 
@@ -296,5 +320,7 @@ func (s *Storage) LoadBytes(src []byte) (err error) {
 	s.TokenFrequencies = unsafe.Slice((*TokenFrequencyEntry)(unsafe.Pointer(&inUseBuffer[0])), header.TotalTokenFrequencies)
 
 	s.Size = len(src) - len(inUseBuffer)
+
+	s.Initialized = true
 	return nil
 }

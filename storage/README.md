@@ -23,7 +23,7 @@
 │  │  (sorted by doc_index ascending)              │  │
 │  ├───────────────────────────────────────────────┤  │
 │  │             TOKEN ENTRIES                     │  │
-│  │  [doc_freq (8B) |                             │  │
+│  │  [doc_freq_count (8B) |                       │  │
 │  │   posting_list_index (8B) |                   │  │
 │  │   frequencies_index (8B) |                    │  │
 │  │   token_size (2B) | padding (6B) |            │  │

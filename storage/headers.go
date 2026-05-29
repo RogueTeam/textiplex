@@ -18,7 +18,6 @@ type Header struct {
 	FieldCount            uint64
 	TotalPostingLists     uint64
 	TotalTokenFrequencies uint64
-	// Checksum              uint64
 }
 
 const FieldHeaderSize = unsafe.Sizeof(FieldHeader{})
@@ -62,10 +61,10 @@ type TokenFrequencyEntry struct {
 const TokenHeaderSize = unsafe.Sizeof(TokenHeader{})
 
 type TokenHeader struct {
-	DocumentFrequency uint64
-	PostingListIndex  uint64
-	FrequenciesIndex  uint64
-	Size              uint16
+	DocumentFrequencyCount uint64
+	PostingListIndex       uint64
+	FrequenciesIndex       uint64
+	Size                   uint16
 	_/*Padding */ [6]byte
 }
 

@@ -29,9 +29,3 @@ type Document struct {
 	// Fields absent from this slice are treated as empty for this document
 	Fields []*FieldDefinition
 }
-
-// Delta represents a change to the storage contents
-type Delta struct {
-	NewDocumentIds    []*Document
-	RemoveDocumentIds []DocumentId
-}

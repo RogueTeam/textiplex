@@ -74,16 +74,32 @@ func (s *Storage) coldInitialize() {
 	s.Initialized = true
 }
 
-// Sets new documents or update existing ones
-func (s *Storage) Apply(delta *Delta) {
-	if !s.Initialized {
-		s.coldInitialize()
-	}
+func (s *Storage) Reset() {
+	*s = Storage{}
+}
 
+// Builds the entire storage from a set of document definitions
+func (s *Storage) BuildFromSorted(docs ...*Document) {
+	if s.Initialized {
+		s.Reset()
+	}
+	s.coldInitialize()
+
+	// TODO: Implement me!
+}
+
+func (s *Storage) BuildFrom(docs ...*Document) {
+	docs = slices.Clone(docs)
+	slices.SortFunc(docs, func(a, b *Document) int {
+		return bytes.Compare(a.Id, b.Id)
+	})
+
+	s.BuildFromSorted(docs...)
 }
 
 func (s *Storage) Save(dst []byte) (out []byte) {
 	if !s.Initialized {
+		// Cold initialize just to make sure we don't read an empty map
 		s.coldInitialize()
 	}
 

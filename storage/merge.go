@@ -52,9 +52,15 @@ func CalculateMergeSize(a, b *Storage) uint64 {
 				size += uint64(TokenFrequencyEntrySize) * tokA.DocumentFrequencyCount
 
 			case mergeOnlyB:
+				// b's IDs must be shifted before measuring serialized size —
+				// a bitmap with IDs 0..N serializes differently than one with
+				// IDs offset..offset+N because roaring's container boundaries
+				// fall at different points after the shift
+				offset := uint64(len(a.DocumentsIds))
+				shifted := shiftBitmap(&b.PostingLists[tokB.PostingListIndex].Bitmap, offset)
 				size += uint64(TokenHeaderSize) + uint64(len(tokB.Value))
 				size += uint64(PostingListHeaderSize)
-				size += b.PostingLists[tokB.PostingListIndex].GetSerializedSizeInBytes()
+				size += shifted.GetSerializedSizeInBytes()
 				size += uint64(TokenFrequencyEntrySize) * tokB.DocumentFrequencyCount
 
 			case mergeBoth:

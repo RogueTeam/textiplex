@@ -101,7 +101,9 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 		DocumentsLengths []DocumentLengthEntry
 		Tokens           *btree.BTreeG[*PostingData]
 	}
-	accumulators := make(map[uint64]*FieldAccumulator)
+
+	var postingListsCounter, tokensFreqsCounter uint64
+	fieldsAccumulators := make(map[uint64]*FieldAccumulator)
 
 	for docIndex, doc := range docs {
 		s.DocumentsIds[docIndex] = doc.Id
@@ -111,36 +113,37 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 		s.Size += uint64(DocumentIdHeaderSize) + uint64(len(doc.Id))
 
 		for _, fieldDef := range doc.Fields {
-			acc, found := accumulators[fieldDef.Hash]
+			fieldAccumulator, found := fieldsAccumulators[fieldDef.Hash]
 			if !found {
-				acc = &FieldAccumulator{
+				fieldAccumulator = &FieldAccumulator{
 					Tokens: btree.NewBTreeG(func(a, b *PostingData) bool {
 						return bytes.Compare(a.Value, b.Value) == -1
 					}),
 				}
-				accumulators[fieldDef.Hash] = acc
+				fieldsAccumulators[fieldDef.Hash] = fieldAccumulator
 
 				// field header counted once per field
 				s.Size += uint64(FieldHeaderSize)
 			}
 
 			if fieldDef.Length > 0 {
-				acc.DocumentsLengths = append(acc.DocumentsLengths, DocumentLengthEntry{
+				fieldAccumulator.DocumentsLengths = append(fieldAccumulator.DocumentsLengths, DocumentLengthEntry{
 					Index:  internalID,
 					Length: fieldDef.Length,
 				})
-				acc.TotalLength += fieldDef.Length
-				acc.DocumentsCount++
+				fieldAccumulator.TotalLength += fieldDef.Length
+				fieldAccumulator.DocumentsCount++
 
 				// doc length entry
 				s.Size += uint64(DocumentLengthEntrySize)
 			}
 
 			for _, tokenDef := range fieldDef.Tokens {
-				pd, found := acc.Tokens.Get(&PostingData{Value: tokenDef.Value})
+				pd, found := fieldAccumulator.Tokens.Get(&PostingData{Value: tokenDef.Value})
 				if !found {
+					postingListsCounter++
 					pd = &PostingData{Value: tokenDef.Value, Bitmap: roaring64.New()}
-					acc.Tokens.Set(pd)
+					fieldAccumulator.Tokens.Set(pd)
 
 					// token header + token bytes — new token only
 					s.Size += uint64(TokenHeaderSize) + uint64(len(tokenDef.Value))
@@ -151,6 +154,7 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 					DocumentIndex: internalID,
 					Frequency:     tokenDef.Frequency,
 				})
+				tokensFreqsCounter++
 
 				// one TF entry per token per document always
 				s.Size += uint64(TokenFrequencyEntrySize)
@@ -158,8 +162,14 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 		}
 	}
 
-	for fieldHash, acc := range accumulators {
-		field := &Field{
+	s.PostingLists = make([]PostingList, 0, postingListsCounter)
+	s.TokenFrequencies = make([]TokenFrequencyEntry, 0, tokensFreqsCounter)
+
+	var fieldsPrealloc = make([]Field, len(fieldsAccumulators))
+	for fieldHash, acc := range fieldsAccumulators {
+		field := &fieldsPrealloc[0]
+		fieldsPrealloc = fieldsPrealloc[1:]
+		*field = Field{
 			Tokens:          btree.NewBTreeG(TokenLessFunc),
 			DocumentLengths: acc.DocumentsLengths,
 		}
@@ -168,6 +178,8 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 		}
 
 		it := acc.Tokens.Iter()
+
+		tokensPrealloc := make([]Token, acc.Tokens.Len())
 		for valid := it.First(); valid; valid = it.Next() {
 			pd := it.Item()
 
@@ -177,17 +189,22 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 			freqIndex := uint64(len(s.TokenFrequencies))
 			s.TokenFrequencies = append(s.TokenFrequencies, pd.Freqs...)
 
-			field.Tokens.Set(&Token{
+			token := &tokensPrealloc[0]
+			tokensPrealloc = tokensPrealloc[1:]
+			*token = Token{
 				DocumentFrequencyCount: pd.Bitmap.GetCardinality(),
 				PostingListIndex:       plIndex,
 				FrequenciesIndex:       freqIndex,
 				Value:                  pd.Value,
-			})
+			}
+			field.Tokens.Set(token)
 		}
 		it.Release()
 
 		s.Fields[fieldHash] = field
 	}
+
+	clear(fieldsAccumulators)
 
 	// posting list sizes only known after all docs are processed
 	// roaring serialized size depends on final bitmap content

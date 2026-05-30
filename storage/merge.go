@@ -58,10 +58,13 @@ func CalculateMergeSize(a, b *Storage) uint64 {
 				size += uint64(TokenFrequencyEntrySize) * tokB.DocumentFrequencyCount
 
 			case mergeBoth:
-				// need actual merged bitmap to get serialized size
+				// b's IDs must be shifted before OR so the serialized size
+				// matches exactly what Merge will produce
+				offset := uint64(len(a.DocumentsIds))
+				bitmapB := shiftBitmap(&b.PostingLists[tokB.PostingListIndex].Bitmap, offset)
 				merged := roaring64.Or(
 					&a.PostingLists[tokA.PostingListIndex].Bitmap,
-					&b.PostingLists[tokB.PostingListIndex].Bitmap,
+					bitmapB,
 				)
 				size += uint64(TokenHeaderSize) + uint64(len(tokA.Value))
 				size += uint64(PostingListHeaderSize)
@@ -206,15 +209,6 @@ func Merge(dst []byte, a, b *Storage) []byte {
 			})
 		}
 
-		shiftBitmap := func(bm *roaring64.Bitmap) *roaring64.Bitmap {
-			shifted := roaring64.New()
-			it := bm.Iterator()
-			for it.HasNext() {
-				shifted.Add(it.Next() + offset)
-			}
-			return shifted
-		}
-
 		shiftFreqs := func(freqs []TokenFrequencyEntry) []TokenFrequencyEntry {
 			result := make([]TokenFrequencyEntry, len(freqs))
 			for i, f := range freqs {
@@ -234,13 +228,13 @@ func Merge(dst []byte, a, b *Storage) []byte {
 				emit(tokA.Value, bitmapCopy, freqs)
 
 			case mergeOnlyB:
-				shifted := shiftBitmap(&b.PostingLists[tokB.PostingListIndex].Bitmap)
+				shifted := shiftBitmap(&b.PostingLists[tokB.PostingListIndex].Bitmap, offset)
 				freqs := shiftFreqs(b.TokenFrequencies[tokB.FrequenciesIndex : tokB.FrequenciesIndex+tokB.DocumentFrequencyCount])
 				emit(tokB.Value, shifted, freqs)
 
 			case mergeBoth:
 				bitmapA := &a.PostingLists[tokA.PostingListIndex].Bitmap
-				bitmapB := shiftBitmap(&b.PostingLists[tokB.PostingListIndex].Bitmap)
+				bitmapB := shiftBitmap(&b.PostingLists[tokB.PostingListIndex].Bitmap, offset)
 				merged := roaring64.Or(bitmapA, bitmapB)
 
 				freqsA := a.TokenFrequencies[tokA.FrequenciesIndex : tokA.FrequenciesIndex+tokA.DocumentFrequencyCount]
@@ -312,6 +306,17 @@ func MergeStorages(a, b *Storage) (*Storage, error) {
 }
 
 // ── internal helpers ──────────────────────────────────────────────────────────
+
+// shiftBitmap returns a new bitmap with every doc ID incremented by offset.
+// Used to remap b's internal doc IDs into the merged sequential ID space.
+func shiftBitmap(bm *roaring64.Bitmap, offset uint64) *roaring64.Bitmap {
+	shifted := roaring64.New()
+	it := bm.Iterator()
+	for it.HasNext() {
+		shifted.Add(it.Next() + offset)
+	}
+	return shifted
+}
 
 type mergeKind uint8
 

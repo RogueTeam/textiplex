@@ -7,6 +7,7 @@ import (
 
 	"github.com/RogueTeam/textiplex/storage"
 	"github.com/RogueTeam/textiplex/testsuite"
+	"github.com/stretchr/testify/assert"
 	"golang.org/x/sys/unix"
 )
 
@@ -63,36 +64,44 @@ func BenchmarkBuildFromSorted(b *testing.B) {
 // BenchmarkLoadBytes measures LoadBytes on a mmap'd file built from the
 // same 1M-document corpus. Build and serialization happen outside the clock.
 func BenchmarkLoadBytes(b *testing.B) {
+	assertions := assert.New(b)
+
 	docs := prepareBlugeEquivalent()
 
 	var s storage.Storage
 	s.BuildFromSorted(docs...)
-	buf := s.Save(nil)
 
-	f, err := os.CreateTemp("", "storage_bench_*.bin")
-	if err != nil {
-		b.Fatalf("create temp file: %v", err)
+	f, err := os.CreateTemp(b.TempDir(), "storage_bench_*.bin")
+	if !assertions.Nil(err, "failed to create temporary file") {
+		return
 	}
 	defer os.Remove(f.Name())
 	defer f.Close()
 
-	if err := f.Truncate(int64(len(buf))); err != nil {
-		b.Fatalf("truncate: %v", err)
+	err = f.Truncate(int64(s.Size))
+	if !assertions.Nil(err, "failed to truncate file") {
+		return
 	}
 
 	mapped, err := unix.Mmap(
 		int(f.Fd()),
 		0,
-		len(buf),
+		int(s.Size),
 		unix.PROT_READ|unix.PROT_WRITE,
 		unix.MAP_SHARED,
 	)
-	if err != nil {
-		b.Fatalf("mmap write: %v", err)
+	if !assertions.Nil(err, "failed to prepare mmap for writting") {
+		return
 	}
-	copy(mapped, buf)
-	if err := unix.Msync(mapped, unix.MS_SYNC); err != nil {
-		b.Fatalf("msync: %v", err)
+
+	buf := s.Save(mapped[:0])
+	err = unix.Msync(mapped, unix.MS_SYNC)
+	if !assertions.Nil(err, "failed to sync pages with disk") {
+		return
+	}
+
+	if !assertions.Equal(s.Size, uint64(len(buf)), "expecting appeneded size be equal to computed size") {
+		return
 	}
 	unix.Munmap(mapped)
 
@@ -103,8 +112,8 @@ func BenchmarkLoadBytes(b *testing.B) {
 		unix.PROT_READ,
 		unix.MAP_SHARED,
 	)
-	if err != nil {
-		b.Fatalf("mmap read-only: %v", err)
+	if !assertions.Nil(err, "failed to prepare mmap for reading") {
+		return
 	}
 	defer unix.Munmap(readOnly)
 
@@ -114,8 +123,9 @@ func BenchmarkLoadBytes(b *testing.B) {
 
 	for b.Loop() {
 		var loaded storage.Storage
-		if err := loaded.LoadBytes(readOnly); err != nil {
-			b.Fatalf("LoadBytes: %v", err)
+		err := loaded.LoadBytes(readOnly)
+		if !assertions.Nil(err, "failed to load bytes") {
+			return
 		}
 	}
 }

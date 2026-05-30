@@ -51,7 +51,7 @@ type Storage struct {
 	// Read-only intended field
 	Version uint16
 	// Read-only intended field
-	Size int
+	Size uint64
 	// Reference of the internal buffer of the file
 	// exposed only if the caller needs to hack his way around
 	Buffer []byte
@@ -87,6 +87,9 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 
 	s.DocumentsIds = make([]DocumentId, len(docs))
 
+	// Header is always fixed size
+	s.Size = uint64(HeaderSize)
+
 	type PostingData struct {
 		Value  []byte
 		Bitmap *roaring64.Bitmap
@@ -100,18 +103,25 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 	}
 	accumulators := make(map[uint64]*FieldAccumulator)
 
-	// Try remove this loop entirely
 	for docIndex, doc := range docs {
 		s.DocumentsIds[docIndex] = doc.Id
 		internalID := uint64(docIndex)
+
+		// doc id header + doc id bytes
+		s.Size += uint64(DocumentIdHeaderSize) + uint64(len(doc.Id))
 
 		for _, fieldDef := range doc.Fields {
 			acc, found := accumulators[fieldDef.Hash]
 			if !found {
 				acc = &FieldAccumulator{
-					Tokens: btree.NewBTreeG(func(a, b *PostingData) bool { return bytes.Compare(a.Value, b.Value) == -1 }),
+					Tokens: btree.NewBTreeG(func(a, b *PostingData) bool {
+						return bytes.Compare(a.Value, b.Value) == -1
+					}),
 				}
 				accumulators[fieldDef.Hash] = acc
+
+				// field header counted once per field
+				s.Size += uint64(FieldHeaderSize)
 			}
 
 			if fieldDef.Length > 0 {
@@ -121,6 +131,9 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 				})
 				acc.TotalLength += fieldDef.Length
 				acc.DocumentsCount++
+
+				// doc length entry
+				s.Size += uint64(DocumentLengthEntrySize)
 			}
 
 			for _, tokenDef := range fieldDef.Tokens {
@@ -128,6 +141,9 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 				if !found {
 					pd = &PostingData{Value: tokenDef.Value, Bitmap: roaring64.New()}
 					acc.Tokens.Set(pd)
+
+					// token header + token bytes — new token only
+					s.Size += uint64(TokenHeaderSize) + uint64(len(tokenDef.Value))
 				}
 
 				pd.Bitmap.Add(internalID)
@@ -135,6 +151,9 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 					DocumentIndex: internalID,
 					Frequency:     tokenDef.Frequency,
 				})
+
+				// one TF entry per token per document always
+				s.Size += uint64(TokenFrequencyEntrySize)
 			}
 		}
 	}
@@ -168,6 +187,13 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 		it.Release()
 
 		s.Fields[fieldHash] = field
+	}
+
+	// posting list sizes only known after all docs are processed
+	// roaring serialized size depends on final bitmap content
+	for index := range s.PostingLists {
+		s.Size += uint64(PostingListHeaderSize)
+		s.Size += uint64(s.PostingLists[index].GetSerializedSizeInBytes())
 	}
 }
 
@@ -421,7 +447,7 @@ func (s *Storage) LoadBytes(src []byte) (err error) {
 		inUseBuffer = inUseBuffer[tokenFreqsSize:]
 	}
 
-	s.Size = len(src) - len(inUseBuffer)
+	s.Size = uint64(len(src)) - uint64(len(inUseBuffer))
 
 	s.Initialized = true
 	return nil

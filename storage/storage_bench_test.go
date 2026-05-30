@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	benchDocCount   = 100_000
+	benchDocCount   = 1_000_000
 	benchFieldCount = 4
 	benchTokenCount = 10
 )

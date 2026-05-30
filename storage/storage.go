@@ -87,47 +87,51 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 
 	s.DocumentsIds = make([]DocumentId, len(docs))
 
-	type postingData struct {
-		bitmap *roaring64.Bitmap
-		freqs  []TokenFrequencyEntry
+	type PostingData struct {
+		Value  []byte
+		Bitmap *roaring64.Bitmap
+		Freqs  []TokenFrequencyEntry
 	}
-	type fieldAccumulator struct {
-		totalLength uint64
-		docCount    uint64
-		docLengths  []DocumentLengthEntry
-		tokens      map[string]*postingData
+	type FieldAccumulator struct {
+		TotalLength      uint64
+		DocumentsCount   uint64
+		DocumentsLengths []DocumentLengthEntry
+		Tokens           *btree.BTreeG[*PostingData]
 	}
-	accumulators := make(map[uint64]*fieldAccumulator)
+	accumulators := make(map[uint64]*FieldAccumulator)
 
+	// Try remove this loop entirely
 	for docIndex, doc := range docs {
 		s.DocumentsIds[docIndex] = doc.Id
 		internalID := uint64(docIndex)
 
 		for _, fieldDef := range doc.Fields {
-			acc, ok := accumulators[fieldDef.Hash]
-			if !ok {
-				acc = &fieldAccumulator{tokens: make(map[string]*postingData)}
+			acc, found := accumulators[fieldDef.Hash]
+			if !found {
+				acc = &FieldAccumulator{
+					Tokens: btree.NewBTreeG(func(a, b *PostingData) bool { return bytes.Compare(a.Value, b.Value) == -1 }),
+				}
 				accumulators[fieldDef.Hash] = acc
 			}
 
 			if fieldDef.Length > 0 {
-				acc.docLengths = append(acc.docLengths, DocumentLengthEntry{
+				acc.DocumentsLengths = append(acc.DocumentsLengths, DocumentLengthEntry{
 					Index:  internalID,
 					Length: fieldDef.Length,
 				})
-				acc.totalLength += fieldDef.Length
-				acc.docCount++
+				acc.TotalLength += fieldDef.Length
+				acc.DocumentsCount++
 			}
 
 			for _, tokenDef := range fieldDef.Tokens {
-				key := string(tokenDef.Value)
-				pd, ok := acc.tokens[key]
-				if !ok {
-					pd = &postingData{bitmap: roaring64.New()}
-					acc.tokens[key] = pd
+				pd, found := acc.Tokens.Get(&PostingData{Value: tokenDef.Value})
+				if !found {
+					pd = &PostingData{Value: tokenDef.Value, Bitmap: roaring64.New()}
+					acc.Tokens.Set(pd)
 				}
-				pd.bitmap.Add(internalID)
-				pd.freqs = append(pd.freqs, TokenFrequencyEntry{
+
+				pd.Bitmap.Add(internalID)
+				pd.Freqs = append(pd.Freqs, TokenFrequencyEntry{
 					DocumentIndex: internalID,
 					Frequency:     tokenDef.Frequency,
 				})
@@ -138,26 +142,30 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 	for fieldHash, acc := range accumulators {
 		field := &Field{
 			Tokens:          btree.NewBTreeG(TokenLessFunc),
-			DocumentLengths: acc.docLengths,
+			DocumentLengths: acc.DocumentsLengths,
 		}
-		if acc.docCount > 0 {
-			field.AvgDocumentLength = float64(acc.totalLength) / float64(acc.docCount)
+		if acc.DocumentsCount > 0 {
+			field.AvgDocumentLength = float64(acc.TotalLength) / float64(acc.DocumentsCount)
 		}
 
-		for value, pd := range acc.tokens {
+		it := acc.Tokens.Iter()
+		for valid := it.First(); valid; valid = it.Next() {
+			pd := it.Item()
+
 			plIndex := uint64(len(s.PostingLists))
-			s.PostingLists = append(s.PostingLists, PostingList{Bitmap: *pd.bitmap})
+			s.PostingLists = append(s.PostingLists, PostingList{Bitmap: *pd.Bitmap})
 
 			freqIndex := uint64(len(s.TokenFrequencies))
-			s.TokenFrequencies = append(s.TokenFrequencies, pd.freqs...)
+			s.TokenFrequencies = append(s.TokenFrequencies, pd.Freqs...)
 
 			field.Tokens.Set(&Token{
-				DocumentFrequencyCount: pd.bitmap.GetCardinality(),
+				DocumentFrequencyCount: pd.Bitmap.GetCardinality(),
 				PostingListIndex:       plIndex,
 				FrequenciesIndex:       freqIndex,
-				Value:                  []byte(value),
+				Value:                  pd.Value,
 			})
 		}
+		it.Release()
 
 		s.Fields[fieldHash] = field
 	}

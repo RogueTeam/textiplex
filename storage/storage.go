@@ -8,6 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/RogueTeam/textiplex/pool"
 	"github.com/tidwall/btree"
 )
 
@@ -105,6 +106,10 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 	var postingListsCounter, tokensFreqsCounter uint64
 	fieldsAccumulators := make(map[uint64]*FieldAccumulator)
 
+	fieldAccPool := pool.New[FieldAccumulator](20)
+	pdPool := pool.New[PostingData](20)
+	bitmapPool := pool.New[roaring64.Bitmap](20)
+
 	for docIndex, doc := range docs {
 		s.DocumentsIds[docIndex] = doc.Id
 		internalID := uint64(docIndex)
@@ -115,7 +120,8 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 		for _, fieldDef := range doc.Fields {
 			fieldAccumulator, found := fieldsAccumulators[fieldDef.Hash]
 			if !found {
-				fieldAccumulator = &FieldAccumulator{
+				fieldAccumulator = fieldAccPool.Get()
+				*fieldAccumulator = FieldAccumulator{
 					Tokens: btree.NewBTreeG(func(a, b *PostingData) bool {
 						return bytes.Compare(a.Value, b.Value) == -1
 					}),
@@ -138,11 +144,14 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 				s.Size += uint64(DocumentLengthEntrySize)
 			}
 
+			var queryPd PostingData
 			for _, tokenDef := range fieldDef.Tokens {
-				pd, found := fieldAccumulator.Tokens.Get(&PostingData{Value: tokenDef.Value})
+				queryPd.Value = tokenDef.Value
+				pd, found := fieldAccumulator.Tokens.Get(&queryPd)
 				if !found {
 					postingListsCounter++
-					pd = &PostingData{Value: tokenDef.Value, Bitmap: roaring64.New()}
+					pd = pdPool.Get()
+					*pd = PostingData{Value: tokenDef.Value, Bitmap: bitmapPool.Get()}
 					fieldAccumulator.Tokens.Set(pd)
 
 					// token header + token bytes — new token only
@@ -359,7 +368,7 @@ func (s *Storage) LoadBytes(src []byte) (err error) {
 	// TODO: In the future add magic number and version
 	s.Version = header.Version
 
-	s.DocumentsIds = make([]DocumentId, 0, header.TotalDocuments)
+	s.DocumentsIds = make([]DocumentId, header.TotalDocuments)
 	for index := range header.TotalDocuments {
 		if uintptr(len(inUseBuffer)) < DocumentIdHeaderSize {
 			return fmt.Errorf("not enough space for loading document: %d", index)
@@ -373,8 +382,7 @@ func (s *Storage) LoadBytes(src []byte) (err error) {
 		}
 
 		// Insert the reference into the table
-		s.DocumentsIds = append(s.DocumentsIds, inUseBuffer[:docIdHeader.Length])
-
+		s.DocumentsIds[index] = inUseBuffer[:docIdHeader.Length]
 		inUseBuffer = inUseBuffer[docIdHeader.Length:]
 	}
 

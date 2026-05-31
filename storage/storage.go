@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"os"
 	"slices"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/RogueTeam/textiplex/pool"
 	"github.com/tidwall/btree"
+	"golang.org/x/sys/unix"
 )
 
 type Token struct {
@@ -56,6 +58,8 @@ type Storage struct {
 	// Reference of the internal buffer of the file
 	// exposed only if the caller needs to hack his way around
 	Buffer []byte
+	// File reference
+	File *os.File
 	// Fast reference to mapped fields for O(1) lookups
 	Fields map[uint64]*Field
 	// Documents mapped only unce to the sub-slices of buffer for quick convertion between
@@ -232,13 +236,42 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 	s.BuildFromSorted(docs...)
 }
 
-func (s *Storage) Save(dst []byte) (out []byte) {
+// Saves the file to the target file
+func (s *Storage) SaveTo(name string) (err error) {
 	if !s.Initialized {
 		// Cold initialize just to make sure we don't read an empty map
 		s.coldInitialize()
 	}
 
-	out = dst
+	file, err := os.Create(name)
+	if err != nil {
+		return fmt.Errorf("failed to create dst file: %w", err)
+	}
+	defer func() {
+		file.Close()
+		if err != nil {
+			os.Remove(file.Name())
+		}
+	}()
+
+	err = file.Truncate(int64(s.Size))
+	if err != nil {
+		return fmt.Errorf("failed to truncate file size: %w", err)
+	}
+
+	dst, err := unix.Mmap(
+		int(file.Fd()),
+		0,
+		int(s.Size),
+		unix.PROT_WRITE,
+		unix.MAP_SHARED,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to mmap file: %w", err)
+	}
+	defer unix.Munmap(dst)
+
+	out := dst[:0]
 
 	// File Header
 	out = binary.NativeEndian.AppendUint64(out, MagicNumber)
@@ -344,16 +377,79 @@ func (s *Storage) Save(dst []byte) (out []byte) {
 		out = binary.NativeEndian.AppendUint64(out, freq.DocumentIndex)
 		out = binary.NativeEndian.AppendUint64(out, freq.Frequency)
 	}
-	return out
+
+	err = unix.Msync(dst, unix.MS_SYNC)
+	if err != nil {
+		return fmt.Errorf("failed to sync pages with FS: %w", err)
+	}
+	return nil
 }
 
-func (s *Storage) LoadBytes(src []byte) (err error) {
+func (s *Storage) Close() (err error) {
+	if s.File != nil {
+		err = unix.Munmap(s.Buffer)
+		if err != nil {
+			return fmt.Errorf("failed to munmap buffer: %w", err)
+		}
+
+		err = s.File.Close()
+		if err != nil {
+			return fmt.Errorf("failed to close file: %w", err)
+		}
+	}
+	return nil
+}
+
+// Load the storage from a file source
+func (s *Storage) Load(name string) (err error) {
 	if s.Initialized {
 		s.Initialized = false
 	}
+
+	s.File, err = os.Open(name)
+	if err != nil {
+		return fmt.Errorf("failed to open file handle: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			s.File.Close()
+			s.File = nil
+		}
+	}()
+
+	info, err := s.File.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to retrieve file information: %w", err)
+	}
+
+	size := info.Size()
+	if uintptr(size) < HeaderSize {
+		return fmt.Errorf("file doesn't even have enough space for header")
+	}
+
 	// Referencing the buffer permits the GC always have some part of the code pointing to it.
 	// Meaning we can "safely" do unsafe references over it
-	s.Buffer = src
+	s.Buffer, err = unix.Mmap(
+		int(s.File.Fd()),
+		0,
+		int(size),
+		unix.PROT_READ,
+		unix.MAP_PRIVATE,
+	)
+	if err != nil {
+		return fmt.Errorf("failed mmap file: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			unix.Munmap(s.Buffer)
+			s.Buffer = nil
+		}
+	}()
+
+	err = unix.Madvise(s.Buffer, unix.MADV_HUGEPAGE)
+	if err != nil {
+		return fmt.Errorf("failed to madvise mmapped buffer: %w", err)
+	}
 
 	inUseBuffer := s.Buffer
 
@@ -472,7 +568,7 @@ func (s *Storage) LoadBytes(src []byte) (err error) {
 		inUseBuffer = inUseBuffer[tokenFreqsSize:]
 	}
 
-	s.Size = uint64(len(src)) - uint64(len(inUseBuffer))
+	s.Size = uint64(size) - uint64(len(inUseBuffer))
 
 	s.Initialized = true
 	return nil

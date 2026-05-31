@@ -1,6 +1,11 @@
 package testsuite
 
-import "github.com/RogueTeam/textiplex/storage"
+import (
+	"testing"
+
+	"github.com/RogueTeam/textiplex/storage"
+	"github.com/stretchr/testify/assert"
+)
 
 // MakeToken creates a TokenDefinition with the given normalized value and frequency.
 // The caller is responsible for normalization before passing the value.
@@ -23,11 +28,25 @@ func MakeDoc(id string, fields ...*storage.FieldDefinition) *storage.Document {
 
 // RoundTrip saves the storage to a buffer and loads it back into a fresh Storage.
 // It returns the loaded storage. Any load error is returned to the caller.
-func RoundTrip(s *storage.Storage) (*storage.Storage, error) {
-	buf := s.Save(nil)
-	loaded := &storage.Storage{}
-	if err := loaded.LoadBytes(buf); err != nil {
-		return nil, err
+func RoundTrip(tb testing.TB, s *storage.Storage) *storage.Storage {
+	assertions := assert.New(tb)
+
+	filename := TempFilename(tb, "roundtrip_*.bin")
+
+	err := s.SaveTo(filename)
+	if !assertions.Nil(err, "save into file") {
+		return nil
 	}
-	return loaded, nil
+
+	loaded := &storage.Storage{}
+
+	err = loaded.Load(filename)
+	if !assertions.Nil(err, "failed to load file") {
+		return nil
+	}
+	tb.Cleanup(func() {
+		loaded.Close()
+	})
+
+	return loaded
 }

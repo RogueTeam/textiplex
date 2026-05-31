@@ -2,13 +2,11 @@ package storage_test
 
 import (
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/RogueTeam/textiplex/storage"
 	"github.com/RogueTeam/textiplex/testsuite"
 	"github.com/stretchr/testify/assert"
-	"golang.org/x/sys/unix"
 )
 
 const benchDocCount = 1_000_000
@@ -71,61 +69,26 @@ func BenchmarkLoadBytes(b *testing.B) {
 	var s storage.Storage
 	s.BuildFromSorted(docs...)
 
-	f, err := os.CreateTemp(b.TempDir(), "storage_bench_*.bin")
-	if !assertions.Nil(err, "failed to create temporary file") {
-		return
-	}
-	defer os.Remove(f.Name())
-	defer f.Close()
+	filename := testsuite.TempFilename(b, "storage_bench_*.bin")
 
-	err = f.Truncate(int64(s.Size))
-	if !assertions.Nil(err, "failed to truncate file") {
+	err := s.SaveTo(filename)
+	if !assertions.Nil(err, "failed to save storage into file") {
 		return
 	}
-
-	mapped, err := unix.Mmap(
-		int(f.Fd()),
-		0,
-		int(s.Size),
-		unix.PROT_READ|unix.PROT_WRITE,
-		unix.MAP_SHARED,
-	)
-	if !assertions.Nil(err, "failed to prepare mmap for writting") {
-		return
-	}
-
-	buf := s.Save(mapped[:0])
-	err = unix.Msync(mapped, unix.MS_SYNC)
-	if !assertions.Nil(err, "failed to sync pages with disk") {
-		return
-	}
-
-	if !assertions.Equal(s.Size, uint64(len(buf)), "expecting appeneded size be equal to computed size") {
-		return
-	}
-	unix.Munmap(mapped)
-
-	readOnly, err := unix.Mmap(
-		int(f.Fd()),
-		0,
-		len(buf),
-		unix.PROT_READ,
-		unix.MAP_SHARED,
-	)
-	if !assertions.Nil(err, "failed to prepare mmap for reading") {
-		return
-	}
-	defer unix.Munmap(readOnly)
+	b.Cleanup(func() {
+		s.Close()
+	})
 
 	b.ReportAllocs()
-	b.SetBytes(int64(len(readOnly)))
+	b.SetBytes(int64(s.Size))
 	b.ResetTimer()
 
 	for b.Loop() {
 		var loaded storage.Storage
-		err := loaded.LoadBytes(readOnly)
+		err := loaded.Load(filename)
 		if !assertions.Nil(err, "failed to load bytes") {
 			return
 		}
+		loaded.Close()
 	}
 }

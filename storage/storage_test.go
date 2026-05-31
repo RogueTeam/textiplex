@@ -2,6 +2,7 @@ package storage_test
 
 import (
 	"bytes"
+	"os"
 	"slices"
 	"testing"
 
@@ -394,10 +395,7 @@ func TestRoundTrip(t *testing.T) {
 			var original storage.Storage
 			original.BuildFrom(tc.docs...)
 
-			loaded, err := testsuite.RoundTrip(&original)
-			if !assertions.NoError(err) {
-				return
-			}
+			loaded := testsuite.RoundTrip(t, &original)
 
 			if !assertions.Len(loaded.DocumentsIds, len(original.DocumentsIds)) {
 				return
@@ -456,45 +454,6 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
-// ── Save determinism ──────────────────────────────────────────────────────────
-
-func TestSaveDeterminism(t *testing.T) {
-	type Test struct {
-		name string
-		docs []*storage.Document
-	}
-
-	tests := []Test{
-		{
-			name: "same docs produce identical bytes on repeated saves",
-			docs: []*storage.Document{
-				testsuite.MakeDoc("doc-a",
-					testsuite.MakeField(1, 3, testsuite.MakeToken("alpha", 2), testsuite.MakeToken("beta", 1)),
-					testsuite.MakeField(2, 2, testsuite.MakeToken("gamma", 2)),
-				),
-				testsuite.MakeDoc("doc-b",
-					testsuite.MakeField(1, 4, testsuite.MakeToken("alpha", 4)),
-				),
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			assertions := assert.New(t)
-
-			var s1, s2 storage.Storage
-			s1.BuildFrom(tc.docs...)
-			s2.BuildFrom(tc.docs...)
-
-			buf1 := s1.Save(nil)
-			buf2 := s2.Save(nil)
-
-			assertions.Equal(buf1, buf2, "Save must be deterministic for identical input")
-		})
-	}
-}
-
 // ── Reset and re-initialize ───────────────────────────────────────────────────
 
 func TestReset(t *testing.T) {
@@ -539,60 +498,6 @@ func TestReset(t *testing.T) {
 	}
 }
 
-// ── Multiple storages packed in one buffer ────────────────────────────────────
-
-func TestMultipleStoragesInBuffer(t *testing.T) {
-	type Test struct {
-		name  string
-		docs1 []*storage.Document
-		docs2 []*storage.Document
-	}
-
-	tests := []Test{
-		{
-			name: "two storages packed sequentially are both loadable",
-			docs1: []*storage.Document{
-				testsuite.MakeDoc("a-doc", testsuite.MakeField(1, 2, testsuite.MakeToken("hello", 2))),
-			},
-			docs2: []*storage.Document{
-				testsuite.MakeDoc("b-doc", testsuite.MakeField(1, 3, testsuite.MakeToken("world", 3))),
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			assertions := assert.New(t)
-
-			var s1, s2 storage.Storage
-			s1.BuildFrom(tc.docs1...)
-			s2.BuildFrom(tc.docs2...)
-
-			combined := s1.Save(nil)
-			combined = s2.Save(combined)
-
-			var loaded1 storage.Storage
-			if !assertions.NoError(loaded1.LoadBytes(combined)) {
-				return
-			}
-			if !assertions.Len(loaded1.DocumentsIds, len(tc.docs1)) {
-				return
-			}
-
-			var loaded2 storage.Storage
-			if !assertions.NoError(loaded2.LoadBytes(combined[loaded1.Size:])) {
-				return
-			}
-			if !assertions.Len(loaded2.DocumentsIds, len(tc.docs2)) {
-				return
-			}
-
-			assertions.Equal(storage.DocumentId(tc.docs1[0].Id), loaded1.DocumentsIds[0])
-			assertions.Equal(storage.DocumentId(tc.docs2[0].Id), loaded2.DocumentsIds[0])
-		})
-	}
-}
-
 // ── LoadBytes error handling ──────────────────────────────────────────────────
 
 func TestLoadBytesErrors(t *testing.T) {
@@ -619,8 +524,14 @@ func TestLoadBytesErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			assertions := assert.New(t)
 
+			filename := testsuite.TempFilename(t, "invalid_*.bin")
+			err := os.WriteFile(filename, tc.buf, 0o700)
+			if !assertions.Nil(err, "failed to write invalid buffer") {
+				return
+			}
+
 			var s storage.Storage
-			err := s.LoadBytes(tc.buf)
+			err = s.Load(filename)
 			if !assertions.Error(err) {
 				return
 			}

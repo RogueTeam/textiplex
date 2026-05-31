@@ -220,6 +220,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 	}
 
+	var reusableBitmap = roaring64.New()
+
 	// Phase 3, write B's only fields
 	for fieldHash, field := range b.Fields {
 		_, found := a.Fields[fieldHash]
@@ -288,10 +290,13 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 				// Write directly to the posting lists temporary file
 				plBuffer.Reset()
-				postingList := &b.PostingLists[token.PostingListIndex]
-				size := postingList.GetSerializedSizeInBytes()
+				reusableBitmap.Clear()
+				for it := b.PostingLists[token.PostingListIndex].Iterator(); it.HasNext(); {
+					reusableBitmap.Add(docOffset + it.Next())
+				}
+				size := reusableBitmap.GetSerializedSizeInBytes()
 				plBuffer.Grow(int(size))
-				postingList.WriteTo(&plBuffer)
+				reusableBitmap.WriteTo(&plBuffer)
 
 				data = binary.NativeEndian.AppendUint64(buffer, size)
 				_, err = tmpPostingLists.Write(data)
@@ -352,7 +357,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 	}
 
-	var reusableBitmap = roaring64.New()
 	// Phase 4, add collision fields
 	for _, fieldHash := range fieldCollisions {
 		fieldA := a.Fields[fieldHash]

@@ -8,13 +8,17 @@ import (
 	"github.com/RogueTeam/textiplex/tokenizer"
 )
 
-// SpanishTokenizer lowers tokens, folds accents (keeping ñ) and strips common
+// Tokenizer lowers tokens, folds accents (keeping ñ) and strips common
 // plural and adverb suffixes. Light and lossy, not Snowball.
-func SpanishTokenizer(in []byte) iter.Seq[*tokenizer.Token] {
-	return tokenizer.TokenizeWithStemmer(in, SpanishStemmer)
+func Tokenizer(in []byte) iter.Seq[*tokenizer.Token] {
+	return tokenizer.TokenizeWithStemmer(in, Stemmer)
 }
 
-func SpanishStemmer(raw []byte) ([]byte, bool) {
+func TokenizerWithoutStopwords(in []byte) iter.Seq[*tokenizer.Token] {
+	return tokenizer.FilterStopword(Stopwords, tokenizer.TokenizeWithStemmer(in, Stemmer))
+}
+
+func Stemmer(raw []byte) ([]byte, bool) {
 	// Suffixes we strip are ASCII, so matching on raw is safe even when earlier
 	// bytes are multibyte: accent folding only rewrites those earlier bytes.
 	n := len(raw)
@@ -27,10 +31,10 @@ func SpanishStemmer(raw []byte) ([]byte, bool) {
 	case n > 3 && raw[n-1]|0x20 == 's':
 		keep = n - 1
 	}
-	return tokenizer.FinishStemmer(raw, keep, foldSpanish)
+	return tokenizer.FinishStemmer(raw, keep, Fold)
 }
 
-func foldSpanish(b []byte) []byte {
+func Fold(b []byte) []byte {
 	out := make([]byte, 0, len(b))
 	for i := 0; i < len(b); {
 		c := b[i]

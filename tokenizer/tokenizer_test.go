@@ -23,7 +23,7 @@ func TestTokenPointerReused(t *testing.T) {
 			assertions := assert.New(t)
 
 			var ptrs []*tokenizer.Token
-			for tok := range en.EnglishTokenizer([]byte(tc.in)) {
+			for tok := range en.Tokenizer([]byte(tc.in)) {
 				ptrs = append(ptrs, tok)
 			}
 			if !assertions.Greater(len(ptrs), 1, "need several tokens to prove reuse") {

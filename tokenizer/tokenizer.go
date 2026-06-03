@@ -4,6 +4,8 @@ import (
 	"iter"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/zeebo/xxh3"
 )
 
 type Token struct {
@@ -16,6 +18,31 @@ type Tokenizer func(in []byte) (seq iter.Seq[*Token])
 // Stemmer normalizes one raw token. It returns the term and whether the term is
 // an owned allocation (true) or a sub slice of raw (false).
 type Stemmer func(raw []byte) (term []byte, owned bool)
+
+func BuildStopWords(words ...string) Stopwords {
+	m := make(Stopwords, len(words))
+	for _, w := range words {
+		m[xxh3.HashString(w)] = struct{}{}
+	}
+	return m
+}
+
+type Stopwords map[uint64]struct{}
+
+func FilterStopword(sw Stopwords, in iter.Seq[*Token]) (out iter.Seq[*Token]) {
+	return func(yield func(*Token) bool) {
+		for tok := range in {
+			_, found := sw[xxh3.Hash(tok.Value)]
+			if found {
+				continue
+			}
+
+			if !yield(tok) {
+				return
+			}
+		}
+	}
+}
 
 func TokenizeWithStemmer(in []byte, stem Stemmer) iter.Seq[*Token] {
 	return func(yield func(*Token) bool) {

@@ -31,7 +31,7 @@ func TestSplitting(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			testsuite.AssertTerms(t, en.EnglishTokenizer, tc.in, tc.want)
+			testsuite.AssertTerms(t, en.Tokenizer, tc.in, tc.want)
 		})
 	}
 }
@@ -59,7 +59,7 @@ func TestNumbers(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			testsuite.AssertTerms(t, en.EnglishTokenizer, tc.in, tc.want)
+			testsuite.AssertTerms(t, en.Tokenizer, tc.in, tc.want)
 		})
 	}
 }
@@ -97,7 +97,7 @@ func TestEnglishStemming(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			testsuite.AssertTerms(t, en.EnglishTokenizer, tc.in, tc.want)
+			testsuite.AssertTerms(t, en.Tokenizer, tc.in, tc.want)
 		})
 	}
 }
@@ -113,7 +113,7 @@ func TestOwnership(t *testing.T) {
 	tests := []Test{
 		{
 			name: "english sentence mixes borrow and owned",
-			fn:   en.EnglishTokenizer,
+			fn:   en.Tokenizer,
 			in:   "The cats ran",
 			want: []testsuite.Term{{Value: "the", Owned: true}, {Value: "cat", Owned: false}, {Value: "ran", Owned: false}},
 		},

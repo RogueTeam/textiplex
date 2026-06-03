@@ -79,8 +79,13 @@ func (s *Storage) coldInitialize() {
 	s.Initialized = true
 }
 
-func (s *Storage) Reset() {
+func (s *Storage) Reset() (err error) {
+	err = s.Close()
+	if err != nil {
+		return fmt.Errorf("failed to first close the storage: %w", err)
+	}
 	*s = Storage{}
+	return nil
 }
 
 // Builds the entire storage from a set of document definitions
@@ -391,11 +396,13 @@ func (s *Storage) Close() (err error) {
 		if err != nil {
 			return fmt.Errorf("failed to munmap buffer: %w", err)
 		}
+		s.Buffer = nil
 
 		err = s.File.Close()
 		if err != nil {
 			return fmt.Errorf("failed to close file: %w", err)
 		}
+		s.File = nil
 	}
 	return nil
 }

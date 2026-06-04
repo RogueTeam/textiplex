@@ -6,7 +6,6 @@ import (
 	"slices"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
-	"github.com/RogueTeam/textiplex/pool"
 	"github.com/RogueTeam/textiplex/storage"
 )
 
@@ -20,173 +19,112 @@ type Keyword struct {
 	Value []byte
 }
 
+type Clause struct {
+	Keywords      []*Keyword
+	FieldKeywords map[uint64]*Keyword
+	FieldRanges   map[uint64]*Range
+}
+
+func (c *Clause) Count() (count int) {
+	return len(c.Keywords) + len(c.FieldKeywords) + len(c.FieldRanges)
+}
+
+func (c *Clause) Keyword(kw []byte, boost float64) {
+	c.Keywords = append(c.Keywords, &Keyword{
+		Value: kw,
+		Boost: boost,
+	})
+}
+
+func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float64) {
+	if c.FieldKeywords == nil {
+		c.FieldKeywords = map[uint64]*Keyword{
+			field: &Keyword{
+				Value: kw,
+				Boost: boost,
+			},
+		}
+	} else {
+		c.FieldKeywords[field] = &Keyword{
+			Value: kw,
+			Boost: boost,
+		}
+	}
+}
+
+func (c *Clause) FieldRange(field uint64, hi, lo []byte, boost float64) {
+	if c.FieldRanges == nil {
+		c.FieldRanges = map[uint64]*Range{
+			field: &Range{
+				High:  hi,
+				Low:   lo,
+				Boost: boost,
+			},
+		}
+	} else {
+		c.FieldRanges[field] = &Range{
+			High:  hi,
+			Low:   lo,
+			Boost: boost,
+		}
+	}
+}
+
 type SimpleQuery struct {
-	rangePool          *pool.Pool[Range]
-	kwPool             *pool.Pool[Keyword]
-	Shoulds            []*Keyword
-	ShouldFields       map[uint64]*Keyword
-	ShouldFieldRanges  map[uint64]*Range
-	Musts              []*Keyword
-	MustFields         map[uint64]*Keyword
-	MustRanges         map[uint64]*Range
-	MustNots           []*Keyword
-	MustNotFields      map[uint64]*Keyword
-	MustNotFieldRanges map[uint64]*Range
+	Shoulds  Clause
+	Musts    Clause
+	MustNots Clause
 }
 
 func NewSimpleQuery() *SimpleQuery {
-	return &SimpleQuery{
-		rangePool: pool.New[Range](4),
-		kwPool:    pool.New[Keyword](8),
-	}
+	return &SimpleQuery{}
 }
 
-// Should: keyword may be present on any field, contributes to score
-func (q *SimpleQuery) Should(keyword []byte, boost float64) *SimpleQuery {
-	kw := q.kwPool.Get()
-	kw.Value = keyword
-	kw.Boost = boost
-	q.Shoulds = append(q.Shoulds, kw)
-	return q
-}
-
-// ShouldField: keyword may be present on the specific field
-func (q *SimpleQuery) ShouldField(field uint64, keyword []byte, boost float64) *SimpleQuery {
-	kw := q.kwPool.Get()
-	kw.Value = keyword
-	kw.Boost = boost
-	if q.ShouldFields == nil {
-		q.ShouldFields = make(map[uint64]*Keyword)
-	}
-	q.ShouldFields[field] = kw
-	return q
-}
-
-// ShouldFieldRange: range may be present on the specific field
-func (q *SimpleQuery) ShouldFieldRange(field uint64, low, high []byte, boost float64) *SimpleQuery {
-	r := q.rangePool.Get()
-	r.Low = low
-	r.High = high
-	r.Boost = boost
-	if q.ShouldFieldRanges == nil {
-		q.ShouldFieldRanges = make(map[uint64]*Range)
-	}
-	q.ShouldFieldRanges[field] = r
-	return q
-}
-
-// Must: keyword must be present on any field
-func (q *SimpleQuery) Must(keyword []byte, boost float64) *SimpleQuery {
-	kw := q.kwPool.Get()
-	kw.Value = keyword
-	kw.Boost = boost
-	q.Musts = append(q.Musts, kw)
-	return q
-}
-
-// MustField: keyword must be present on the specific field
-func (q *SimpleQuery) MustField(field uint64, keyword []byte, boost float64) *SimpleQuery {
-	kw := q.kwPool.Get()
-	kw.Value = keyword
-	kw.Boost = boost
-	if q.MustFields == nil {
-		q.MustFields = make(map[uint64]*Keyword)
-	}
-	q.MustFields[field] = kw
-	return q
-}
-
-// MustFieldRange: range must be present on the specific field
-func (q *SimpleQuery) MustFieldRange(field uint64, low, high []byte, boost float64) *SimpleQuery {
-	r := q.rangePool.Get()
-	r.Low = low
-	r.High = high
-	r.Boost = boost
-	if q.MustRanges == nil {
-		q.MustRanges = make(map[uint64]*Range)
-	}
-	q.MustRanges[field] = r
-	return q
-}
-
-// MustNot: keyword must not be present on any field
-func (q *SimpleQuery) MustNot(keyword []byte) *SimpleQuery {
-	kw := q.kwPool.Get()
-	kw.Value = keyword
-	kw.Boost = 0
-	q.MustNots = append(q.MustNots, kw)
-	return q
-}
-
-// MustNotField: keyword must not be present on the specific field
-func (q *SimpleQuery) MustNotField(field uint64, keyword []byte) *SimpleQuery {
-	kw := q.kwPool.Get()
-	kw.Value = keyword
-	kw.Boost = 0
-	if q.MustNotFields == nil {
-		q.MustNotFields = make(map[uint64]*Keyword)
-	}
-	q.MustNotFields[field] = kw
-	return q
-}
-
-// MustNotFieldRange: range must not be present on the specific field
-func (q *SimpleQuery) MustNotFieldRange(field uint64, low, high []byte) *SimpleQuery {
-	r := q.rangePool.Get()
-	r.Low = low
-	r.High = high
-	r.Boost = 0
-	if q.MustNotFieldRanges == nil {
-		q.MustNotFieldRanges = make(map[uint64]*Range)
-	}
-	q.MustNotFieldRanges[field] = r
-	return q
-}
-
-func (q *SimpleQuery) filterDocumentsWithMust(dst *roaring64.Bitmap, s *storage.Storage) {
+func (q *SimpleQuery) filterPassMusts(ctx *QueryContext, s *storage.Storage) {
 	// Start with the full doc range and AND every Must condition down.
 	// This avoids the firstAdded ordering dependency and is correct
 	// regardless of map iteration order.
-	dst.AddRange(0, uint64(len(s.DocumentsIds)))
+	ctx.Bitmap.AddRange(0, uint64(len(s.DocumentsIds)))
 
 	var tokenGet storage.Token
 
-	for _, kw := range q.Musts {
+	for _, kw := range q.Musts.Keywords {
 		tokenGet.Value = kw.Value
 		// Keyword on any field: union the matching posting lists across all
-		// fields into a scratch bitmap, then AND that into dst.
+		// fields into a scratch bitmap, then AND that into ctx.Bitmap.
 		var scratch roaring64.Bitmap
 		for _, field := range s.Fields {
 			tok, found := field.Tokens.Get(&tokenGet)
 			if !found {
 				continue
 			}
+
 			scratch.Or(&s.PostingLists[tok.PostingListIndex].Bitmap)
 		}
-		dst.And(&scratch)
+		ctx.Bitmap.And(&scratch)
 	}
 
-	for fieldHash, kw := range q.MustFields {
+	for fieldHash, kw := range q.Musts.FieldKeywords {
 		field, found := s.Fields[fieldHash]
 		if !found {
 			// Field does not exist in index: no doc can satisfy this Must.
-			dst.Clear()
+			ctx.Bitmap.Clear()
 			return
 		}
 		tokenGet.Value = kw.Value
 		tok, found := field.Tokens.Get(&tokenGet)
 		if !found {
 			// Token absent in field: no doc can satisfy this Must.
-			dst.Clear()
+			ctx.Bitmap.Clear()
 			return
 		}
-		dst.And(&s.PostingLists[tok.PostingListIndex].Bitmap)
+		ctx.Bitmap.And(&s.PostingLists[tok.PostingListIndex].Bitmap)
 	}
 
-	for fieldHash, r := range q.MustRanges {
+	for fieldHash, r := range q.Musts.FieldRanges {
 		field, found := s.Fields[fieldHash]
 		if !found {
-			dst.Clear()
+			ctx.Bitmap.Clear()
 			return
 		}
 		var scratch roaring64.Bitmap
@@ -196,25 +134,26 @@ func (q *SimpleQuery) filterDocumentsWithMust(dst *roaring64.Bitmap, s *storage.
 			scratch.Or(&s.PostingLists[it.Item().PostingListIndex].Bitmap)
 		}
 		it.Release()
-		dst.And(&scratch)
+		ctx.Bitmap.And(&scratch)
 	}
 }
 
-func (q *SimpleQuery) filterDocumentsWithShould(dst *roaring64.Bitmap, s *storage.Storage) {
+// This is the actual pass that will compute the scores needed for sorting
+func (q *SimpleQuery) filterPassShoulds(ctx *QueryContext, s *storage.Storage) {
 	var tokenGet storage.Token
 
-	for _, kw := range q.Shoulds {
+	for _, kw := range q.Shoulds.Keywords {
 		tokenGet.Value = kw.Value
 		for _, field := range s.Fields {
 			tok, found := field.Tokens.Get(&tokenGet)
 			if !found {
 				continue
 			}
-			dst.Or(&s.PostingLists[tok.PostingListIndex].Bitmap)
+			ctx.Bitmap.Or(&s.PostingLists[tok.PostingListIndex].Bitmap)
 		}
 	}
 
-	for fieldHash, kw := range q.ShouldFields {
+	for fieldHash, kw := range q.Shoulds.FieldKeywords {
 		field, found := s.Fields[fieldHash]
 		if !found {
 			continue
@@ -224,10 +163,10 @@ func (q *SimpleQuery) filterDocumentsWithShould(dst *roaring64.Bitmap, s *storag
 		if !found {
 			continue
 		}
-		dst.Or(&s.PostingLists[tok.PostingListIndex].Bitmap)
+		ctx.Bitmap.Or(&s.PostingLists[tok.PostingListIndex].Bitmap)
 	}
 
-	for fieldHash, r := range q.ShouldFieldRanges {
+	for fieldHash, r := range q.Shoulds.FieldRanges {
 		field, found := s.Fields[fieldHash]
 		if !found {
 			continue
@@ -235,27 +174,27 @@ func (q *SimpleQuery) filterDocumentsWithShould(dst *roaring64.Bitmap, s *storag
 		tokenGet.Value = r.Low
 		it := field.Tokens.Iter()
 		for valid := it.Seek(&tokenGet) && bytes.Compare(it.Item().Value, r.High) <= 0; valid; valid = it.Next() && bytes.Compare(it.Item().Value, r.High) <= 0 {
-			dst.Or(&s.PostingLists[it.Item().PostingListIndex].Bitmap)
+			ctx.Bitmap.Or(&s.PostingLists[it.Item().PostingListIndex].Bitmap)
 		}
 		it.Release()
 	}
 }
 
-func (q *SimpleQuery) applyMustNots(dst *roaring64.Bitmap, s *storage.Storage) {
+func (q *SimpleQuery) filterPassMustNots(ctx *QueryContext, s *storage.Storage) {
 	var tokenGet storage.Token
 
-	for _, kw := range q.MustNots {
+	for _, kw := range q.MustNots.Keywords {
 		tokenGet.Value = kw.Value
 		for _, field := range s.Fields {
 			tok, found := field.Tokens.Get(&tokenGet)
 			if !found {
 				continue
 			}
-			dst.AndNot(&s.PostingLists[tok.PostingListIndex].Bitmap)
+			ctx.Bitmap.AndNot(&s.PostingLists[tok.PostingListIndex].Bitmap)
 		}
 	}
 
-	for fieldHash, kw := range q.MustNotFields {
+	for fieldHash, kw := range q.MustNots.FieldKeywords {
 		field, found := s.Fields[fieldHash]
 		if !found {
 			continue
@@ -265,10 +204,10 @@ func (q *SimpleQuery) applyMustNots(dst *roaring64.Bitmap, s *storage.Storage) {
 		if !found {
 			continue
 		}
-		dst.AndNot(&s.PostingLists[tok.PostingListIndex].Bitmap)
+		ctx.Bitmap.AndNot(&s.PostingLists[tok.PostingListIndex].Bitmap)
 	}
 
-	for fieldHash, r := range q.MustNotFieldRanges {
+	for fieldHash, r := range q.MustNots.FieldRanges {
 		field, found := s.Fields[fieldHash]
 		if !found {
 			continue
@@ -276,37 +215,44 @@ func (q *SimpleQuery) applyMustNots(dst *roaring64.Bitmap, s *storage.Storage) {
 		tokenGet.Value = r.Low
 		it := field.Tokens.Iter()
 		for valid := it.Seek(&tokenGet) && bytes.Compare(it.Item().Value, r.High) <= 0; valid; valid = it.Next() && bytes.Compare(it.Item().Value, r.High) <= 0 {
-			dst.AndNot(&s.PostingLists[it.Item().PostingListIndex].Bitmap)
+			ctx.Bitmap.AndNot(&s.PostingLists[it.Item().PostingListIndex].Bitmap)
 		}
 		it.Release()
 	}
+}
+
+// Query context intended to be cached and reused by caller on each search
+type QueryContext struct {
+	Bitmap roaring64.Bitmap
 }
 
 // Filter the documents id index into the destination bitmap
 // the idea is to filter first the score results based on conditions
 // is caller's responsability to clear dst bitmap
-func (q *SimpleQuery) FilterDocuments(dst *roaring64.Bitmap, s *storage.Storage) {
+func (q *SimpleQuery) FilterDocuments(ctx *QueryContext, s *storage.Storage) {
 	switch {
-	case len(q.Musts) > 0 || len(q.MustRanges) > 0 || len(q.MustFields) > 0:
-		q.filterDocumentsWithMust(dst, s)
-		q.applyMustNots(dst, s)
-	case len(q.Shoulds) > 0 || len(q.ShouldFieldRanges) > 0 || len(q.ShouldFields) > 0:
-		q.filterDocumentsWithShould(dst, s)
-		q.applyMustNots(dst, s)
-	case len(q.MustNots) > 0 || len(q.MustNotFieldRanges) > 0 || len(q.MustNotFields) > 0:
-		dst.AddRange(0, uint64(len(s.DocumentsIds)))
-		q.applyMustNots(dst, s)
+	case q.Musts.Count() > 0:
+		q.filterPassMusts(ctx, s)
+		q.filterPassShoulds(ctx, s)
+		q.filterPassMustNots(ctx, s)
+	case q.Shoulds.Count() > 0:
+		q.filterPassShoulds(ctx, s)
+		q.filterPassMustNots(ctx, s)
+	case q.MustNots.Count() > 0:
+		ctx.Bitmap.AddRange(0, uint64(len(s.DocumentsIds)))
+		q.filterPassMustNots(ctx, s)
 	}
 }
 
 // Once a filtering is done scoring is the next step of a searching algorithm
-func (q *SimpleQuery) BM25(src *roaring64.Bitmap) (idxs []uint64) {
+// Resolves the ctx to an actual idx slice
+func (q *SimpleQuery) BM25(ctx *QueryContext) (idxs []uint64) {
 	type bm25 struct {
 		docIdx uint64
 		score  float64
 	}
 
-	scores := make([]bm25, 0, src.GetCardinality())
+	scores := make([]bm25, 0, ctx.Bitmap.GetCardinality())
 
 	// TODO: Populate scores
 

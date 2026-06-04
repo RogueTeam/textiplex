@@ -20,17 +20,14 @@ const benchDocCount = 1_000_000
 //
 // Field hashes are the xxh3 equivalents of those field name strings.
 // Prepared entirely outside the benchmark clock.
-func prepareBlugeEquivalent() (batch *storage.Batch) {
+func prepareBlugeEquivalent() (docs []*storage.Document) {
 	const (
 		fieldName         = uint64(0x1111111111111111) // stand-in for xxh3("name")
 		fieldIndex        = uint64(0x2222222222222222) // stand-in for xxh3("index")
 		fieldReversedName = uint64(0x3333333333333333) // stand-in for xxh3("reversed-name")
 	)
 
-	batch = &storage.Batch{
-		Size:      0,
-		Documents: make([]*storage.Document, 0, benchDocCount),
-	}
+	docs = make([]*storage.Document, 0, benchDocCount)
 	for i := range benchDocCount {
 		doc := testsuite.MakeDoc(
 			fmt.Sprintf("%d", i),
@@ -45,22 +42,22 @@ func prepareBlugeEquivalent() (batch *storage.Batch) {
 			),
 		)
 
-		batch.Insert(doc)
+		docs = append(docs, doc)
 	}
-	return batch
+	return docs
 }
 
 // BenchmarkBuildFromSorted is the apples-to-apples equivalent of
 // Bluge's BenchmarkOfflineWriter. Batch preparation happens outside
 // the clock; only BuildFromSorted is measured per iteration.
 func BenchmarkBuildFromSorted(b *testing.B) {
-	batch := prepareBlugeEquivalent()
+	docs := prepareBlugeEquivalent()
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for b.Loop() {
 		var s storage.Storage
-		s.BuildFromSorted(batch)
+		s.BuildFromSorted(docs...)
 	}
 }
 
@@ -69,10 +66,10 @@ func BenchmarkBuildFromSorted(b *testing.B) {
 func BenchmarkLoadBytes(b *testing.B) {
 	assertions := assert.New(b)
 
-	batch := prepareBlugeEquivalent()
+	docs := prepareBlugeEquivalent()
 
 	var s storage.Storage
-	s.BuildFromSorted(batch)
+	s.BuildFromSorted(docs...)
 
 	filename := testsuite.TempFilename(b, "storage_bench_*.bin")
 

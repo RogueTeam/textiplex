@@ -21,20 +21,19 @@ const benchMergeHalf = benchDocCount / 2 // 500_000 per side -> 1M merged
 // collision field at merge time. Token values are unique per document, so each
 // collision field merges via the disjoint-token path (no shared-token unions),
 // which is the realistic FTS case: same schema, disjoint vocab per shard.
-func prepareMergeHalf(start, count int) (batch *storage.Batch) {
+func prepareMergeHalf(start, count int) (docs []*storage.Document) {
 	const (
 		fieldName         = uint64(0x1111111111111111)
 		fieldIndex        = uint64(0x2222222222222222)
 		fieldReversedName = uint64(0x3333333333333333)
 	)
 
-	batch = storage.NewBatch()
-	batch.Documents = make([]*storage.Document, 0, count)
+	docs = make([]*storage.Document, 0, count)
 
 	for i := range count {
 		n := start + i
 
-		batch.Insert(testsuite.MakeDoc(
+		docs = append(docs, testsuite.MakeDoc(
 			// 12-digit zero pad: lexicographic == numeric for the full 1M range.
 			fmt.Sprintf("%012d", n),
 			testsuite.MakeField(fieldName, 1,
@@ -48,7 +47,7 @@ func prepareMergeHalf(start, count int) (batch *storage.Batch) {
 			),
 		))
 	}
-	return batch
+	return docs
 }
 
 // BenchmarkMerge is the merge analogue of BenchmarkBuildFromSorted. Both halves
@@ -60,10 +59,10 @@ func BenchmarkMerge(b *testing.B) {
 
 	// Build both halves on disjoint ordered ranges.
 	var aStore storage.Storage
-	aStore.BuildFromSorted(prepareMergeHalf(0, benchMergeHalf))
+	aStore.BuildFromSorted(prepareMergeHalf(0, benchMergeHalf)...)
 
 	var bStore storage.Storage
-	bStore.BuildFromSorted(prepareMergeHalf(benchMergeHalf, benchMergeHalf))
+	bStore.BuildFromSorted(prepareMergeHalf(benchMergeHalf, benchMergeHalf)...)
 
 	// Persist them and load via mmap so the benchmark merges from on-disk,
 	// zero-copy storages — the production path, where posting lists are Unsafe

@@ -8,7 +8,7 @@ import (
 	"golang.org/x/exp/constraints"
 )
 
-func IntegerField[T constraints.Signed](dst *storage.FieldDefinition, tokPool *pool.Pool[storage.TokenDefinition], name string, v T) {
+func IntegerField[T constraints.Signed](dst *storage.FieldDefinition, tokPool *pool.Pool[storage.TokenDefinition], name string, v T) (size uint64) {
 	dst.Hash = xxh3.HashString(name)
 	dst.Length = 1
 
@@ -18,9 +18,11 @@ func IntegerField[T constraints.Signed](dst *storage.FieldDefinition, tokPool *p
 	dst.Tokens = []*storage.TokenDefinition{token}
 
 	numeric.PutSortableInteger(token.Value, v)
+
+	return BaseFieldDefinitionSize(dst) + TokenSize(token)
 }
 
-func FloatField[T constraints.Float](dst *storage.FieldDefinition, tokPool *pool.Pool[storage.TokenDefinition], name string, v T) {
+func FloatField[T constraints.Float](dst *storage.FieldDefinition, tokPool *pool.Pool[storage.TokenDefinition], name string, v T) (size uint64) {
 	dst.Hash = xxh3.HashString(name)
 	dst.Length = 1
 
@@ -30,4 +32,6 @@ func FloatField[T constraints.Float](dst *storage.FieldDefinition, tokPool *pool
 	dst.Tokens = []*storage.TokenDefinition{token}
 
 	numeric.PutSortableFloat(token.Value, v)
+
+	return BaseFieldDefinitionSize(dst) + TokenSize(token)
 }

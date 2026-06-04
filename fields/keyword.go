@@ -6,7 +6,7 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
-func KeywordField(dst *storage.FieldDefinition, tokPool *pool.Pool[storage.TokenDefinition], name string, value []byte) {
+func KeywordField(dst *storage.FieldDefinition, tokPool *pool.Pool[storage.TokenDefinition], name string, value []byte) (size uint64) {
 	dst.Hash = xxh3.HashString(name)
 	dst.Length = 1
 
@@ -14,4 +14,6 @@ func KeywordField(dst *storage.FieldDefinition, tokPool *pool.Pool[storage.Token
 	token.Frequency = 1
 	token.Value = value
 	dst.Tokens = []*storage.TokenDefinition{token}
+
+	return BaseFieldDefinitionSize(dst) + TokenSize(token)
 }

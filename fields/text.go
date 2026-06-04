@@ -10,12 +10,13 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
-func TextField(dst *storage.FieldDefinition, tokPool *pool.Pool[storage.TokenDefinition], name string, text []byte, tokenizer tokenizer.Tokenizer) {
+func TextField(dst *storage.FieldDefinition, tokPool *pool.Pool[storage.TokenDefinition], name string, text []byte, tokenizer tokenizer.Tokenizer) (size uint64) {
 	dst.Hash = xxh3.HashString(name)
 	dst.Length = 0
 
 	var wideTokens []*storage.TokenDefinition
 	tokensMap := make(map[uint64]*storage.TokenDefinition)
+	var tokensSize uint64
 	for rawToken := range tokenizer(text) {
 		if !rawToken.IsStem {
 			dst.Length++
@@ -31,6 +32,7 @@ func TextField(dst *storage.FieldDefinition, tokPool *pool.Pool[storage.TokenDef
 				Frequency: 0,
 			}
 			tokensMap[tokenHash] = token
+			tokensSize += TokenSize(token)
 			wideTokens = append(wideTokens, token)
 		}
 
@@ -40,4 +42,6 @@ func TextField(dst *storage.FieldDefinition, tokPool *pool.Pool[storage.TokenDef
 	dst.Tokens = make([]*storage.TokenDefinition, len(wideTokens))
 	copy(dst.Tokens, wideTokens)
 	slices.SortFunc(dst.Tokens, func(a, b *storage.TokenDefinition) int { return bytes.Compare(a.Value, b.Value) })
+
+	return BaseFieldDefinitionSize(dst) + tokensSize
 }

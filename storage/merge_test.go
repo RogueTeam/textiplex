@@ -46,7 +46,7 @@ func postingDocIDs(s *storage.Storage, tok *storage.Token) []uint64 {
 
 // tokenFreqs returns the contiguous TF slice for a token.
 func tokenFreqs(s *storage.Storage, tok *storage.Token) []storage.TokenFrequencyEntry {
-	return s.TokenFrequencies[tok.FrequenciesIndex : tok.FrequenciesIndex+tok.DocumentFrequencyCount]
+	return s.TokenFrequencies[tok.FrequenciesIndex : tok.FrequenciesIndex+tok.FrequencyCount]
 }
 
 // getToken looks up a token by value in a field, failing the test if absent.
@@ -121,7 +121,7 @@ func TestMergeDisjointFields(t *testing.T) {
 
 	// Field 1 token unchanged, doc index 0 (from a).
 	tokA := getToken(t, merged, 1, "contrato")
-	assertions.Equal(uint64(1), tokA.DocumentFrequencyCount)
+	assertions.Equal(uint64(1), tokA.FrequencyCount)
 	assertions.Equal([]uint64{0}, postingDocIDs(merged, tokA))
 	assertions.Equal(
 		[]storage.TokenFrequencyEntry{{DocumentIndex: 0, Frequency: 2}},
@@ -130,7 +130,7 @@ func TestMergeDisjointFields(t *testing.T) {
 
 	// Field 2 token from b, doc index offset by len(a.DocumentsIds) == 1.
 	tokB := getToken(t, merged, 2, "interventoria")
-	assertions.Equal(uint64(1), tokB.DocumentFrequencyCount)
+	assertions.Equal(uint64(1), tokB.FrequencyCount)
 	assertions.Equal([]uint64{1}, postingDocIDs(merged, tokB), "b doc id must be offset")
 	assertions.Equal(
 		[]storage.TokenFrequencyEntry{{DocumentIndex: 1, Frequency: 3}},
@@ -217,7 +217,7 @@ func TestMergeCollisionFieldSharedToken(t *testing.T) {
 	tok := getToken(t, merged, 1, "contrato")
 
 	// doc freq is the sum: 2 (from a) + 1 (from b) == 3.
-	assertions.Equal(uint64(3), tok.DocumentFrequencyCount, "merged doc freq must sum both sides")
+	assertions.Equal(uint64(3), tok.FrequencyCount, "merged doc freq must sum both sides")
 
 	// Posting list is the union with b's doc shifted by docOffset (2).
 	// a docs: 0, 1.  b doc 0 -> 0 + 2 == 2.
@@ -277,7 +277,7 @@ func TestMergeMixed(t *testing.T) {
 	assertions.Equal(3, field3.Tokens.Len(), "shared, aside, bside")
 
 	shared := getToken(t, merged, 3, "shared")
-	assertions.Equal(uint64(2), shared.DocumentFrequencyCount)
+	assertions.Equal(uint64(2), shared.FrequencyCount)
 	assertions.Equal([]uint64{0, 1}, postingDocIDs(merged, shared))
 
 	aside := getToken(t, merged, 3, "aside")

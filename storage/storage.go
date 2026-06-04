@@ -16,7 +16,7 @@ import (
 
 type Token struct {
 	// Document frequency of the token in all documents
-	DocumentFrequencyCount uint64
+	FrequencyCount uint64
 	// Posting list of the documents for this token
 	PostingListIndex uint64
 	// Token frequencies per document
@@ -210,10 +210,10 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 			token := &tokensPrealloc[0]
 			tokensPrealloc = tokensPrealloc[1:]
 			*token = Token{
-				DocumentFrequencyCount: pd.Bitmap.GetCardinality(),
-				PostingListIndex:       plIndex,
-				FrequenciesIndex:       freqIndex,
-				Value:                  pd.Value,
+				FrequencyCount:   pd.Bitmap.GetCardinality(),
+				PostingListIndex: plIndex,
+				FrequenciesIndex: freqIndex,
+				Value:            pd.Value,
 			}
 			field.Tokens.Set(token)
 		}
@@ -323,7 +323,7 @@ func (s *Storage) SaveTo(name string) (err error) {
 			newFreqIndex := uint64(len(tokenFrequenciesCluster))
 			tokenFrequenciesCluster = append(
 				tokenFrequenciesCluster,
-				s.TokenFrequencies[token.FrequenciesIndex:token.FrequenciesIndex+token.DocumentFrequencyCount]...,
+				s.TokenFrequencies[token.FrequenciesIndex:token.FrequenciesIndex+token.FrequencyCount]...,
 			)
 			token.FrequenciesIndex = newFreqIndex // Always update the index
 		}
@@ -354,7 +354,7 @@ func (s *Storage) SaveTo(name string) (err error) {
 		for valid := it.First(); valid; valid = it.Next() {
 			token := it.Item()
 
-			out = binary.NativeEndian.AppendUint64(out, token.DocumentFrequencyCount)
+			out = binary.NativeEndian.AppendUint64(out, token.FrequencyCount)
 			out = binary.NativeEndian.AppendUint64(out, token.PostingListIndex)
 			out = binary.NativeEndian.AppendUint64(out, token.FrequenciesIndex)
 			out = binary.NativeEndian.AppendUint16(out, uint16(len(token.Value)))
@@ -536,7 +536,7 @@ func (s *Storage) Load(name string) (err error) {
 			inUseBuffer = inUseBuffer[tHeader.Size:]
 
 			token := &tokensPrealloc[0]
-			token.DocumentFrequencyCount = tHeader.DocumentFrequencyCount
+			token.FrequencyCount = tHeader.DocumentFrequencyCount
 			token.PostingListIndex = tHeader.PostingListIndex
 			token.FrequenciesIndex = tHeader.FrequenciesIndex
 			token.Value = contents

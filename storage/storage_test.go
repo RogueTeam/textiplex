@@ -241,7 +241,7 @@ func TestPostingLists(t *testing.T) {
 				return
 			}
 
-			assertions.Equal(tc.wantDocFreq, tok.DocumentFrequencyCount)
+			assertions.Equal(tc.wantDocFreq, tok.FrequencyCount)
 
 			pl := &s.PostingLists[tok.PostingListIndex]
 			var gotIndices []uint64
@@ -316,7 +316,7 @@ func TestTokenFrequencies(t *testing.T) {
 				return
 			}
 
-			freqs := s.TokenFrequencies[tok.FrequenciesIndex : tok.FrequenciesIndex+tok.DocumentFrequencyCount]
+			freqs := s.TokenFrequencies[tok.FrequenciesIndex : tok.FrequenciesIndex+tok.FrequencyCount]
 			assertions.Equal(tc.wantFreqs, []storage.TokenFrequencyEntry(freqs))
 		})
 	}
@@ -428,15 +428,15 @@ func TestRoundTrip(t *testing.T) {
 								return
 							}
 
-							assertions.Equal(origTok.DocumentFrequencyCount, loadedTok.DocumentFrequencyCount)
+							assertions.Equal(origTok.FrequencyCount, loadedTok.FrequencyCount)
 							assertions.Equal(origTok.Value, loadedTok.Value)
 
 							origPL := &original.PostingLists[origTok.PostingListIndex]
 							loadedPL := &loaded.PostingLists[loadedTok.PostingListIndex]
 							assertions.Equal(origPL.GetCardinality(), loadedPL.GetCardinality())
 
-							origFreqs := original.TokenFrequencies[origTok.FrequenciesIndex : origTok.FrequenciesIndex+origTok.DocumentFrequencyCount]
-							loadedFreqs := loaded.TokenFrequencies[loadedTok.FrequenciesIndex : loadedTok.FrequenciesIndex+loadedTok.DocumentFrequencyCount]
+							origFreqs := original.TokenFrequencies[origTok.FrequenciesIndex : origTok.FrequenciesIndex+origTok.FrequencyCount]
+							loadedFreqs := loaded.TokenFrequencies[loadedTok.FrequenciesIndex : loadedTok.FrequenciesIndex+loadedTok.FrequencyCount]
 							assertions.Equal([]storage.TokenFrequencyEntry(origFreqs), []storage.TokenFrequencyEntry(loadedFreqs))
 						})
 						return true

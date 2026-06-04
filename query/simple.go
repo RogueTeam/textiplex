@@ -22,6 +22,51 @@ func NewSimpleQuery() *SimpleQuery {
 // Query context intended to be cached and reused by caller on each search
 type QueryContext struct {
 	Bitmap roaring64.Bitmap
+	Scores map[uint64]float64
+}
+
+func (ctx *QueryContext) UpdateScores(s *storage.Storage, state *ClauseState) {
+	token := state.Token
+	field := state.Field
+
+	documentsLengths := field.DocumentLengths
+	tokenFreqs := s.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
+
+	for index := range tokenFreqs {
+		tokenFreq := &tokenFreqs[index]
+		if !ctx.Bitmap.Contains(tokenFreq.DocumentIndex) {
+			continue
+		}
+
+		docLengthIdx, found := slices.BinarySearchFunc(
+			documentsLengths,
+			tokenFreq.DocumentIndex,
+			func(e storage.DocumentLengthEntry, t uint64) int {
+				return cmp.Compare(e.Index, t)
+			},
+		)
+		if !found {
+			continue
+		}
+
+		scoreDelta := ScoreTermBM25(
+			/* docCoun */ uint64(len(field.DocumentLengths)),
+			/* tokenDocFreq */ token.FrequencyCount,
+			/* tokenFreq */ tokenFreq.Frequency,
+			/* documentLength */ documentsLengths[docLengthIdx].Length,
+			/* avgDocLength */ field.AvgDocumentLength,
+			/* saturation */ DefaultSaturation,
+			/* lengthPenalty */ DefaultLengthPenalty,
+		)
+
+		var boost float64
+		if state.Keyword != nil {
+			boost = state.Keyword.Boost
+		} else {
+			boost = state.Range.Boost
+		}
+		ctx.Scores[tokenFreq.DocumentIndex] = boost * (ctx.Scores[tokenFreq.DocumentIndex] + scoreDelta)
+	}
 }
 
 // Filter the documents id index into the destination bitmap
@@ -33,16 +78,25 @@ func (q *SimpleQuery) FilterDocuments(ctx *QueryContext, s *storage.Storage) {
 		return
 	}
 
+	if ctx.Scores == nil {
+		ctx.Scores = make(map[uint64]float64)
+	}
+
 	// Process shoulds
 	var firstPopulated bool
 	q.Shoulds.Iter(
 		ctx,
 		s,
 		func(state *ClauseState) {
-			ctx.Bitmap.Or(&s.PostingLists[state.Token.PostingListIndex].Bitmap)
+			token := state.Token
+			postingList := s.PostingLists[token.PostingListIndex]
+
+			ctx.Bitmap.Or(&postingList.Bitmap)
 			if !firstPopulated {
 				firstPopulated = true
 			}
+
+			ctx.UpdateScores(s, state)
 		},
 	)
 
@@ -57,6 +111,8 @@ func (q *SimpleQuery) FilterDocuments(ctx *QueryContext, s *storage.Storage) {
 			} else {
 				ctx.Bitmap.And(&s.PostingLists[state.Token.PostingListIndex].Bitmap)
 			}
+
+			ctx.UpdateScores(s, state)
 		},
 	)
 
@@ -82,9 +138,17 @@ func (q *SimpleQuery) BM25(ctx *QueryContext) (idxs []uint64) {
 
 	scores := make([]bm25, 0, ctx.Bitmap.GetCardinality())
 
-	// TODO: Populate scores
+	it := ctx.Bitmap.Iterator()
+	for it.HasNext() {
+		doxIdx := it.Next()
 
-	slices.SortFunc(scores, func(a, b bm25) int { return cmp.Compare(a.score, b.score) })
+		scores = append(scores, bm25{
+			score:  ctx.Scores[doxIdx],
+			docIdx: doxIdx,
+		})
+	}
+
+	slices.SortFunc(scores, func(a, b bm25) int { return cmp.Compare(b.score, a.score) })
 
 	idxs = make([]uint64, len(scores))
 	for index := range scores {

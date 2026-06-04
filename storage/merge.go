@@ -151,7 +151,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			for valid := it.First(); valid; valid = it.Next() {
 				token := it.Item()
 
-				data := binary.NativeEndian.AppendUint64(buffer, token.DocumentFrequencyCount)
+				data := binary.NativeEndian.AppendUint64(buffer, token.FrequencyCount)
 				_, err = fieldsW.Write(data)
 				if err != nil {
 					return fmt.Errorf("failed to write B's field token document frequency: %w: %d:%s", err, fieldHash, token.Value)
@@ -188,10 +188,10 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				if err != nil {
 					return fmt.Errorf("failed to write B's field token frequencies index: %w: %d:%s", err, fieldHash, token.Value)
 				}
-				freqsCursor += token.DocumentFrequencyCount
+				freqsCursor += token.FrequencyCount
 
 				// Write directly to frequencies temporary file
-				freqs := a.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.DocumentFrequencyCount]
+				freqs := a.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
 				for index := range freqs {
 
 					freq := &freqs[index]
@@ -285,7 +285,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			for valid := it.First(); valid; valid = it.Next() {
 				token := it.Item()
 
-				data := binary.NativeEndian.AppendUint64(buffer, token.DocumentFrequencyCount)
+				data := binary.NativeEndian.AppendUint64(buffer, token.FrequencyCount)
 				_, err = fieldsW.Write(data)
 				if err != nil {
 					return fmt.Errorf("failed to write B's field token document frequency: %w: %d:%s", err, fieldHash, token.Value)
@@ -325,10 +325,10 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				if err != nil {
 					return fmt.Errorf("failed to write B's field token frequencies index: %w: %d:%s", err, fieldHash, token.Value)
 				}
-				freqsCursor += token.DocumentFrequencyCount
+				freqsCursor += token.FrequencyCount
 
 				// Write directly to frequencies temporary file
-				freqs := b.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.DocumentFrequencyCount]
+				freqs := b.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
 				for index := range freqs {
 
 					freq := &freqs[index]
@@ -399,7 +399,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				newToken.PostingListIndex = postingListsCursor
 				postingListsCursor++
 				newToken.FrequenciesIndex = freqsCursor
-				freqsCursor += newToken.DocumentFrequencyCount
+				freqsCursor += newToken.FrequencyCount
 
 				// Add token to the pending for insertion
 				finalTokens.Set(newToken)
@@ -422,7 +422,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				}
 
 				// Write the frequencies
-				freqs := a.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.DocumentFrequencyCount]
+				freqs := a.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
 				for index := range freqs {
 
 					freq := &freqs[index]
@@ -464,7 +464,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				newToken.PostingListIndex = postingListsCursor
 				postingListsCursor++
 				newToken.FrequenciesIndex = freqsCursor
-				freqsCursor += newToken.DocumentFrequencyCount
+				freqsCursor += newToken.FrequencyCount
 
 				// Add token to the pending for insertion
 				finalTokens.Set(newToken)
@@ -491,7 +491,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				}
 
 				// Write the frequencies
-				freqs := b.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.DocumentFrequencyCount]
+				freqs := b.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
 				for index := range freqs {
 
 					freq := &freqs[index]
@@ -523,11 +523,11 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			preallocTokens = preallocTokens[1:]
 
 			*newToken = *tokenA
-			newToken.DocumentFrequencyCount = tokenA.DocumentFrequencyCount + tokenB.DocumentFrequencyCount
+			newToken.FrequencyCount = tokenA.FrequencyCount + tokenB.FrequencyCount
 			newToken.PostingListIndex = postingListsCursor
 			postingListsCursor++
 			newToken.FrequenciesIndex = freqsCursor
-			freqsCursor += newToken.DocumentFrequencyCount
+			freqsCursor += newToken.FrequencyCount
 
 			// Add token to the pending for insertion
 			finalTokens.Set(newToken)
@@ -558,8 +558,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 
 			// Write the frequencies
-			freqsA := a.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.DocumentFrequencyCount]
-			freqsB := b.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.DocumentFrequencyCount]
+			freqsA := a.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
+			freqsB := b.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
 
 			freqs := make([]TokenFrequencyEntry, 0, len(freqsA)+len(freqsB))
 			freqs = append(freqs, freqsA...)
@@ -660,7 +660,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			for valid := it.First(); valid; valid = it.Next() {
 				token := it.Item()
 
-				data := binary.NativeEndian.AppendUint64(buffer, token.DocumentFrequencyCount)
+				data := binary.NativeEndian.AppendUint64(buffer, token.FrequencyCount)
 				_, err = fieldsW.Write(data)
 				if err != nil {
 					return fmt.Errorf("failed to write Collision field token document frequency: %w: %d:%s", err, fieldHash, token.Value)

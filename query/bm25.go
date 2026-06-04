@@ -10,6 +10,11 @@ func InverseDocumentFrequency(docCount, tokenDocFreq uint64) (idf float64) {
 	return math.Log(1.0 + (float64(docCount-tokenDocFreq)+0.5)/(float64(tokenDocFreq)+0.5))
 }
 
+const (
+	DefaultSaturation    = 1.2
+	DefaultLengthPenalty = 0.75
+)
+
 // NormalizedTF returns the saturated, length-normalized term frequency
 // for one term in one document's field.
 // tokenFreq      - raw count: how many times the term appears in this doc's field

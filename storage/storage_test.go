@@ -63,7 +63,7 @@ func TestBuildFrom(t *testing.T) {
 			assertions := assert.New(t)
 
 			var s storage.Storage
-			s.BuildFrom(tc.docs...)
+			s.BuildFrom(storage.NewBatch(tc.docs...))
 
 			if !assertions.True(s.Initialized) {
 				return
@@ -149,7 +149,7 @@ func TestFieldStructure(t *testing.T) {
 			assertions := assert.New(t)
 
 			var s storage.Storage
-			s.BuildFrom(tc.docs...)
+			s.BuildFrom(storage.NewBatch(tc.docs...))
 
 			field, ok := s.Fields[tc.fieldHash]
 			if !assertions.True(ok, "field %d must exist", tc.fieldHash) {
@@ -229,7 +229,7 @@ func TestPostingLists(t *testing.T) {
 			assertions := assert.New(t)
 
 			var s storage.Storage
-			s.BuildFrom(tc.docs...)
+			s.BuildFrom(storage.NewBatch(tc.docs...))
 
 			field, ok := s.Fields[tc.fieldHash]
 			if !assertions.True(ok) {
@@ -304,7 +304,7 @@ func TestTokenFrequencies(t *testing.T) {
 			assertions := assert.New(t)
 
 			var s storage.Storage
-			s.BuildFrom(tc.docs...)
+			s.BuildFrom(storage.NewBatch(tc.docs...))
 
 			field, ok := s.Fields[tc.fieldHash]
 			if !assertions.True(ok) {
@@ -393,7 +393,7 @@ func TestRoundTrip(t *testing.T) {
 			assertions := assert.New(t)
 
 			var original storage.Storage
-			original.BuildFrom(tc.docs...)
+			original.BuildFrom(storage.NewBatch(tc.docs...))
 
 			loaded := testsuite.RoundTrip(t, &original)
 
@@ -476,7 +476,7 @@ func TestReset(t *testing.T) {
 			assertions := assert.New(t)
 
 			var s storage.Storage
-			s.BuildFrom(tc.docs...)
+			s.BuildFrom(storage.NewBatch(tc.docs...))
 			if !assertions.True(s.Initialized) {
 				return
 			}
@@ -491,7 +491,7 @@ func TestReset(t *testing.T) {
 			assertions.Nil(s.PostingLists)
 			assertions.Nil(s.TokenFrequencies)
 
-			s.BuildFrom(tc.docs...)
+			s.BuildFrom(storage.NewBatch(tc.docs...))
 			assertions.True(s.Initialized)
 			assertions.Len(s.DocumentsIds, len(tc.docs))
 		})

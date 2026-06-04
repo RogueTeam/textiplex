@@ -1,5 +1,7 @@
 package storage
 
+import "unsafe"
+
 type TokenDefinition struct {
 	// Normalized token value e.g. "interventoria" not "Interventoría"
 	// The caller is responsible for normalization before insertion
@@ -28,4 +30,24 @@ type Document struct {
 	// Fields present in this document
 	// Fields absent from this slice are treated as empty for this document
 	Fields []*FieldDefinition
+}
+
+func (d *Document) Size() (size uint64) {
+	size += uint64(unsafe.Sizeof(Document{}))
+	size += uint64(unsafe.Sizeof((*Document)(nil))) // pointer in b.Documents
+	size += uint64(len(d.Id))
+
+	// Fields: pointer array + struct bodies
+	size += uint64(unsafe.Sizeof((*FieldDefinition)(nil))) * uint64(len(d.Fields))
+	size += uint64(unsafe.Sizeof(FieldDefinition{})) * uint64(len(d.Fields))
+
+	for _, field := range d.Fields {
+		// Tokens: pointer array + struct bodies
+		size += uint64(unsafe.Sizeof((*TokenDefinition)(nil))) * uint64(len(field.Tokens))
+		size += uint64(unsafe.Sizeof(TokenDefinition{})) * uint64(len(field.Tokens))
+		for _, tok := range field.Tokens {
+			size += uint64(len(tok.Value))
+		}
+	}
+	return size
 }

@@ -73,7 +73,7 @@ type Storage struct {
 	Initialized bool
 }
 
-func (s *Storage) coldInitialize() {
+func (s *Storage) ColdInitialize() {
 	s.Version = VersionV1
 	s.Fields = make(map[uint64]*Field)
 	s.Initialized = true
@@ -89,13 +89,13 @@ func (s *Storage) Reset() (err error) {
 }
 
 // Builds the entire storage from a set of document definitions
-func (s *Storage) BuildFromSorted(docs ...*Document) {
+func (s *Storage) BuildFromSorted(batch *Batch) {
 	if s.Initialized {
 		s.Reset()
 	}
-	s.coldInitialize()
+	s.ColdInitialize()
 
-	s.DocumentsIds = make([]DocumentId, len(docs))
+	s.DocumentsIds = make([]DocumentId, len(batch.Documents))
 
 	// Header is always fixed size
 	s.Size = uint64(HeaderSize)
@@ -119,7 +119,7 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 	pdPool := pool.New[PostingData](20)
 	bitmapPool := pool.New[roaring64.Bitmap](20)
 
-	for docIndex, doc := range docs {
+	for docIndex, doc := range batch.Documents {
 		s.DocumentsIds[docIndex] = doc.Id
 		internalID := uint64(docIndex)
 
@@ -232,20 +232,25 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 	}
 }
 
-func (s *Storage) BuildFrom(docs ...*Document) {
-	docs = slices.Clone(docs)
-	slices.SortFunc(docs, func(a, b *Document) int {
+// This function will allocate a new batch and sort documents in the batch by their ID
+// if the batch in ensured to be in order already call directly BuildFromSorted
+func (s *Storage) BuildFrom(batch *Batch) {
+	var bCopy = Batch{
+		Size:      batch.Size,
+		Documents: slices.Clone(batch.Documents),
+	}
+	slices.SortFunc(bCopy.Documents, func(a, b *Document) int {
 		return bytes.Compare(a.Id, b.Id)
 	})
 
-	s.BuildFromSorted(docs...)
+	s.BuildFromSorted(&bCopy)
 }
 
 // Saves the file to the target file
 func (s *Storage) SaveTo(name string) (err error) {
 	if !s.Initialized {
 		// Cold initialize just to make sure we don't read an empty map
-		s.coldInitialize()
+		s.ColdInitialize()
 	}
 
 	file, err := os.Create(name)

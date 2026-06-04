@@ -89,7 +89,7 @@ func (s *Storage) Reset() (err error) {
 }
 
 // Builds the entire storage from a set of document definitions
-func (s *Storage) BuildFromSorted(docs ...*Document) {
+func (s *Storage) BuildFrom(docs ...*Document) {
 	if s.Initialized {
 		s.Reset()
 	}
@@ -233,14 +233,14 @@ func (s *Storage) BuildFromSorted(docs ...*Document) {
 }
 
 // This function will allocate a new batch and sort documents in the batch by their ID
-// if the batch in ensured to be in order already call directly BuildFromSorted
-func (s *Storage) BuildFrom(docs ...*Document) {
+// if the batch in ensured to be in order already call directly BuildFrom
+func (s *Storage) SortAndBuildFrom(docs ...*Document) {
 	docs = slices.Clone(docs)
 	slices.SortFunc(docs, func(a, b *Document) int {
 		return bytes.Compare(a.Id, b.Id)
 	})
 
-	s.BuildFromSorted(docs...)
+	s.BuildFrom(docs...)
 }
 
 // Saves the file to the target file

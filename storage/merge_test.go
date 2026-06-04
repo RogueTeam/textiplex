@@ -73,13 +73,13 @@ func TestMergeDocIDs(t *testing.T) {
 	// a holds the lexicographically-lower range, b the higher range, so the
 	// disjoint ordered doc ID precondition holds.
 	var a storage.Storage
-	a.BuildFrom(
+	a.SortAndBuildFrom(
 		testsuite.MakeDoc("doc-0001", testsuite.MakeField(1, 1, testsuite.MakeToken("alpha", 1))),
 		testsuite.MakeDoc("doc-0002", testsuite.MakeField(1, 1, testsuite.MakeToken("beta", 1))),
 	)
 
 	var b storage.Storage
-	b.BuildFrom(
+	b.SortAndBuildFrom(
 		testsuite.MakeDoc("doc-0003", testsuite.MakeField(1, 1, testsuite.MakeToken("gamma", 1))),
 		testsuite.MakeDoc("doc-0004", testsuite.MakeField(1, 1, testsuite.MakeToken("delta", 1))),
 	)
@@ -102,14 +102,14 @@ func TestMergeDisjointFields(t *testing.T) {
 
 	// Field 1 lives only in a, field 2 only in b. No collisions.
 	var a storage.Storage
-	a.BuildFrom(
+	a.SortAndBuildFrom(
 		testsuite.MakeDoc("doc-a", testsuite.MakeField(1, 2,
 			testsuite.MakeToken("contrato", 2),
 		)),
 	)
 
 	var b storage.Storage
-	b.BuildFrom(
+	b.SortAndBuildFrom(
 		testsuite.MakeDoc("doc-b", testsuite.MakeField(2, 3,
 			testsuite.MakeToken("interventoria", 3),
 		)),
@@ -145,14 +145,14 @@ func TestMergeCollisionFieldDisjointTokens(t *testing.T) {
 
 	// Same field hash 1 in both, but no shared token values.
 	var a storage.Storage
-	a.BuildFrom(
+	a.SortAndBuildFrom(
 		testsuite.MakeDoc("doc-a", testsuite.MakeField(1, 4,
 			testsuite.MakeToken("bogota", 4),
 		)),
 	)
 
 	var b storage.Storage
-	b.BuildFrom(
+	b.SortAndBuildFrom(
 		testsuite.MakeDoc("doc-b", testsuite.MakeField(1, 2,
 			testsuite.MakeToken("medellin", 2),
 		)),
@@ -193,7 +193,7 @@ func TestMergeCollisionFieldSharedToken(t *testing.T) {
 
 	// "contrato" appears in both a and b under the same field hash.
 	var a storage.Storage
-	a.BuildFrom(
+	a.SortAndBuildFrom(
 		testsuite.MakeDoc("doc-a1", testsuite.MakeField(1, 3,
 			testsuite.MakeToken("contrato", 3),
 		)),
@@ -203,7 +203,7 @@ func TestMergeCollisionFieldSharedToken(t *testing.T) {
 	)
 
 	var b storage.Storage
-	b.BuildFrom(
+	b.SortAndBuildFrom(
 		testsuite.MakeDoc("doc-b1", testsuite.MakeField(1, 2,
 			testsuite.MakeToken("contrato", 2),
 		)),
@@ -244,16 +244,16 @@ func TestMergeMixed(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.BuildFrom(
-		testsuite.MakeDoc("doc-a",
+	a.SortAndBuildFrom(
+		testsuite.MakeDoc("doc-b",
 			testsuite.MakeField(1, 2, testsuite.MakeToken("aonly", 2)),                                   // A-only field
 			testsuite.MakeField(3, 3, testsuite.MakeToken("shared", 1), testsuite.MakeToken("aside", 2)), // collision field
 		),
 	)
 
 	var b storage.Storage
-	b.BuildFrom(
-		testsuite.MakeDoc("doc-b",
+	b.SortAndBuildFrom(
+		testsuite.MakeDoc("doc-a",
 			testsuite.MakeField(2, 1, testsuite.MakeToken("bonly", 1)),                                   // B-only field
 			testsuite.MakeField(3, 2, testsuite.MakeToken("shared", 1), testsuite.MakeToken("bside", 1)), // collision field
 		),
@@ -293,7 +293,7 @@ func TestMergeHeaderCounts(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.BuildFrom(
+	a.SortAndBuildFrom(
 		testsuite.MakeDoc("doc-a",
 			testsuite.MakeField(1, 1, testsuite.MakeToken("x", 1)),
 			testsuite.MakeField(3, 1, testsuite.MakeToken("shared", 1)),
@@ -301,7 +301,7 @@ func TestMergeHeaderCounts(t *testing.T) {
 	)
 
 	var b storage.Storage
-	b.BuildFrom(
+	b.SortAndBuildFrom(
 		testsuite.MakeDoc("doc-b",
 			testsuite.MakeField(2, 1, testsuite.MakeToken("y", 1)),
 			testsuite.MakeField(3, 1, testsuite.MakeToken("shared", 1)),
@@ -335,7 +335,7 @@ func TestMergeWithEmpty(t *testing.T) {
 		assertions := assert.New(t)
 
 		var a storage.Storage
-		a.BuildFrom(
+		a.SortAndBuildFrom(
 			testsuite.MakeDoc("doc-a", testsuite.MakeField(1, 1, testsuite.MakeToken("only", 1))),
 		)
 		var b storage.Storage
@@ -355,7 +355,7 @@ func TestMergeWithEmpty(t *testing.T) {
 		var a storage.Storage
 		a.ColdInitialize() // empty
 		var b storage.Storage
-		b.BuildFrom(
+		b.SortAndBuildFrom(
 			testsuite.MakeDoc("doc-b", testsuite.MakeField(1, 1, testsuite.MakeToken("only", 1))),
 		)
 

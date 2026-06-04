@@ -15,7 +15,7 @@ const benchDocCount = 1_000_000
 // BenchmarkDocumentConstruction measures the full cost of building 1M
 // storage-ready documents from raw field values — field hashing, token
 // encoding, pool allocation, and batch insertion — mirroring the corpus
-// shape used by BenchmarkBuildFromSorted:
+// shape used by BenchmarkBuildFrom:
 //
 //   - "name"          keyword field, unique per doc ("hello-N")
 //   - "index"         integer field, unique per doc (N)
@@ -60,7 +60,7 @@ func BenchmarkDocumentConstruction(b *testing.B) {
 }
 
 // BenchmarkDocumentConstructionAndBuild measures the end-to-end pipeline:
-// document construction followed immediately by BuildFromSorted. This is
+// document construction followed immediately by BuildFrom. This is
 // the full ingestion cost for a single 1M-doc segment — what the IndexWriter
 // pays per flush on the hot path.
 func BenchmarkDocumentConstructionAndBuild(b *testing.B) {
@@ -98,7 +98,7 @@ func BenchmarkDocumentConstructionAndBuild(b *testing.B) {
 		}
 
 		var s storage.Storage
-		s.BuildFromSorted(batch.Documents...)
+		s.BuildFrom(batch.Documents...)
 	}
 }
 
@@ -186,12 +186,12 @@ func prepareBlugeEquivalentFromFields(b *testing.B) []*storage.Document {
 	return batch.Documents
 }
 
-// BenchmarkBuildFromSortedViaFields is the direct equivalent of
-// BenchmarkBuildFromSorted in the storage package but sourced through the
-// fields package. Measures only BuildFromSorted with docs prepared outside
+// BenchmarkBuildFromViaFields is the direct equivalent of
+// BenchmarkBuildFrom in the storage package but sourced through the
+// fields package. Measures only BuildFrom with docs prepared outside
 // the clock, allowing an apples-to-apples comparison between raw testsuite
 // docs and fields-package-constructed docs.
-func BenchmarkBuildFromSortedViaFields(b *testing.B) {
+func BenchmarkBuildFromViaFields(b *testing.B) {
 	docs := prepareBlugeEquivalentFromFields(b)
 
 	b.ReportAllocs()
@@ -199,7 +199,7 @@ func BenchmarkBuildFromSortedViaFields(b *testing.B) {
 
 	for b.Loop() {
 		var s storage.Storage
-		s.BuildFromSorted(docs...)
+		s.BuildFrom(docs...)
 		_ = s
 	}
 }

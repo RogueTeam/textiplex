@@ -10,7 +10,7 @@
 ├─────────────────────────────────────────────────────┤
 │                  DOC ID TABLE                       │
 │  [doc_id_length (2B) | doc_id_bytes] × total_docs   │
-│  (sorted alphabetically, position = internal ID)    │
+│  (opt sorted alphabetically, position = internal ID)│
 ├─────────────────────────────────────────────────────┤
 │                 FIELD BLOCKS                        │
 │  ┌───────────────────────────────────────────────┐  │
@@ -46,7 +46,7 @@
 
 ## Invariants
 
-- Doc IDs are sorted alphabetically. A document's position in the table is its internal sequential ID used in posting lists and TF entries.
+- Doc IDs are optionally sorted alphabetically. A document's position in the table is its internal sequential ID used in posting lists and TF entries.
 - Doc length entries within each field block are sorted by doc_index ascending. This enables a merge scan during BM25 scoring instead of binary search.
 - Token entries within each field block are sorted alphabetically by token bytes.
 - TF entries for a given token occupy a contiguous slice: `TokenFrequencies[FrequenciesIndex : FrequenciesIndex+DocumentFrequencyCount]`. The writer must maintain this invariant.
@@ -54,16 +54,16 @@
 
 ## Storage.Size contract
 
-`Storage.Size` is set by both `BuildFromSorted` and `LoadBytes`:
+`Storage.Size` is set by both `BuildFrom` and `LoadBytes`:
 
-- After `BuildFromSorted`: exact byte count that `SaveTo` will write. Use it to pre-allocate via `Truncate` + mmap before calling `Save`.
+- After `BuildFrom`: exact byte count that `SaveTo` will write. Use it to pre-allocate via `Truncate` + mmap before calling `Save`.
 - After `LoadBytes`: bytes consumed from the source buffer. Supports multiple storages packed into one buffer — load the second at `src[s.Size:]`.
 
 ## Canonical write path
 
 ```go
 var s Storage
-s.BuildFromSorted(docs...)   // computes s.Size
+s.BuildFrom(docs...)   // computes s.Size
 
 err := s.SaveTo("index.bin") // Truncate + mmap + msync, atomic on success
 ```
@@ -122,10 +122,9 @@ pl.Bitmap.Add(newDocID)
 
 `Merger.Merge` combines two storages into a single output file using a
 streaming, temp-file-backed pipeline. No output size pre-computation is
-required. The only precondition is that doc ID ranges are disjoint and ordered:
+required. The only precondition is that doc ID ranges are disjoint:
 every doc ID in `b` must sort after every doc ID in `a`. This is guaranteed
-when the corpus is partitioned by sorted doc ID range before building each
-batch.
+when the corpus is partitioned by range before building each batch.
 
 ```go
 m := storage.Merger{TempDir: "/tmp"} // temp files written here during merge
@@ -155,8 +154,8 @@ Field count in the output is `len(a.Fields) + len(b.Fields) - collisions`.
 
 ### Large-corpus ingestion pattern
 
-For corpora too large to fit in one `BuildFromSorted` call, partition docs into
-sorted batches, build each batch into a segment file in parallel, then merge
+For corpora too large to fit in one `BuildFrom` call, partition docs into
+unsorted batches, build each batch into a segment file in parallel, then merge
 pairwise:
 
 ```go
@@ -197,7 +196,7 @@ fields per document, 1 unique token per field (Bluge-equivalent corpus).
 
 | Operation | Time | Throughput | Heap | Allocs |
 |---|---|---|---|---|
-| BuildFromSorted (textiplex) | 3.4s | — | 2.0 GB | 33.7M |
+| BuildFrom (textiplex) | 3.4s | — | 2.0 GB | 33.7M |
 | Merge 2×500K→1M (textiplex) | 2.2s | 161 MB/s | 732 MB | 16.7M |
 | LoadBytes (textiplex) | 1.2s | 290 MB/s | 1.0 GB | 27.2M |
 | OfflineWriter (Bluge fork) | 5.2s | — | 6.3 GB | 104.9M |

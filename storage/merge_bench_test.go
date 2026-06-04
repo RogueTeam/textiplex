@@ -12,7 +12,7 @@ import (
 const benchMergeHalf = benchDocCount / 2 // 500_000 per side -> 1M merged
 
 // prepareMergeHalf builds `count` documents starting at `start`, mirroring the
-// Bluge-equivalent shape used by BenchmarkBuildFromSorted: 3 fields, one unique
+// Bluge-equivalent shape used by BenchmarkBuildFrom: 3 fields, one unique
 // token per field. Doc IDs are zero padded so lexicographic order matches the
 // numeric order, which keeps the two halves on disjoint ordered ranges (every
 // id in b sorts after every id in a) as Merge requires.
@@ -50,7 +50,7 @@ func prepareMergeHalf(start, count int) (docs []*storage.Document) {
 	return docs
 }
 
-// BenchmarkMerge is the merge analogue of BenchmarkBuildFromSorted. Both halves
+// BenchmarkMerge is the merge analogue of BenchmarkBuildFrom. Both halves
 // are built and saved to disk outside the clock; only Merger.Merge — the
 // streaming, temp-file-backed merge that produces the final 1M-doc file — is
 // measured per iteration.
@@ -59,10 +59,10 @@ func BenchmarkMerge(b *testing.B) {
 
 	// Build both halves on disjoint ordered ranges.
 	var aStore storage.Storage
-	aStore.BuildFromSorted(prepareMergeHalf(0, benchMergeHalf)...)
+	aStore.BuildFrom(prepareMergeHalf(0, benchMergeHalf)...)
 
 	var bStore storage.Storage
-	bStore.BuildFromSorted(prepareMergeHalf(benchMergeHalf, benchMergeHalf)...)
+	bStore.BuildFrom(prepareMergeHalf(benchMergeHalf, benchMergeHalf)...)
 
 	// Persist them and load via mmap so the benchmark merges from on-disk,
 	// zero-copy storages — the production path, where posting lists are Unsafe

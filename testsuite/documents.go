@@ -21,7 +21,7 @@ func MakeField(hash uint64, length uint64, tokens ...*storage.TokenDefinition) *
 
 // MakeDoc creates a Document with the given external ID and field definitions.
 // The ID must be unique across the index and will be sorted alphabetically
-// during BuildFrom / BuildFromSorted.
+// during SortAndBuildFrom / BuildFrom.
 func MakeDoc(id string, fields ...*storage.FieldDefinition) *storage.Document {
 	return &storage.Document{Id: storage.DocumentId(id), Fields: fields}
 }

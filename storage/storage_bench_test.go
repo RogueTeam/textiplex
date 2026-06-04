@@ -47,17 +47,17 @@ func prepareBlugeEquivalent() (docs []*storage.Document) {
 	return docs
 }
 
-// BenchmarkBuildFromSorted is the apples-to-apples equivalent of
+// BenchmarkBuildFrom is the apples-to-apples equivalent of
 // Bluge's BenchmarkOfflineWriter. Batch preparation happens outside
-// the clock; only BuildFromSorted is measured per iteration.
-func BenchmarkBuildFromSorted(b *testing.B) {
+// the clock; only BuildFrom is measured per iteration.
+func BenchmarkBuildFrom(b *testing.B) {
 	docs := prepareBlugeEquivalent()
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for b.Loop() {
 		var s storage.Storage
-		s.BuildFromSorted(docs...)
+		s.BuildFrom(docs...)
 	}
 }
 
@@ -69,7 +69,7 @@ func BenchmarkLoadBytes(b *testing.B) {
 	docs := prepareBlugeEquivalent()
 
 	var s storage.Storage
-	s.BuildFromSorted(docs...)
+	s.BuildFrom(docs...)
 
 	filename := testsuite.TempFilename(b, "storage_bench_*.bin")
 

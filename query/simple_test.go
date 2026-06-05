@@ -273,6 +273,9 @@ func TestCombinedClauses(t *testing.T) {
 
 	q := query.NewSimpleQuery()
 	q.Musts.Keyword([]byte("contrato"), 1.0)
+	// Musts should always contain a pair should just to make sure they are included in the initial filtering
+	// Other wise will be hard filters for later
+	q.Shoulds.Keyword([]byte("contrato"), 1.0)
 	q.Shoulds.Keyword([]byte("bogota"), 1.0)
 	q.MustNots.Keyword([]byte("anulado"), 1.0)
 

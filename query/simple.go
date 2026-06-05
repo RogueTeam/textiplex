@@ -82,8 +82,23 @@ func (q *SimpleQuery) FilterDocuments(ctx *QueryContext, s *storage.Storage) {
 		ctx.Scores = make(map[uint64]float64)
 	}
 
+	ctx.Bitmap.AddRange(0, uint64(len(s.DocumentsIds)))
+
+	// Process musts
+	q.Musts.Iter(
+		ctx,
+		s,
+		func(state *ClauseState) {
+			token := state.Token
+			postingList := s.PostingLists[token.PostingListIndex]
+
+			ctx.Bitmap.And(&postingList.Bitmap)
+
+			ctx.UpdateScores(s, state)
+		},
+	)
+
 	// Process shoulds
-	var firstPopulated bool
 	q.Shoulds.Iter(
 		ctx,
 		s,
@@ -92,40 +107,19 @@ func (q *SimpleQuery) FilterDocuments(ctx *QueryContext, s *storage.Storage) {
 			postingList := s.PostingLists[token.PostingListIndex]
 
 			ctx.Bitmap.Or(&postingList.Bitmap)
-			if !firstPopulated {
-				firstPopulated = true
-			}
-
-			ctx.UpdateScores(s, state)
-		},
-	)
-
-	// Process musts
-	q.Musts.Iter(
-		ctx,
-		s,
-		func(state *ClauseState) {
-			if !firstPopulated {
-				ctx.Bitmap.Or(&s.PostingLists[state.Token.PostingListIndex].Bitmap)
-				firstPopulated = true
-			} else {
-				ctx.Bitmap.And(&s.PostingLists[state.Token.PostingListIndex].Bitmap)
-			}
 
 			ctx.UpdateScores(s, state)
 		},
 	)
 
 	// Process must nots
-	if firstPopulated {
-		q.MustNots.Iter(
-			ctx,
-			s,
-			func(state *ClauseState) {
-				ctx.Bitmap.AndNot(&s.PostingLists[state.Token.PostingListIndex].Bitmap)
-			},
-		)
-	}
+	q.MustNots.Iter(
+		ctx,
+		s,
+		func(state *ClauseState) {
+			ctx.Bitmap.AndNot(&s.PostingLists[state.Token.PostingListIndex].Bitmap)
+		},
+	)
 }
 
 // Once a filtering is done scoring is the next step of a searching algorithm
@@ -142,13 +136,27 @@ func (q *SimpleQuery) BM25(ctx *QueryContext) (idxs []uint64) {
 	for it.HasNext() {
 		doxIdx := it.Next()
 
+		score := ctx.Scores[doxIdx]
+		if score == 0 {
+			continue
+		}
+
 		scores = append(scores, bm25{
-			score:  ctx.Scores[doxIdx],
+			score:  score,
 			docIdx: doxIdx,
 		})
 	}
 
-	slices.SortFunc(scores, func(a, b bm25) int { return cmp.Compare(b.score, a.score) })
+	slices.SortFunc(
+		scores,
+		func(a, b bm25) int {
+			scoreCmp := cmp.Compare(b.score, a.score)
+			if scoreCmp == 0 {
+				return cmp.Compare(b.docIdx, a.docIdx)
+			}
+			return scoreCmp
+		},
+	)
 
 	idxs = make([]uint64, len(scores))
 	for index := range scores {

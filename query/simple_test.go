@@ -369,9 +369,9 @@ func TestBM25Primitives(t *testing.T) {
 	})
 
 	t.Run("normalized tf saturates", func(t *testing.T) {
-		// With avgdl == dl the length norm is 1; the saturation ceiling is
-		// (k+1)/k. tf far above k must approach but not exceed it.
-		ceiling := (query.DefaultSaturation + 1) / query.DefaultSaturation
+		// As tf→∞ this formula approaches (saturation+1): the saturation*lengthNorm
+		// term in the denominator becomes negligible against tf.
+		ceiling := query.DefaultSaturation + 1.0 // 2.2
 		hi := query.NormalizedTF(1_000_000, 10, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
 		assertions.Less(hi, ceiling)
 		assertions.InDelta(ceiling, hi, 0.01, "huge tf should sit just under the ceiling")

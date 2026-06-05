@@ -65,8 +65,13 @@ func (ctx *QueryContext) UpdateScores(s *storage.Storage, state *ClauseState) {
 		} else {
 			boost = state.Range.Boost
 		}
-		ctx.Scores[tokenFreq.DocumentIndex] = boost * (ctx.Scores[tokenFreq.DocumentIndex] + scoreDelta)
+		ctx.Scores[tokenFreq.DocumentIndex] += boost * scoreDelta
 	}
+}
+
+func (q *SimpleQuery) Score(ctx *QueryContext, s *storage.Storage) {
+	q.Musts.Iter(ctx, s, func(state *ClauseState) { ctx.UpdateScores(s, state) })
+	q.Shoulds.Iter(ctx, s, func(state *ClauseState) { ctx.UpdateScores(s, state) })
 }
 
 // Filter the documents id index into the destination bitmap
@@ -74,52 +79,37 @@ func (ctx *QueryContext) UpdateScores(s *storage.Storage, state *ClauseState) {
 // is caller's responsability to clear dst bitmap
 func (q *SimpleQuery) FilterDocuments(ctx *QueryContext, s *storage.Storage) {
 	if q.Musts.Count() == 0 && q.Shoulds.Count() == 0 {
-		// Invalid query inverse matching is so expensive to even attempt to have it
 		return
 	}
-
 	if ctx.Scores == nil {
 		ctx.Scores = make(map[uint64]float64)
 	}
 
-	ctx.Bitmap.AddRange(0, uint64(len(s.DocumentsIds)))
+	if q.Musts.Count() > 0 {
+		// Musts define the candidate set: intersection of all Must posting lists.
+		var firstMust bool
+		q.Musts.Iter(ctx, s, func(state *ClauseState) {
+			pl := &s.PostingLists[state.Token.PostingListIndex].Bitmap
+			if !firstMust {
+				ctx.Bitmap.Or(pl)
+				firstMust = true
+			} else {
+				ctx.Bitmap.And(pl)
+			}
+		})
+	} else {
+		// No Musts: Shoulds define the set (union of Should posting lists).
+		q.Shoulds.Iter(ctx, s, func(state *ClauseState) {
+			ctx.Bitmap.Or(&s.PostingLists[state.Token.PostingListIndex].Bitmap)
+		})
+	}
 
-	// Process musts
-	q.Musts.Iter(
-		ctx,
-		s,
-		func(state *ClauseState) {
-			token := state.Token
-			postingList := s.PostingLists[token.PostingListIndex]
+	// MustNots subtract from whatever the set is.
+	q.MustNots.Iter(ctx, s, func(state *ClauseState) {
+		ctx.Bitmap.AndNot(&s.PostingLists[state.Token.PostingListIndex].Bitmap)
+	})
 
-			ctx.Bitmap.And(&postingList.Bitmap)
-
-			ctx.UpdateScores(s, state)
-		},
-	)
-
-	// Process shoulds
-	q.Shoulds.Iter(
-		ctx,
-		s,
-		func(state *ClauseState) {
-			token := state.Token
-			postingList := s.PostingLists[token.PostingListIndex]
-
-			ctx.Bitmap.Or(&postingList.Bitmap)
-
-			ctx.UpdateScores(s, state)
-		},
-	)
-
-	// Process must nots
-	q.MustNots.Iter(
-		ctx,
-		s,
-		func(state *ClauseState) {
-			ctx.Bitmap.AndNot(&s.PostingLists[state.Token.PostingListIndex].Bitmap)
-		},
-	)
+	q.Score(ctx, s)
 }
 
 // Once a filtering is done scoring is the next step of a searching algorithm

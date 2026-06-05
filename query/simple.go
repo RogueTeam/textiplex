@@ -39,16 +39,10 @@ func (ctx *QueryContext) UpdateScores(s *storage.Storage, state *ClauseState) {
 		docIdx := it.Next()
 
 		fieldsTokenDocsKey.C = docIdx
-		freq, found := s.FieldTokenDocFrequencies[fieldsTokenDocsKey]
-		if !found {
-			continue
-		}
+		freq := s.FieldTokenDocFrequencies[fieldsTokenDocsKey]
 
 		fieldDocsKey.B = docIdx
-		docLength, found := s.FieldDocLengths[fieldDocsKey]
-		if !found {
-			continue
-		}
+		docLength := s.FieldDocLengths[fieldDocsKey]
 
 		scoreDelta := ScoreTermBM25(
 			/* docCoun */ uint64(len(field.DocumentLengths)),
@@ -60,13 +54,14 @@ func (ctx *QueryContext) UpdateScores(s *storage.Storage, state *ClauseState) {
 			/* lengthPenalty */ DefaultLengthPenalty,
 		)
 
-		var boost float64
 		if state.Keyword != nil {
-			boost = state.Keyword.Boost
+			ctx.Scores[docIdx] += state.Keyword.Boost * scoreDelta
+		} else if state.Range != nil {
+			ctx.Scores[docIdx] += state.Range.Boost * scoreDelta
 		} else {
-			boost = state.Range.Boost
+			// Should never match but is good guard to unknown cases
+			ctx.Scores[docIdx] += scoreDelta
 		}
-		ctx.Scores[docIdx] += boost * scoreDelta
 	}
 }
 

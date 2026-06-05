@@ -6,6 +6,7 @@ import (
 
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/RogueTeam/textiplex/storage"
+	"github.com/zeebo/xxh3"
 )
 
 type SimpleQuery struct {
@@ -29,22 +30,22 @@ func (ctx *QueryContext) UpdateScores(s *storage.Storage, state *ClauseState) {
 	token := state.Token
 	field := state.Field
 
-	documentsLengths := field.DocumentLengths
-	tokenFreqs := s.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
+	tokenHash := xxh3.Hash(token.Value)
 
-	for index := range tokenFreqs {
-		tokenFreq := &tokenFreqs[index]
-		if !ctx.Bitmap.Contains(tokenFreq.DocumentIndex) {
+	fieldsTokenDocsKey := storage.Tuple3[uint64]{A: state.FieldHash, B: tokenHash}
+	fieldDocsKey := storage.Tuple2[uint64]{A: state.FieldHash}
+
+	for it := ctx.Bitmap.Iterator(); it.HasNext(); {
+		docIdx := it.Next()
+
+		fieldsTokenDocsKey.C = docIdx
+		freq, found := s.FieldTokenDocFrequencies[fieldsTokenDocsKey]
+		if !found {
 			continue
 		}
 
-		docLengthIdx, found := slices.BinarySearchFunc(
-			documentsLengths,
-			tokenFreq.DocumentIndex,
-			func(e storage.DocumentLengthEntry, t uint64) int {
-				return cmp.Compare(e.Index, t)
-			},
-		)
+		fieldDocsKey.B = docIdx
+		docLength, found := s.FieldDocLengths[fieldDocsKey]
 		if !found {
 			continue
 		}
@@ -52,8 +53,8 @@ func (ctx *QueryContext) UpdateScores(s *storage.Storage, state *ClauseState) {
 		scoreDelta := ScoreTermBM25(
 			/* docCoun */ uint64(len(field.DocumentLengths)),
 			/* tokenDocFreq */ token.FrequencyCount,
-			/* tokenFreq */ tokenFreq.Frequency,
-			/* documentLength */ documentsLengths[docLengthIdx].Length,
+			/* tokenFreq */ freq,
+			/* documentLength */ docLength,
 			/* avgDocLength */ field.AvgDocumentLength,
 			/* saturation */ DefaultSaturation,
 			/* lengthPenalty */ DefaultLengthPenalty,
@@ -65,7 +66,7 @@ func (ctx *QueryContext) UpdateScores(s *storage.Storage, state *ClauseState) {
 		} else {
 			boost = state.Range.Boost
 		}
-		ctx.Scores[tokenFreq.DocumentIndex] += boost * scoreDelta
+		ctx.Scores[docIdx] += boost * scoreDelta
 	}
 }
 

@@ -39,10 +39,16 @@ func (ctx *QueryContext) UpdateScores(s *storage.Storage, state *ClauseState) {
 		docIdx := it.Next()
 
 		fieldsTokenDocsKey.C = docIdx
-		freq := s.FieldTokenDocFrequencies[fieldsTokenDocsKey]
+		freq, found := s.FieldTokenDocFrequencies[fieldsTokenDocsKey.Hash()]
+		if !found {
+			continue
+		}
 
 		fieldDocsKey.B = docIdx
-		docLength := s.FieldDocLengths[fieldDocsKey]
+		docLength, found := s.FieldDocLengths[fieldDocsKey.Hash()]
+		if !found {
+			continue
+		}
 
 		scoreDelta := ScoreTermBM25(
 			/* docCoun */ uint64(len(field.DocumentLengths)),

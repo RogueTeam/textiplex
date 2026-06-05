@@ -74,9 +74,16 @@ type Storage struct {
 
 	// Helpers, not intended to be saved in any matter but could be used to improve query performance
 	// FieldDocLengths maps fieldHash -> document index -> length
-	FieldDocLengths map[Tuple2[uint64]]uint64
+	// Use Tuple2.Hash for generating the keys
+	// A: Field Hash
+	// B: Document Index
+	FieldDocLengths map[uint64]uint64
 	// FieldTokenDocFrequencies field hash -> token hash -> document index -> frequency
-	FieldTokenDocFrequencies map[Tuple3[uint64]]uint64
+	// Use Tuple3.Hash for generating the keys
+	// A: Field Hash
+	// B: Token Hash
+	// C: Document Index
+	FieldTokenDocFrequencies map[uint64]uint64
 }
 
 func (s *Storage) ColdInitialize() {

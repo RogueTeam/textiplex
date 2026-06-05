@@ -84,7 +84,7 @@ func (c *Clause) Iter(ctx *QueryContext, s *storage.Storage, handle HandleClause
 
 	for _, state.Keyword = range c.Keywords {
 		tokenKey.Value = state.Keyword.Value
-		for _, state.Field = range s.Fields {
+		for state.FieldHash, state.Field = range s.Fields {
 			var found bool
 			state.Token, found = state.Field.Tokens.Get(&tokenKey)
 			if !found {

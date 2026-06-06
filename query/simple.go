@@ -71,24 +71,15 @@ func (ctx *QueryContext) UpdateScores(s *storage.Storage, state *ClauseState) {
 	}
 }
 
-func (q *SimpleQuery) Score(ctx *QueryContext, s *storage.Storage) {
-	ctx.Scores = make(map[uint64]float64, ctx.Bitmap.GetCardinality())
-	q.Musts.Iter(ctx, s, func(state *ClauseState) { ctx.UpdateScores(s, state) })
-	q.Shoulds.Iter(ctx, s, func(state *ClauseState) { ctx.UpdateScores(s, state) })
-}
-
 // Filter the documents id index into the destination bitmap
 // the idea is to filter first the score results based on conditions
 // is caller's responsability to clear dst bitmap
 func (q *SimpleQuery) FilterDocuments(ctx *QueryContext, s *storage.Storage) {
-	if q.Musts.Count() == 0 && q.Shoulds.Count() == 0 {
-		return
-	}
-	if ctx.Scores == nil {
-		ctx.Scores = make(map[uint64]float64)
-	}
+	mustsCount := q.Musts.Count()
+	shouldsCount := q.Shoulds.Count()
+	mustNotsCount := q.MustNots.Count()
 
-	if q.Musts.Count() > 0 {
+	if mustsCount > 0 {
 		// Musts define the candidate set: intersection of all Must posting lists.
 		var firstMust bool
 		q.Musts.Iter(ctx, s, func(state *ClauseState) {
@@ -100,24 +91,33 @@ func (q *SimpleQuery) FilterDocuments(ctx *QueryContext, s *storage.Storage) {
 				ctx.Bitmap.And(pl)
 			}
 		})
-	} else {
+	} else if shouldsCount > 0 {
 		// No Musts: Shoulds define the set (union of Should posting lists).
 		q.Shoulds.Iter(ctx, s, func(state *ClauseState) {
 			ctx.Bitmap.Or(&s.PostingLists[state.Token.PostingListIndex].Bitmap)
 		})
 	}
 
-	// MustNots subtract from whatever the set is.
-	q.MustNots.Iter(ctx, s, func(state *ClauseState) {
-		ctx.Bitmap.AndNot(&s.PostingLists[state.Token.PostingListIndex].Bitmap)
-	})
+	if mustNotsCount > 0 {
+		// MustNots subtract from whatever the set is.
+		q.MustNots.Iter(ctx, s, func(state *ClauseState) {
+			ctx.Bitmap.AndNot(&s.PostingLists[state.Token.PostingListIndex].Bitmap)
+		})
+	}
 
-	q.Score(ctx, s)
+	ctx.Scores = make(map[uint64]float64, ctx.Bitmap.GetCardinality())
+
+	if mustsCount > 0 {
+		q.Musts.Iter(ctx, s, func(state *ClauseState) { ctx.UpdateScores(s, state) })
+	}
+	if shouldsCount > 0 {
+		q.Shoulds.Iter(ctx, s, func(state *ClauseState) { ctx.UpdateScores(s, state) })
+	}
 }
 
 // Once a filtering is done scoring is the next step of a searching algorithm
 // Resolves the ctx to an actual idx slice
-func (q *SimpleQuery) BM25(ctx *QueryContext) (idxs []uint64) {
+func (q *SimpleQuery) ResolveBM25(ctx *QueryContext) (idxs []uint64) {
 	type bm25 struct {
 		docIdx uint64
 		score  float64

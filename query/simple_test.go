@@ -24,7 +24,7 @@ const (
 func runQuery(q *query.SimpleQuery, s *storage.Storage) (idxs []uint64, ctx *query.QueryContext) {
 	ctx = &query.QueryContext{}
 	q.FilterDocuments(ctx, s)
-	idxs = q.BM25(ctx)
+	idxs = q.ResolveBM25(ctx)
 	return idxs, ctx
 }
 

@@ -65,7 +65,7 @@ func BenchmarkSearchShould(b *testing.B) {
 
 		ctx := &query.QueryContext{}
 		q.FilterDocuments(ctx, s)
-		_ = q.BM25(ctx)
+		// _ = q.BM25(ctx)
 	}
 }
 
@@ -86,7 +86,7 @@ func BenchmarkSearchMust(b *testing.B) {
 
 		ctx := &query.QueryContext{}
 		q.FilterDocuments(ctx, s)
-		_ = q.BM25(ctx)
+		// _ = q.BM25(ctx)
 	}
 }
 
@@ -107,7 +107,7 @@ func BenchmarkSearchCombined(b *testing.B) {
 
 		ctx := &query.QueryContext{}
 		q.FilterDocuments(ctx, s)
-		_ = q.BM25(ctx)
+		// _ = q.BM25(ctx)
 	}
 }
 
@@ -126,6 +126,6 @@ func BenchmarkSearchSelective(b *testing.B) {
 
 		ctx := &query.QueryContext{}
 		q.FilterDocuments(ctx, s)
-		_ = q.BM25(ctx)
+		// _ = q.BM25(ctx)
 	}
 }

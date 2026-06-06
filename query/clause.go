@@ -16,10 +16,15 @@ type Keyword struct {
 	Value []byte
 }
 
+type ClauseEntry[T Keyword | Range] struct {
+	Field uint64
+	Value T
+}
+
 type Clause struct {
 	Keywords      []*Keyword
-	FieldKeywords map[uint64]*Keyword
-	FieldRanges   map[uint64]*Range
+	FieldKeywords []*ClauseEntry[Keyword]
+	FieldRanges   []*ClauseEntry[Range]
 }
 
 func (c *Clause) Count() (count int) {
@@ -34,37 +39,24 @@ func (c *Clause) Keyword(kw []byte, boost float64) {
 }
 
 func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float64) {
-	if c.FieldKeywords == nil {
-		c.FieldKeywords = map[uint64]*Keyword{
-			field: {
-				Value: kw,
-				Boost: boost,
-			},
-		}
-	} else {
-		c.FieldKeywords[field] = &Keyword{
+	c.FieldKeywords = append(c.FieldKeywords, &ClauseEntry[Keyword]{
+		Field: field,
+		Value: Keyword{
 			Value: kw,
 			Boost: boost,
-		}
-	}
+		},
+	})
 }
 
 func (c *Clause) FieldRange(field uint64, hi, lo []byte, boost float64) {
-	if c.FieldRanges == nil {
-		c.FieldRanges = map[uint64]*Range{
-			field: {
-				High:  hi,
-				Low:   lo,
-				Boost: boost,
-			},
-		}
-	} else {
-		c.FieldRanges[field] = &Range{
+	c.FieldRanges = append(c.FieldRanges, &ClauseEntry[Range]{
+		Field: field,
+		Value: Range{
 			High:  hi,
 			Low:   lo,
 			Boost: boost,
-		}
-	}
+		},
+	})
 }
 
 type ClauseState struct {
@@ -95,7 +87,10 @@ func (c *Clause) Iter(ctx *QueryContext, s *storage.Storage, handle HandleClause
 		}
 	}
 
-	for state.FieldHash, state.Keyword = range c.FieldKeywords {
+	for _, entry := range c.FieldKeywords {
+		state.FieldHash = entry.Field
+		state.Keyword = &entry.Value
+
 		var found bool
 		state.Field, found = s.Fields[state.FieldHash]
 		if !found {
@@ -110,7 +105,10 @@ func (c *Clause) Iter(ctx *QueryContext, s *storage.Storage, handle HandleClause
 		handle(&state)
 	}
 
-	for state.FieldHash, state.Range = range c.FieldRanges {
+	for _, entry := range c.FieldRanges {
+		state.FieldHash = entry.Field
+		state.Range = &entry.Value
+
 		var found bool
 		state.Field, found = s.Fields[state.FieldHash]
 		if !found {

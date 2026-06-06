@@ -6,6 +6,7 @@ import (
 
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/RogueTeam/textiplex/storage"
+	"github.com/RogueTeam/textiplex/tuple"
 	"github.com/zeebo/xxh3"
 )
 
@@ -32,8 +33,8 @@ func (ctx *QueryContext) UpdateScores(s *storage.Storage, state *ClauseState) {
 
 	tokenHash := xxh3.Hash(token.Value)
 
-	fieldsTokenDocsKey := storage.Tuple3[uint64]{A: state.FieldHash, B: tokenHash}
-	fieldDocsKey := storage.Tuple2[uint64]{A: state.FieldHash}
+	fieldsTokenDocsKey := tuple.Tuple3[uint64]{A: state.FieldHash, B: tokenHash}
+	fieldDocsKey := tuple.Tuple2[uint64]{A: state.FieldHash}
 
 	for it := ctx.Bitmap.Iterator(); it.HasNext(); {
 		docIdx := it.Next()

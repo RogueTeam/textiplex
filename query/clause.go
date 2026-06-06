@@ -36,7 +36,7 @@ func (c *Clause) Keyword(kw []byte, boost float64) {
 func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float64) {
 	if c.FieldKeywords == nil {
 		c.FieldKeywords = map[uint64]*Keyword{
-			field: &Keyword{
+			field: {
 				Value: kw,
 				Boost: boost,
 			},
@@ -52,7 +52,7 @@ func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float64) {
 func (c *Clause) FieldRange(field uint64, hi, lo []byte, boost float64) {
 	if c.FieldRanges == nil {
 		c.FieldRanges = map[uint64]*Range{
-			field: &Range{
+			field: {
 				High:  hi,
 				Low:   lo,
 				Boost: boost,

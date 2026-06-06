@@ -376,7 +376,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 		// We need to maintain all fields sorted prior write
 		// So it is impossible to not store something in memory at least meanwhile
-		var finalTokens = btree.NewBTreeG(TokenLessFunc)
+		var finalTokens = btree.NewBTreeGOptions(TokenLessFunc, btree.Options{NoLocks: true})
 		preallocTokens := make([]Token, fieldA.Tokens.Len()+fieldB.Tokens.Len())
 
 		it := fieldA.Tokens.Iter()

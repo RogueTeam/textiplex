@@ -144,9 +144,12 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 			if !found {
 				fieldAccumulator = fieldAccPool.Get()
 				*fieldAccumulator = FieldAccumulator{
-					Tokens: btree.NewBTreeG(func(a, b *PostingData) bool {
-						return bytes.Compare(a.Value, b.Value) == -1
-					}),
+					Tokens: btree.NewBTreeGOptions(
+						func(a, b *PostingData) bool {
+							return bytes.Compare(a.Value, b.Value) == -1
+						},
+						btree.Options{NoLocks: true},
+					),
 				}
 				fieldsAccumulators[fieldDef.Hash] = fieldAccumulator
 
@@ -201,7 +204,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 		field := &fieldsPrealloc[0]
 		fieldsPrealloc = fieldsPrealloc[1:]
 		*field = Field{
-			Tokens:          btree.NewBTreeG(TokenLessFunc),
+			Tokens:          btree.NewBTreeGOptions(TokenLessFunc, btree.Options{NoLocks: true}),
 			DocumentLengths: acc.DocumentsLengths,
 		}
 		if acc.DocumentsCount > 0 {
@@ -521,7 +524,7 @@ func (s *Storage) Load(name string) (err error) {
 		s.Fields[fHeader.Hash] = field
 
 		field.AvgDocumentLength = fHeader.AvgDocumentLength
-		field.Tokens = btree.NewBTreeG(TokenLessFunc)
+		field.Tokens = btree.NewBTreeGOptions(TokenLessFunc, btree.Options{NoLocks: true})
 		fieldsPrealloc = fieldsPrealloc[1:]
 
 		docsLengthSize := DocumentLengthEntrySize * uintptr(fHeader.DocumentLengthCount)

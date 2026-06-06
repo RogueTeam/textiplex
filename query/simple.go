@@ -72,6 +72,7 @@ func (ctx *QueryContext) UpdateScores(s *storage.Storage, state *ClauseState) {
 }
 
 func (q *SimpleQuery) Score(ctx *QueryContext, s *storage.Storage) {
+	ctx.Scores = make(map[uint64]float64, ctx.Bitmap.GetCardinality())
 	q.Musts.Iter(ctx, s, func(state *ClauseState) { ctx.UpdateScores(s, state) })
 	q.Shoulds.Iter(ctx, s, func(state *ClauseState) { ctx.UpdateScores(s, state) })
 }

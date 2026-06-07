@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/blugelabs/bluge"
+	"github.com/pluto-org-co/bluge/testsuite"
 )
 
 // This benchmark mirrors the textiplex query/simple_bench_test.go corpus and
@@ -36,10 +37,10 @@ func buildBodyText(i int) string {
 	for v := range benchVocabCommon {
 		freq := 1 + (i+v)%5
 		for range freq {
-			sb.WriteString(fmt.Sprintf("term-%d ", v))
+			fmt.Fprintf(&sb, "term-%d ", v)
 		}
 	}
-	sb.WriteString(fmt.Sprintf("uniq-%d", i))
+	fmt.Fprintf(&sb, "uniq-%d", i)
 	return sb.String()
 }
 
@@ -48,7 +49,7 @@ func buildBodyText(i int) string {
 func buildSearchIndex(tb testing.TB) *bluge.Reader {
 	tb.Helper()
 
-	config := bluge.InMemoryOnlyConfig()
+	config := bluge.DefaultConfig(testsuite.TemporaryDirectory(tb))
 	writer, err := bluge.OpenWriter(config)
 	if err != nil {
 		tb.Fatalf("open writer: %v", err)

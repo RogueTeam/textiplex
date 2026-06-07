@@ -5,8 +5,6 @@ import (
 
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/RogueTeam/textiplex/storage"
-	"github.com/RogueTeam/textiplex/tuple"
-	"github.com/zeebo/xxh3"
 )
 
 type Range struct {
@@ -17,12 +15,11 @@ type Range struct {
 type Keyword struct {
 	Boost float64
 	Value []byte
-	Hash  uint64
 }
 
 type ClauseEntry[T Keyword | Range] struct {
-	Field uint64
-	Value T
+	FieldHash uint64
+	Value     T
 }
 
 type Clause struct {
@@ -38,17 +35,15 @@ func (c *Clause) Count() (count int) {
 func (c *Clause) Keyword(kw []byte, boost float64) {
 	c.Keywords = append(c.Keywords, &Keyword{
 		Value: kw,
-		Hash:  xxh3.Hash(kw),
 		Boost: boost,
 	})
 }
 
 func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float64) {
 	c.FieldKeywords = append(c.FieldKeywords, &ClauseEntry[Keyword]{
-		Field: field,
+		FieldHash: field,
 		Value: Keyword{
 			Value: kw,
-			Hash:  xxh3.Hash(kw),
 			Boost: boost,
 		},
 	})
@@ -56,7 +51,7 @@ func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float64) {
 
 func (c *Clause) FieldRange(field uint64, hi, lo []byte, boost float64) {
 	c.FieldRanges = append(c.FieldRanges, &ClauseEntry[Range]{
-		Field: field,
+		FieldHash: field,
 		Value: Range{
 			High:  hi,
 			Low:   lo,
@@ -69,16 +64,12 @@ type ClauseState struct {
 	// Used to check if something was actuall found or not
 	// Should always be handled first by caller
 	Found bool
-
 	Boost float64
-
-	// Token references
-	Token     *storage.Token
-	TokenHash uint64
-
 	// Field references
 	Field     *storage.Field
 	FieldHash uint64
+	// Token references
+	Token *storage.Token
 }
 
 type HandleClauseFunc func(state *ClauseState)
@@ -86,56 +77,55 @@ type HandleClauseFunc func(state *ClauseState)
 func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 	var state ClauseState
 
+	var tokensKey storage.Token
 	for _, kw := range c.Keywords {
-		state.TokenHash = kw.Hash
 		state.Boost = kw.Boost
+		tokensKey.Value = kw.Value
 
-		var fields []*DirectTokenFieldReference
-		fields, state.Found = s.TokenFields[state.TokenHash]
-		if !state.Found {
+		var found bool
+		for state.FieldHash, state.Field = range s.Storage.Fields {
+			state.Token, state.Found = state.Field.Tokens.Get(&tokensKey)
+			if !state.Found {
+				continue
+			}
+
 			handle(&state)
-			continue
+			if !found {
+				found = true
+			}
 		}
 
-		for _, entry := range fields {
-			state.Field = entry.Field
-			state.FieldHash = entry.FieldHash
-			state.Token = entry.Token
-
+		// For those that were not found we need to do something
+		if !found {
+			state.Found = false
 			handle(&state)
 		}
 	}
 
-	var fieldTokenKey tuple.Tuple2[uint64]
 	for _, entry := range c.FieldKeywords {
+		state.FieldHash = entry.FieldHash
 		state.Boost = entry.Value.Boost
-		state.FieldHash = entry.Field
-		state.TokenHash = entry.Value.Hash
 
-		fieldTokenKey.A = entry.Field
-		fieldTokenKey.B = state.TokenHash
-
-		var ref *DirectTokenFieldReference
-		ref, state.Found = s.FieldTokens[fieldTokenKey.Hash()]
+		state.Field, state.Found = s.Storage.Fields[entry.FieldHash]
 		if !state.Found {
 			handle(&state)
 			continue
 		}
 
-		state.Field = ref.Field
-		state.Token = ref.Token
+		tokensKey.Value = entry.Value.Value
+		state.Token, state.Found = state.Field.Tokens.Get(&tokensKey)
 
 		handle(&state)
 	}
 
 	var tokenKey storage.Token
 	for _, entry := range c.FieldRanges {
-		state.FieldHash = entry.Field
+		state.FieldHash = entry.FieldHash
 		state.Boost = entry.Value.Boost
 
-		var found bool
-		state.Field, found = s.Storage.Fields[state.FieldHash]
-		if !found {
+		state.Field, state.Found = s.Storage.Fields[state.FieldHash]
+		if !state.Found {
+			handle(&state)
 			continue
 		}
 
@@ -159,17 +149,25 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 		}
 		it := state.Field.Tokens.Iter()
 
+		var found bool
 		tokenKey.Value = lo
 		for valid := it.Seek(&tokenKey); valid; valid = it.Next() {
 			state.Token = it.Item()
-			state.TokenHash = xxh3.Hash(state.Token.Value)
 			if bytes.Compare(state.Token.Value, hi) > 0 {
 				break
 			}
 
 			handle(&state)
+			if !found {
+				found = true
+			}
 		}
 		it.Release()
+
+		if !found {
+			state.Found = false
+			handle(&state)
+		}
 	}
 }
 

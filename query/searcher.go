@@ -8,10 +8,8 @@ import (
 )
 
 type DirectTokenFieldReference struct {
-	Field     *storage.Field
-	FieldHash uint64
-	Token     *storage.Token
-	TokenHash uint64
+	Field *storage.Field
+	Token *storage.Token
 }
 
 type Searcher struct {
@@ -28,23 +26,12 @@ type Searcher struct {
 	// B: Token Hash
 	// C: Document Index
 	FieldTokenDocFrequencies map[uint64]uint64
-	// Faster looks for fields containing a specific token
-	// Keys are the hashes of the tokens
-	TokenFields map[uint64][]*DirectTokenFieldReference
-	// Faster looks for tokens mapping fields
-	// Keys are the hashes of the tokens
-	// Keys are constructed using Tuple2.Hash
-	// A: Field Hash
-	// B: Token Hash
-	FieldTokens map[uint64]*DirectTokenFieldReference
 }
 
 // Construct helper types to improve query performance
 func (s *Searcher) BuildHelpers() {
 	s.FieldDocLengths = make(map[uint64]uint64, len(s.Storage.Fields))
 	s.FieldTokenDocFrequencies = make(map[uint64]uint64, len(s.Storage.Fields))
-	s.TokenFields = make(map[uint64][]*DirectTokenFieldReference)
-	s.FieldTokens = make(map[uint64]*DirectTokenFieldReference)
 
 	tokenFieldsPool := pool.New[DirectTokenFieldReference](20)
 
@@ -75,13 +62,9 @@ func (s *Searcher) BuildHelpers() {
 
 			tokenFieldReference := tokenFieldsPool.Get()
 			*tokenFieldReference = DirectTokenFieldReference{
-				Field:     field,
-				FieldHash: fieldHash,
-				Token:     token,
-				TokenHash: tokenHash,
+				Field: field,
+				Token: token,
 			}
-			s.TokenFields[tokenHash] = append(s.TokenFields[tokenHash], tokenFieldReference)
-			s.FieldTokens[fieldsTokensDocsKey.Hash2()] = tokenFieldReference
 		}
 		it.Release()
 	}

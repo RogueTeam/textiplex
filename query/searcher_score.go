@@ -2,13 +2,17 @@ package query
 
 import (
 	"github.com/RogueTeam/textiplex/tuple"
+	"github.com/zeebo/xxh3"
 )
 
 func (s *Searcher) UpdateScores(ctx *QueryContext, state *ClauseState) {
+	if !state.Found {
+		return
+	}
 	token := state.Token
 	field := state.Field
 
-	fieldsTokenDocsKey := tuple.Tuple3[uint64]{A: state.FieldHash, B: state.TokenHash}
+	fieldsTokenDocsKey := tuple.Tuple3[uint64]{A: state.FieldHash, B: xxh3.Hash(token.Value)}
 	fieldDocsKey := tuple.Tuple2[uint64]{A: state.FieldHash}
 
 	for it := ctx.Bitmap.Iterator(); it.HasNext(); {

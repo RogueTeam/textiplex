@@ -5,6 +5,8 @@ import (
 
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/RogueTeam/textiplex/storage"
+	"github.com/RogueTeam/textiplex/tuple"
+	"github.com/zeebo/xxh3"
 )
 
 type Range struct {
@@ -15,6 +17,7 @@ type Range struct {
 type Keyword struct {
 	Boost float64
 	Value []byte
+	Hash  uint64
 }
 
 type ClauseEntry[T Keyword | Range] struct {
@@ -35,6 +38,7 @@ func (c *Clause) Count() (count int) {
 func (c *Clause) Keyword(kw []byte, boost float64) {
 	c.Keywords = append(c.Keywords, &Keyword{
 		Value: kw,
+		Hash:  xxh3.Hash(kw),
 		Boost: boost,
 	})
 }
@@ -44,6 +48,7 @@ func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float64) {
 		Field: field,
 		Value: Keyword{
 			Value: kw,
+			Hash:  xxh3.Hash(kw),
 			Boost: boost,
 		},
 	})
@@ -61,57 +66,59 @@ func (c *Clause) FieldRange(field uint64, hi, lo []byte, boost float64) {
 }
 
 type ClauseState struct {
-	Keyword   *Keyword
-	Range     *Range
+	Keyword *Keyword
+	Range   *Range
+
 	Token     *storage.Token
-	FieldHash uint64
+	TokenHash uint64
+
 	Field     *storage.Field
+	FieldHash uint64
 }
 
 type HandleClauseFunc func(state *ClauseState)
 
-func (c *Clause) Iter(s *storage.Storage, handle HandleClauseFunc) {
+func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 	var state ClauseState
 
-	var tokenKey storage.Token
-
 	for _, state.Keyword = range c.Keywords {
-		tokenKey.Value = state.Keyword.Value
-		for state.FieldHash, state.Field = range s.Fields {
-			var found bool
-			state.Token, found = state.Field.Tokens.Get(&tokenKey)
-			if !found {
-				continue
-			}
+		state.TokenHash = state.Keyword.Hash
+		for _, entry := range s.TokenFields[state.TokenHash] {
+			state.Field = entry.Field
+			state.FieldHash = entry.FieldHash
+			state.Token = entry.Token
 
 			handle(&state)
 		}
 	}
 
+	var fieldTokenKey tuple.Tuple2[uint64]
 	for _, entry := range c.FieldKeywords {
-		state.FieldHash = entry.Field
 		state.Keyword = &entry.Value
+		state.FieldHash = entry.Field
+		state.TokenHash = entry.Value.Hash
 
-		var found bool
-		state.Field, found = s.Fields[state.FieldHash]
+		fieldTokenKey.A = entry.Field
+		fieldTokenKey.B = state.TokenHash
+
+		ref, found := s.FieldTokens[fieldTokenKey.Hash()]
 		if !found {
 			continue
 		}
-		tokenKey.Value = state.Keyword.Value
-		state.Token, found = state.Field.Tokens.Get(&tokenKey)
-		if !found {
-			continue
-		}
+
+		state.Field = ref.Field
+		state.Token = ref.Token
 
 		handle(&state)
 	}
 
+	var tokenKey storage.Token
 	for _, entry := range c.FieldRanges {
 		state.FieldHash = entry.Field
 		state.Range = &entry.Value
 
 		var found bool
-		state.Field, found = s.Fields[state.FieldHash]
+		state.Field, found = s.Storage.Fields[state.FieldHash]
 		if !found {
 			continue
 		}
@@ -137,6 +144,7 @@ func (c *Clause) Iter(s *storage.Storage, handle HandleClauseFunc) {
 		tokenKey.Value = lo
 		for valid := it.Seek(&tokenKey); valid; valid = it.Next() {
 			state.Token = it.Item()
+			state.TokenHash = xxh3.Hash(state.Token.Value)
 			if bytes.Compare(state.Token.Value, hi) > 0 {
 				break
 			}

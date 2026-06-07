@@ -21,3 +21,8 @@ type Tuple3[T any] struct {
 func (t *Tuple3[T]) Hash() (hash uint64) {
 	return xxh3.Hash(unsafe.Slice((*byte)(unsafe.Pointer(t)), unsafe.Sizeof(Tuple3[T]{})))
 }
+
+// Same as hash but uses Tuple2[T] Size
+func (t *Tuple3[T]) Hash2() (hash uint64) {
+	return xxh3.Hash(unsafe.Slice((*byte)(unsafe.Pointer(t)), unsafe.Sizeof(Tuple2[T]{})))
+}

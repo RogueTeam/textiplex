@@ -85,16 +85,16 @@ type Query struct {
 var parser = participle.MustBuild[Query](
 	participle.Unquote("Phrase"),
 	participle.Lexer(lexer.MustSimple([]lexer.SimpleRule{
-		{Name: "whitespace", Pattern: `\s+`},
+		{Name: "whitespace", Pattern: `[ \t\n\r]+`},
 
 		{Name: "Punctuation", Pattern: `:`},
 		{Name: "MustOperator", Pattern: `\+|\-`},
-		{Name: "MatchOperator", Pattern: "<|<=|>|>="},
+		{Name: "MatchOperator", Pattern: "(<=)|(>=)|<|>"},
 		{Name: "Time", Pattern: `(\d{4}-\d{2}-\d{2})|("\d{4}-\d{2}-\d{2}")`},
 		{Name: "Float", Pattern: `(\d+\.\d+)|("\d+\.\d+")`},
 		{Name: "Int", Pattern: `\d+|("\d+")`},
 		{Name: "Phrase", Pattern: `"(\\"|[^"])*"`},
-		{Name: "Keyword", Pattern: `[^:]+`},
+		{Name: "Keyword", Pattern: `\w+[A-Za-z0-9!%"#$%&'()*+*,\-./;<=>?@[\\\]^_` + "`" + `{|}~]*`},
 	})),
 )
 

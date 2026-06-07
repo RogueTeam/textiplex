@@ -12,6 +12,7 @@ require (
 )
 
 require (
+	github.com/alecthomas/participle/v2 v2.1.4 // indirect
 	github.com/bits-and-blooms/bitset v1.12.0 // indirect
 	github.com/davecgh/go-spew v1.1.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect

@@ -3,6 +3,7 @@ package query
 import (
 	"bytes"
 
+	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/RogueTeam/textiplex/storage"
 )
 
@@ -69,7 +70,7 @@ type ClauseState struct {
 
 type HandleClauseFunc func(state *ClauseState)
 
-func (c *Clause) Iter(ctx *QueryContext, s *storage.Storage, handle HandleClauseFunc) {
+func (c *Clause) Iter(s *storage.Storage, handle HandleClauseFunc) {
 	var state ClauseState
 
 	var tokenKey storage.Token
@@ -144,4 +145,10 @@ func (c *Clause) Iter(ctx *QueryContext, s *storage.Storage, handle HandleClause
 		}
 		it.Release()
 	}
+}
+
+// Query context intended to be cached and reused by caller on each search
+type QueryContext struct {
+	Bitmap roaring64.Bitmap
+	Scores map[uint64]float64
 }

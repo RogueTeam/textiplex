@@ -22,9 +22,10 @@ const (
 // indices (best first) alongside the populated context so assertions can read
 // raw scores and the resolved bitmap.
 func runQuery(q *query.SimpleQuery, s *storage.Storage) (idxs []uint64, ctx *query.QueryContext) {
+	searcher := query.New(s)
 	ctx = &query.QueryContext{}
-	q.FilterDocuments(ctx, s)
-	idxs = q.ResolveBM25(ctx)
+	searcher.FilterDocuments(ctx, q)
+	idxs = searcher.ResolveBM25(ctx)
 	return idxs, ctx
 }
 
@@ -96,7 +97,7 @@ func TestShouldSingleTerm(t *testing.T) {
 			var s storage.Storage
 			s.SortAndBuildFrom(tc.docs...)
 
-			q := query.NewSimpleQuery()
+			q := &query.SimpleQuery{}
 			q.Shoulds.Keyword([]byte(tc.term), 1.0)
 
 			idxs, ctx := runQuery(q, &s)
@@ -133,7 +134,7 @@ func TestRankingByTermFrequency(t *testing.T) {
 		testsuite.MakeDoc("doc-hi", testsuite.MakeField(fieldBody, 10, testsuite.MakeToken("contrato", 5))),
 	)
 
-	q := query.NewSimpleQuery()
+	q := &query.SimpleQuery{}
 	q.Shoulds.Keyword([]byte("contrato"), 1.0)
 
 	idxs, ctx := runQuery(q, &s)
@@ -159,7 +160,7 @@ func TestRankingByDocumentLength(t *testing.T) {
 		testsuite.MakeDoc("doc-short", testsuite.MakeField(fieldBody, 2, testsuite.MakeToken("contrato", 1))),
 	)
 
-	q := query.NewSimpleQuery()
+	q := &query.SimpleQuery{}
 	q.Shoulds.Keyword([]byte("contrato"), 1.0)
 
 	idxs, _ := runQuery(q, &s)
@@ -184,7 +185,7 @@ func TestRankingByInverseDocumentFrequency(t *testing.T) {
 		testsuite.MakeDoc("doc-pad2", testsuite.MakeField(fieldBody, 4, testsuite.MakeToken("common", 1))),
 	)
 
-	q := query.NewSimpleQuery()
+	q := &query.SimpleQuery{}
 	q.Shoulds.Keyword([]byte("rare"), 1.0)
 	q.Shoulds.Keyword([]byte("common"), 1.0)
 
@@ -212,7 +213,7 @@ func TestMustIntersection(t *testing.T) {
 			testsuite.MakeToken("interventoria", 1), testsuite.MakeToken("otro", 1))),
 	)
 
-	q := query.NewSimpleQuery()
+	q := &query.SimpleQuery{}
 	q.Musts.Keyword([]byte("contrato"), 1.0)
 	q.Musts.Keyword([]byte("interventoria"), 1.0)
 
@@ -235,7 +236,7 @@ func TestMustNotExclusion(t *testing.T) {
 			testsuite.MakeToken("contrato", 1), testsuite.MakeToken("vetado", 1))),
 	)
 
-	q := query.NewSimpleQuery()
+	q := &query.SimpleQuery{}
 	q.Shoulds.Keyword([]byte("contrato"), 1.0)
 	q.MustNots.Keyword([]byte("vetado"), 1.0)
 
@@ -270,7 +271,7 @@ func TestCombinedClauses(t *testing.T) {
 			testsuite.MakeToken("bogota", 1))),
 	)
 
-	q := query.NewSimpleQuery()
+	q := &query.SimpleQuery{}
 	q.Musts.Keyword([]byte("contrato"), 1.0)
 	q.Shoulds.Keyword([]byte("bogota"), 1.0)
 	q.MustNots.Keyword([]byte("anulado"), 1.0)
@@ -300,7 +301,7 @@ func TestFieldScopedKeyword(t *testing.T) {
 		),
 	)
 
-	q := query.NewSimpleQuery()
+	q := &query.SimpleQuery{}
 	q.Shoulds.FieldKeyword(fieldTitle, []byte("alerta"), 1.0)
 
 	idxs, _ := runQuery(q, &s)
@@ -323,13 +324,13 @@ func TestBoostAffectsScore(t *testing.T) {
 	}
 
 	s1 := build()
-	q1 := query.NewSimpleQuery()
+	q1 := &query.SimpleQuery{}
 	q1.Shoulds.Keyword([]byte("contrato"), 1.0)
 	_, ctx1 := runQuery(q1, s1)
 	base := ctx1.Scores[0]
 
 	s2 := build()
-	q2 := query.NewSimpleQuery()
+	q2 := &query.SimpleQuery{}
 	q2.Shoulds.Keyword([]byte("contrato"), 2.0)
 	_, ctx2 := runQuery(q2, s2)
 	boosted := ctx2.Scores[0]
@@ -349,7 +350,7 @@ func TestEmptyQuery(t *testing.T) {
 	)
 
 	// No shoulds, no musts: filtering must short-circuit, no docs returned.
-	q := query.NewSimpleQuery()
+	q := &query.SimpleQuery{}
 	idxs, ctx := runQuery(q, &s)
 
 	assertions.Empty(idxs)

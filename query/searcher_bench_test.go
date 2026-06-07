@@ -53,18 +53,19 @@ func prepareSearchCorpus() (s *storage.Storage) {
 // bitmap, scoring across the whole corpus, full sort.
 func BenchmarkSearchShould(b *testing.B) {
 	s := prepareSearchCorpus()
+	var searcher = query.New(s)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for b.Loop() {
-		q := query.NewSimpleQuery()
+		q := &query.SimpleQuery{}
 		q.Shoulds.Keyword([]byte("term-1"), 1.0)
 		q.Shoulds.Keyword([]byte("term-2"), 1.0)
 		q.Shoulds.Keyword([]byte("term-3"), 1.0)
 
 		ctx := &query.QueryContext{}
-		q.FilterDocuments(ctx, s)
+		searcher.FilterDocuments(ctx, q)
 		// _ = q.BM25(ctx)
 	}
 }
@@ -74,18 +75,19 @@ func BenchmarkSearchShould(b *testing.B) {
 // long posting lists plus full-corpus scoring.
 func BenchmarkSearchMust(b *testing.B) {
 	s := prepareSearchCorpus()
+	var searcher = query.New(s)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for b.Loop() {
-		q := query.NewSimpleQuery()
+		q := &query.SimpleQuery{}
 		q.Musts.Keyword([]byte("term-1"), 1.0)
 		q.Musts.Keyword([]byte("term-2"), 1.0)
 		q.Musts.Keyword([]byte("term-3"), 1.0)
 
 		ctx := &query.QueryContext{}
-		q.FilterDocuments(ctx, s)
+		searcher.FilterDocuments(ctx, q)
 		// _ = q.BM25(ctx)
 	}
 }
@@ -94,19 +96,20 @@ func BenchmarkSearchMust(b *testing.B) {
 // over common terms, narrowed by a Must, with a MustNot exclusion.
 func BenchmarkSearchCombined(b *testing.B) {
 	s := prepareSearchCorpus()
+	var searcher = query.New(s)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for b.Loop() {
-		q := query.NewSimpleQuery()
+		q := &query.SimpleQuery{}
 		q.Musts.Keyword([]byte("term-1"), 1.0)
 		q.Shoulds.Keyword([]byte("term-2"), 2.0)
 		q.Shoulds.Keyword([]byte("term-3"), 1.0)
 		q.MustNots.Keyword([]byte("term-40"), 1.0)
 
 		ctx := &query.QueryContext{}
-		q.FilterDocuments(ctx, s)
+		searcher.FilterDocuments(ctx, q)
 		// _ = q.BM25(ctx)
 	}
 }
@@ -115,17 +118,18 @@ func BenchmarkSearchCombined(b *testing.B) {
 // doc). This isolates per-query setup overhead from scoring cost.
 func BenchmarkSearchSelective(b *testing.B) {
 	s := prepareSearchCorpus()
+	var searcher = query.New(s)
 	target := fmt.Sprintf("uniq-%d", benchDocCount/2)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for b.Loop() {
-		q := query.NewSimpleQuery()
+		q := &query.SimpleQuery{}
 		q.Musts.Keyword([]byte(target), 1.0)
 
 		ctx := &query.QueryContext{}
-		q.FilterDocuments(ctx, s)
+		searcher.FilterDocuments(ctx, q)
 		// _ = q.BM25(ctx)
 	}
 }

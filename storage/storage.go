@@ -71,19 +71,6 @@ type Storage struct {
 	TokenFrequencies []TokenFrequencyEntry
 	// Used to determine if the storage was already initialized or not
 	Initialized bool
-
-	// Helpers, not intended to be saved in any matter but could be used to improve query performance
-	// FieldDocLengths maps fieldHash -> document index -> length
-	// Use Tuple2.Hash for generating the keys
-	// A: Field Hash
-	// B: Document Index
-	FieldDocLengths map[uint64]uint64
-	// FieldTokenDocFrequencies field hash -> token hash -> document index -> frequency
-	// Use Tuple3.Hash for generating the keys
-	// A: Field Hash
-	// B: Token Hash
-	// C: Document Index
-	FieldTokenDocFrequencies map[uint64]uint64
 }
 
 func (s *Storage) ColdInitialize() {
@@ -246,8 +233,6 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 		s.Size += uint64(PostingListHeaderSize)
 		s.Size += uint64(s.PostingLists[index].GetSerializedSizeInBytes())
 	}
-
-	s.BuildHelpers()
 }
 
 // This function will allocate a new batch and sort documents in the batch by their ID
@@ -597,7 +582,6 @@ func (s *Storage) Load(name string) (err error) {
 
 	s.Size = uint64(size) - uint64(len(inUseBuffer))
 
-	s.BuildHelpers()
 	s.Initialized = true
 
 	return nil

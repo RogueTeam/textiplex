@@ -27,6 +27,7 @@ func runQuery(q *query.SimpleQuery, s *storage.Storage) (idxs []uint64, ctx *que
 	searcher := query.New(s)
 	ctx = &query.QueryContext{}
 	searcher.FilterDocuments(ctx, q)
+	searcher.BM25Score(ctx, q)
 	idxs = searcher.ResolveBM25(ctx)
 	return idxs, ctx
 }

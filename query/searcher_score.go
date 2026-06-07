@@ -26,7 +26,7 @@ func (s *Searcher) UpdateScores(ctx *QueryContext, state *ClauseState) {
 			continue
 		}
 
-		scoreDelta := ScoreTermBM25(
+		ctx.Scores[docIdx] += state.Boost * ScoreTermBM25(
 			/* docCoun */ uint64(len(field.DocumentLengths)),
 			/* tokenDocFreq */ token.FrequencyCount,
 			/* tokenFreq */ freq,
@@ -35,14 +35,5 @@ func (s *Searcher) UpdateScores(ctx *QueryContext, state *ClauseState) {
 			/* saturation */ DefaultSaturation,
 			/* lengthPenalty */ DefaultLengthPenalty,
 		)
-
-		if state.Keyword != nil {
-			ctx.Scores[docIdx] += state.Keyword.Boost * scoreDelta
-		} else if state.Range != nil {
-			ctx.Scores[docIdx] += state.Range.Boost * scoreDelta
-		} else {
-			// Should never match but is good guard to unknown cases
-			ctx.Scores[docIdx] += scoreDelta
-		}
 	}
 }

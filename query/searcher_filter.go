@@ -17,6 +17,11 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 		// Musts define the candidate set: intersection of all Must posting lists.
 		var firstMust bool
 		s.Iter(&q.Musts, func(state *ClauseState) {
+			if !state.Found {
+				ctx.Bitmap.Clear()
+				return
+			}
+
 			pl := &s.Storage.PostingLists[state.Token.PostingListIndex].Bitmap
 			if !firstMust {
 				ctx.Bitmap.Or(pl)
@@ -28,6 +33,10 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 	} else if shouldsCount > 0 {
 		// No Musts: Shoulds define the set (union of Should posting lists).
 		s.Iter(&q.Shoulds, func(state *ClauseState) {
+			if !state.Found {
+				return
+			}
+
 			ctx.Bitmap.Or(&s.Storage.PostingLists[state.Token.PostingListIndex].Bitmap)
 		})
 	}
@@ -35,6 +44,9 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 	if mustNotsCount > 0 {
 		// MustNots subtract from whatever the set is.
 		s.Iter(&q.MustNots, func(state *ClauseState) {
+			if !state.Found {
+				return
+			}
 			ctx.Bitmap.AndNot(&s.Storage.PostingLists[state.Token.PostingListIndex].Bitmap)
 		})
 	}

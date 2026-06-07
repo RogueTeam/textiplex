@@ -66,12 +66,17 @@ func (c *Clause) FieldRange(field uint64, hi, lo []byte, boost float64) {
 }
 
 type ClauseState struct {
-	Keyword *Keyword
-	Range   *Range
+	// Used to check if something was actuall found or not
+	// Should always be handled first by caller
+	Found bool
 
+	Boost float64
+
+	// Token references
 	Token     *storage.Token
 	TokenHash uint64
 
+	// Field references
 	Field     *storage.Field
 	FieldHash uint64
 }
@@ -81,9 +86,18 @@ type HandleClauseFunc func(state *ClauseState)
 func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 	var state ClauseState
 
-	for _, state.Keyword = range c.Keywords {
-		state.TokenHash = state.Keyword.Hash
-		for _, entry := range s.TokenFields[state.TokenHash] {
+	for _, kw := range c.Keywords {
+		state.TokenHash = kw.Hash
+		state.Boost = kw.Boost
+
+		var fields []*DirectTokenFieldReference
+		fields, state.Found = s.TokenFields[state.TokenHash]
+		if !state.Found {
+			handle(&state)
+			continue
+		}
+
+		for _, entry := range fields {
 			state.Field = entry.Field
 			state.FieldHash = entry.FieldHash
 			state.Token = entry.Token
@@ -94,15 +108,17 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 
 	var fieldTokenKey tuple.Tuple2[uint64]
 	for _, entry := range c.FieldKeywords {
-		state.Keyword = &entry.Value
+		state.Boost = entry.Value.Boost
 		state.FieldHash = entry.Field
 		state.TokenHash = entry.Value.Hash
 
 		fieldTokenKey.A = entry.Field
 		fieldTokenKey.B = state.TokenHash
 
-		ref, found := s.FieldTokens[fieldTokenKey.Hash()]
-		if !found {
+		var ref *DirectTokenFieldReference
+		ref, state.Found = s.FieldTokens[fieldTokenKey.Hash()]
+		if !state.Found {
+			handle(&state)
 			continue
 		}
 
@@ -115,7 +131,7 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 	var tokenKey storage.Token
 	for _, entry := range c.FieldRanges {
 		state.FieldHash = entry.Field
-		state.Range = &entry.Value
+		state.Boost = entry.Value.Boost
 
 		var found bool
 		state.Field, found = s.Storage.Fields[state.FieldHash]
@@ -124,12 +140,14 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 		}
 
 		if state.Field.Tokens.Len() == 0 {
+			state.Found = false
+			handle(&state)
 			continue
 		}
 
 		var (
-			lo = state.Range.Low
-			hi = state.Range.High
+			lo = entry.Value.Low
+			hi = entry.Value.High
 		)
 		if len(lo) == 0 {
 			tok, _ := state.Field.Tokens.GetAt(0)

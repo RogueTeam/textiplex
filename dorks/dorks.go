@@ -94,7 +94,7 @@ var parser = participle.MustBuild[Query](
 		{Name: "Float", Pattern: `(\d+\.\d+)|("\d+\.\d+")`},
 		{Name: "Int", Pattern: `\d+|("\d+")`},
 		{Name: "Phrase", Pattern: `"(\\"|[^"])*"`},
-		{Name: "Keyword", Pattern: `\w+[A-Za-z0-9!%"#$%&'()*+*,\-./;<=>?@[\\\]^_` + "`" + `{|}~]*`},
+		{Name: "Keyword", Pattern: `[áéíóúñA-Za-z0-9]+[áéíóúñA-Za-z0-9!%"#$%&'()*+*,\-./;<=>?@[\\\]^_` + "`" + `{|}~]*`},
 	})),
 )
 

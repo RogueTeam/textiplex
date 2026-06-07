@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/pluto-org-co/bluge"
+	"github.com/pluto-org-co/bluge/analysis"
+	"github.com/pluto-org-co/bluge/analysis/tokenizer"
 	"github.com/pluto-org-co/bluge/documents"
 	"github.com/pluto-org-co/bluge/index"
 	"github.com/pluto-org-co/bluge/testsuite"
@@ -20,17 +22,32 @@ import (
 //   - vocabulary: common pool "term-0".."term-49" present in every doc with a
 //     per-doc varying frequency (1 + (i+v)%5), plus one unique "uniq-<i>" token
 //
-// Bluge has no direct "token bag with explicit frequency" primitive, so the
-// faithful equivalent is a TEXT field whose content is the materialized token
-// stream (each term repeated `freq` times, space-joined). Bluge's analyzer then
-// produces exactly the same per-term frequencies and field length, which is what
-// BM25 scores over.
+// Token model — IMPORTANT:
+// textiplex treats "term-N" and "uniq-N" as ATOMIC tokens (one posting list and
+// one explicit frequency per token). documents.NewTextField defaults to
+// analyzer.DefaultStandardAnalyzer (UnicodeTokenizer + lowercase), and the
+// unicode tokenizer splits on '-', so "term-1" would be indexed as TWO tokens
+// ["term","1"]. That both (a) makes NewTermQuery("term-1") match nothing and
+// (b) collapses every common term's "term" prefix into one giant posting list,
+// destroying the per-term IDF the BM25 comparison depends on.
+//
+// To stay faithful to textiplex we index the body with a WHITESPACE analyzer so
+// each "term-N"/"uniq-N" stays a single atomic token, matched exactly by
+// NewTermQuery (which does no analysis).
 
 const (
 	benchDocCount    = 1_000
 	benchVocabCommon = 50
 	fieldBody        = "body"
 )
+
+// bodyAnalyzer keeps "term-N"/"uniq-N" as single tokens, splitting only on
+// whitespace. The corpus is already lowercase, so no lowercase filter is needed;
+// if that changes, add token.DefaultLowerCaseFilter to TokenFilters to match
+// textiplex's analysis.
+var bodyAnalyzer = &analysis.Analyzer{
+	Tokenizer: tokenizer.NewWhitespaceTokenizer(),
+}
 
 // buildBodyText produces the materialized token stream for doc i, matching the
 // frequency distribution used by textiplex's prepareSearchCorpus.
@@ -60,7 +77,8 @@ func buildSearchIndex(tb testing.TB) *bluge.Reader {
 	batch := index.NewBatch()
 	for i := range benchDocCount {
 		doc := documents.NewDocument(fmt.Sprintf("doc-%06d", i))
-		doc.AddField(documents.NewTextField(fieldBody, buildBodyText(i)))
+		doc.AddField(documents.NewTextField(fieldBody, buildBodyText(i)).
+			WithAnalyzer(bodyAnalyzer))
 		batch.Update(doc.ID(), doc)
 	}
 	if err := writer.Batch(batch); err != nil {
@@ -81,7 +99,7 @@ func buildSearchIndex(tb testing.TB) *bluge.Reader {
 // drainTopN runs the search and consumes all hits so the cost of iterating the
 // result set is included, equivalent to textiplex resolving the ranked idx slice.
 func drainTopN(b *testing.B, reader *bluge.Reader, q bluge.Query) {
-	req := bluge.NewTopNSearch(benchDocCount, q).WithStandardAggregations()
+	req := bluge.NewAllMatches(q).WithStandardAggregations()
 	dmi, err := reader.Search(b.Context(), req)
 	if err != nil {
 		b.Fatalf("search: %v", err)
@@ -96,7 +114,7 @@ func drainTopN(b *testing.B, reader *bluge.Reader, q bluge.Query) {
 }
 
 // BenchmarkBlugeSearchShould — 3-term OR over the common vocabulary.
-// Equivalent to textiplex BenchmarkSearchShould.
+// Equivalent to textiplex BenchmarkSearchShould. Matches all 1000 docs.
 func BenchmarkBlugeSearchShould(b *testing.B) {
 	reader := buildSearchIndex(b)
 
@@ -112,7 +130,7 @@ func BenchmarkBlugeSearchShould(b *testing.B) {
 }
 
 // BenchmarkBlugeSearchMust — 3-term AND over the common vocabulary.
-// Equivalent to textiplex BenchmarkSearchMust.
+// Equivalent to textiplex BenchmarkSearchMust. Matches all 1000 docs.
 func BenchmarkBlugeSearchMust(b *testing.B) {
 	reader := buildSearchIndex(b)
 
@@ -129,6 +147,12 @@ func BenchmarkBlugeSearchMust(b *testing.B) {
 
 // BenchmarkBlugeSearchCombined — Must + boosted Shoulds + MustNot.
 // Equivalent to textiplex BenchmarkSearchCombined.
+//
+// NOTE: "term-40" is in the common pool, so it is present in EVERY doc; the
+// MustNot therefore excludes the entire result set (0 hits). This mirrors the
+// textiplex corpus exactly and still exercises the MustNot path, but the Shoulds
+// never get scored. To benchmark a non-empty scored result instead, exclude a
+// token that is not universal, e.g. a "uniq-<i>" term.
 func BenchmarkBlugeSearchCombined(b *testing.B) {
 	reader := buildSearchIndex(b)
 
@@ -145,7 +169,7 @@ func BenchmarkBlugeSearchCombined(b *testing.B) {
 }
 
 // BenchmarkBlugeSearchSelective — single highly selective term (one matching doc).
-// Equivalent to textiplex BenchmarkSearchSelective.
+// Equivalent to textiplex BenchmarkSearchSelective. Matches exactly 1 doc.
 func BenchmarkBlugeSearchSelective(b *testing.B) {
 	reader := buildSearchIndex(b)
 	target := fmt.Sprintf("uniq-%d", benchDocCount/2)

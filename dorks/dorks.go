@@ -64,18 +64,71 @@ func (k *Keyword) Capture(values []string) (err error) {
 	return nil
 }
 
+type Operator uint8
+
+const (
+	OperatorNone Operator = iota
+	OperatorMust
+	OperatorMustNot
+)
+
+func (o *Operator) Capture(values []string) (err error) {
+	value := values[0]
+	if len(value) == 0 {
+		return nil
+	}
+
+	switch value[0] {
+	case '+':
+		*o = OperatorMust
+	case '-':
+		*o = OperatorMustNot
+	}
+	return nil
+}
+
+type MatchOperator uint8
+
+const (
+	MatchOperatorNone MatchOperator = iota
+	MatchOperatorGreaterEqual
+	MatchOperatorLessEqual
+	MatchOperatorGreater
+	MatchOperatorLess
+)
+
+func (o *MatchOperator) Capture(values []string) (err error) {
+	value := values[0]
+	if len(value) == 0 {
+		return nil
+	}
+
+	switch value {
+	case ">=":
+		*o = MatchOperatorGreaterEqual
+	case "<=":
+		*o = MatchOperatorLessEqual
+	case ">":
+		*o = MatchOperatorGreater
+	case "<":
+		*o = MatchOperatorLess
+	}
+	return nil
+}
+
 type Match struct {
-	Operator string   `parser:"':' @MatchOperator?" json:"operator,omitzero"`
-	Date     *Time    `parser:"(@Time" json:"date,omitzero"`
-	Float    *Float   `parser:"| @Float" json:"float,omitzero"`
-	Integer  *Integer `parser:"| @Int" json:"integer,omitzero"`
-	Keyword  *string  `parser:"| @(Keyword | Phrase))" json:"keyword,omitzero"`
+	Operator MatchOperator `parser:"':' @MatchOperator?" json:"operator,omitzero"`
+	Date     *Time         `parser:"(@Time" json:"date,omitzero"`
+	Float    *Float        `parser:"| @Float" json:"float,omitzero"`
+	Integer  *Integer      `parser:"| @Int" json:"integer,omitzero"`
+	Keyword  *string       `parser:"| @(Keyword | Phrase))" json:"keyword,omitzero"`
+	Boost    *float64      `parser:"(';' @(Float | Int))?" json:"boost,omitzero"`
 }
 
 type Dork struct {
-	Operator string  `parser:"@( '+' | '-')?" json:"operator,omitzero"`
-	Keyword  Keyword `parser:"@(Time | Float | Int | Phrase | Keyword)" json:"keyword,omitzero"`
-	Match    *Match  `parser:"@@?" json:"match,omitzero"`
+	Operator Operator `parser:"@( '+' | '-')?" json:"operator,omitzero"`
+	Keyword  Keyword  `parser:"@(Time | Float | Int | Phrase | Keyword)" json:"keyword,omitzero"`
+	Match    *Match   `parser:"@@?" json:"match,omitzero"`
 }
 
 type Query struct {
@@ -87,14 +140,14 @@ var parser = participle.MustBuild[Query](
 	participle.Lexer(lexer.MustSimple([]lexer.SimpleRule{
 		{Name: "whitespace", Pattern: `[ \t\n\r]+`},
 
-		{Name: "Punctuation", Pattern: `:`},
+		{Name: "Punctuation", Pattern: `:|;`},
 		{Name: "MustOperator", Pattern: `\+|\-`},
 		{Name: "MatchOperator", Pattern: "(<=)|(>=)|<|>"},
 		{Name: "Time", Pattern: `(\d{4}-\d{2}-\d{2})|("\d{4}-\d{2}-\d{2}")`},
 		{Name: "Float", Pattern: `(\d+\.\d+)|("\d+\.\d+")`},
 		{Name: "Int", Pattern: `\d+|("\d+")`},
 		{Name: "Phrase", Pattern: `"(\\"|[^"])*"`},
-		{Name: "Keyword", Pattern: `[áéíóúñA-Za-z0-9]+[áéíóúñA-Za-z0-9!%"#$%&'()*+*,\-./;<=>?@[\\\]^_` + "`" + `{|}~]*`},
+		{Name: "Keyword", Pattern: `[áéíóúñA-Za-z0-9]+[áéíóúñA-Za-z0-9!%"#$%&'()*+*,\-./<=>?@[\\\]^_` + "`" + `{|}~]*`},
 	})),
 )
 

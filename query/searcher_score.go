@@ -1,8 +1,10 @@
 package query
 
 import (
-	"github.com/RogueTeam/textiplex/tuple"
-	"github.com/zeebo/xxh3"
+	"cmp"
+	"slices"
+
+	"github.com/RogueTeam/textiplex/storage"
 )
 
 func (s *Searcher) UpdateScores(ctx *QueryContext, state *ClauseState) {
@@ -12,23 +14,25 @@ func (s *Searcher) UpdateScores(ctx *QueryContext, state *ClauseState) {
 	token := state.Token
 	field := state.Field
 
-	fieldsTokenDocsKey := tuple.Tuple3[uint64]{A: state.FieldHash, B: xxh3.Hash(token.Value)}
-	fieldDocsKey := tuple.Tuple2[uint64]{A: state.FieldHash}
+	docLengths := field.DocumentLengths
+	freqs := s.Storage.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
 
 	for it := ctx.Bitmap.Iterator(); it.HasNext(); {
 		docIdx := it.Next()
 
-		fieldsTokenDocsKey.C = docIdx
-		freq, found := s.FieldTokenDocFrequencies[fieldsTokenDocsKey.Hash()]
+		docLengthIdx, found := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint64) int { return cmp.Compare(e.Index, t) })
 		if !found {
 			continue
 		}
+		docLength := docLengths[docLengthIdx].Length
+		docLengths = docLengths[1+docLengthIdx:]
 
-		fieldDocsKey.B = docIdx
-		docLength, found := s.FieldDocLengths[fieldDocsKey.Hash()]
+		freqIdx, found := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint64) int { return cmp.Compare(e.DocumentIndex, t) })
 		if !found {
 			continue
 		}
+		freq := freqs[freqIdx].Frequency
+		freqs = freqs[1+freqIdx:]
 
 		ctx.Scores[docIdx] += state.Boost * ScoreTermBM25(
 			/* docCoun */ uint64(len(field.DocumentLengths)),

@@ -9,7 +9,7 @@ import (
 
 // MakeToken creates a TokenDefinition with the given normalized value and frequency.
 // The caller is responsible for normalization before passing the value.
-func MakeToken(value string, freq uint64) *storage.TokenDefinition {
+func MakeToken[T ~string | []byte](value T, freq uint64) *storage.TokenDefinition {
 	return &storage.TokenDefinition{Value: []byte(value), Frequency: freq}
 }
 
@@ -22,7 +22,7 @@ func MakeField(hash uint64, length uint64, tokens ...*storage.TokenDefinition) *
 // MakeDoc creates a Document with the given external ID and field definitions.
 // The ID must be unique across the index and will be sorted alphabetically
 // during SortAndBuildFrom / BuildFrom.
-func MakeDoc(id string, fields ...*storage.FieldDefinition) *storage.Document {
+func MakeDoc[T ~string | ~[]byte](id T, fields ...*storage.FieldDefinition) *storage.Document {
 	return &storage.Document{Id: storage.DocumentId(id), Fields: fields}
 }
 

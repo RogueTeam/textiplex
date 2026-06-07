@@ -3,7 +3,6 @@ package testsuite
 import (
 	"bytes"
 
-	"github.com/RogueTeam/textiplex/numeric"
 	"github.com/RogueTeam/textiplex/query"
 	"github.com/RogueTeam/textiplex/storage"
 )
@@ -39,21 +38,6 @@ func ResolveDocumentIndexes(s *storage.Storage, idxs []uint64) []string {
 		out[i] = string(s.DocumentsIds[idx])
 	}
 	return out
-}
-
-// SortableInt64 encodes v with the same sortable byte layout production uses for
-// integer fields, so token byte order matches numeric order.
-func SortableInt64(v int64) string {
-	buf := make([]byte, 8)
-	numeric.PutSortableInteger(buf, v)
-	return string(buf)
-}
-
-// SortableFloat64 is the float counterpart of sortableInt.
-func SortableFloat64(v float64) string {
-	buf := make([]byte, 8)
-	numeric.PutSortableFloat(buf, v)
-	return string(buf)
 }
 
 // RunFieldScore builds a candidate bitmap, runs FieldScore against fieldHash,

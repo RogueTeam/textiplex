@@ -2,8 +2,10 @@ package testsuite
 
 import (
 	"testing"
+	"time"
 	"unsafe"
 
+	"github.com/RogueTeam/textiplex/numeric"
 	"github.com/RogueTeam/textiplex/tokenizer"
 	"github.com/stretchr/testify/assert"
 )
@@ -60,4 +62,27 @@ func AssertTerms(t *testing.T, fn tokenizer.Tokenizer, in string, want []Term) {
 			assertions.Equal(want[i].Owned, got[i].Owned, "IsStem at index %d (%q)", i, got[i].Value)
 		})
 	}
+}
+
+// SortableInt64 encodes v with the same sortable byte layout production uses for
+// integer fields, so token byte order matches numeric order.
+func SortableInt64(v int64) []byte {
+	buf := make([]byte, 8)
+	numeric.PutSortableInteger(buf, v)
+	return buf
+}
+
+// SortableFloat64 is the float counterpart of sortableInt.
+func SortableFloat64(v float64) []byte {
+	buf := make([]byte, 8)
+	numeric.PutSortableFloat(buf, v)
+	return buf
+}
+
+func SortableDate(t *testing.T, s string) []byte {
+	t.Helper()
+	assertions := assert.New(t)
+	tm, err := time.Parse(time.DateOnly, s)
+	assertions.Nil(err, "parse date %q", s)
+	return SortableInt64(tm.UnixNano())
 }

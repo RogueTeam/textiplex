@@ -5,56 +5,17 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/RogueTeam/textiplex/dorks"
-	"github.com/RogueTeam/textiplex/query"
 	"github.com/RogueTeam/textiplex/storage"
 	"github.com/RogueTeam/textiplex/testsuite"
 	"github.com/RogueTeam/textiplex/tokenizer"
+	"github.com/RogueTeam/textiplex/tokenizer/en"
+	es "github.com/RogueTeam/textiplex/tokenizer/es"
 	"github.com/stretchr/testify/assert"
 	"github.com/zeebo/xxh3"
 )
 
-// ══════════════════════════════════════════════════════════════════════════════
-// Query.Compile — end to end against a real storage
-//
-// These tests do not inspect the SimpleQuery struct field by field. Instead they
-// drive the full pipeline the product uses:
-//
-//	dork string ──Parse──▶ *dorks.Query ──Compile──▶ *query.SimpleQuery
-//	             ──FilterDocuments+BM25Score──▶ ranked doc ids
-//
-// and assert that the documents Compile makes the searcher match are exactly the
-// ones we expect from a hand-built index. This is the strongest possible check
-// that the compiler targets the right field hashes, the right clause buckets
-// (Should / Must / MustNot) and the right value encodings (raw bytes for
-// keywords, sortable bytes for integers / floats / dates).
-//
-// Behaviours pinned here that reflect the CURRENT implementation (see the notes
-// inline if any of these is not what you intend):
-//
-//   - Compile ignores its tokenizer arguments. Keywords reach the index as their
-//     raw bytes, so matching is case sensitive and unstemmed. The storage tokens
-//     in these tests are therefore stored verbatim.
-//   - A bare term is a Should, "+term" is a Must, "-term" is a MustNot.
-//   - "field:value" scopes the match to xxh3(field); the same token in another
-//     field must not match.
-//   - Range operators are INCLUSIVE on the boundary, and ">" behaves like ">="
-//     while "<" behaves like "<=", because the compiler lowers both to a single
-//     open-ended FieldRange.
-//   - A ";N" suffix multiplies the BM25 contribution of a field match by N.
-// ══════════════════════════════════════════════════════════════════════════════
-
-// fieldHash mirrors exactly what Compile does to turn a field name into the hash
-// the index is keyed by. Tests build fields with this so the lookups line up.
-func fieldHash(name string) uint64 { return xxh3.HashString(name) }
-
-// verbatim is a tokenizer that emits the whole input as one unmodified token.
-// Compile currently ignores the tokenizer entirely; passing a real (non-nil)
-// function rather than nil keeps these tests honest if Compile later starts
-// routing keywords through it, since verbatim preserves the raw-byte contract
-// the storage tokens below rely on.
 func verbatim(in []byte) iter.Seq[*tokenizer.Token] {
 	return func(yield func(*tokenizer.Token) bool) {
 		if len(in) == 0 {
@@ -64,55 +25,10 @@ func verbatim(in []byte) iter.Seq[*tokenizer.Token] {
 	}
 }
 
-// compileQuery parses and compiles a dork string. It guards the documented
-// contract that Compile returns the query it built: a nil result turns the
-// downstream nil-pointer panic into a clear, single-line failure.
-func compileQuery(t *testing.T, q string) *query.SimpleQuery {
-	t.Helper()
-	assertions := assert.New(t)
-
-	parsed, err := dorks.Parse(strings.NewReader(q))
-	if !assertions.Nil(err, "parse %q", q) {
-		return nil
-	}
-
-	sq := parsed.Compile(verbatim, nil)
-	if !assertions.NotNil(sq, "Compile(%q) returned nil — it must return the SimpleQuery it built", q) {
-		return nil
-	}
-	return sq
-}
-
-// buildStorage sorts and indexes docs into a ready storage.
-func buildStorage(docs ...*storage.Document) *storage.Storage {
+func BuildStorageFromDocs(docs ...*storage.Document) *storage.Storage {
 	s := &storage.Storage{}
 	s.SortAndBuildFrom(docs...)
 	return s
-}
-
-// matchedSet compiles q, runs it against s and returns the matched external ids
-// sorted, so membership can be compared regardless of ranking order.
-func matchedSet(t *testing.T, q string, s *storage.Storage) []string {
-	t.Helper()
-
-	sq := compileQuery(t, q)
-	if sq == nil {
-		return nil
-	}
-	idxs, _ := testsuite.RunQuery(sq, s)
-	got := testsuite.ResolveDocumentIndexes(s, idxs)
-	slices.Sort(got)
-	return got
-}
-
-// sortableDate encodes a DateOnly string the same way Compile does for date
-// matches: parse to a time then store the sortable UnixNano.
-func sortableDate(t *testing.T, s string) string {
-	t.Helper()
-	assertions := assert.New(t)
-	tm, err := time.Parse(time.DateOnly, s)
-	assertions.Nil(err, "parse date %q", s)
-	return testsuite.SortableInt64(tm.UnixNano())
 }
 
 // ── The compiler must return the query it built ───────────────────────────────
@@ -128,7 +44,7 @@ func TestCompileReturnsBuiltQuery(t *testing.T) {
 		return
 	}
 
-	sq := parsed.Compile(verbatim, nil)
+	sq := parsed.Compile(en.Tokenizer, nil)
 	if !assertions.NotNil(sq, "Compile must return the SimpleQuery it built, not nil") {
 		return
 	}
@@ -150,10 +66,10 @@ func TestCompileReturnsBuiltQuery(t *testing.T) {
 // ── Bare keyword → Should, matches the token in any field ─────────────────────
 
 func TestCompileBareKeyword(t *testing.T) {
-	s := buildStorage(
-		testsuite.MakeDoc("doc-a", testsuite.MakeField(fieldHash("body"), 3, testsuite.MakeToken("contrato", 1))),
-		testsuite.MakeDoc("doc-b", testsuite.MakeField(fieldHash("body"), 3, testsuite.MakeToken("medellin", 1))),
-		testsuite.MakeDoc("doc-c", testsuite.MakeField(fieldHash("title"), 1, testsuite.MakeToken("contrato", 1))),
+	s := BuildStorageFromDocs(
+		testsuite.MakeDoc("doc-a", testsuite.MakeField(xxh3.HashString("body"), 3, testsuite.MakeToken("contrato", 1))),
+		testsuite.MakeDoc("doc-b", testsuite.MakeField(xxh3.HashString("body"), 3, testsuite.MakeToken("medellin", 1))),
+		testsuite.MakeDoc("doc-c", testsuite.MakeField(xxh3.HashString("title"), 1, testsuite.MakeToken("contrato", 1))),
 	)
 
 	type Test struct {
@@ -171,22 +87,72 @@ func TestCompileBareKeyword(t *testing.T) {
 			assertions := assert.New(t)
 			want := slices.Clone(tc.want)
 			slices.Sort(want)
-			assertions.Equal(want, matchedSet(t, tc.query, s), "matched set for %q", tc.query)
+			assertions.Equal(want, testsuite.EnglishMatchedSet(t, tc.query, s), "matched set for %q", tc.query)
 		})
 	}
 }
 
-// Keywords are not lowercased or stemmed by the compiler, so a query token only
-// matches a storage token with identical bytes. Pins the no-tokenize behaviour.
-func TestCompileKeywordIsCaseSensitive(t *testing.T) {
+// Bare keywords are analyzed with the default tokenizer, so a query folds to
+// the same token the index stored. The case-folding en.Tokenizer analyzer makes
+// "Contrato"/"CONTRATO" reach the stored "contrato".
+func TestCompileBareKeywordIsAnalyzed(t *testing.T) {
 	assertions := assert.New(t)
 
-	s := buildStorage(
-		testsuite.MakeDoc("lower", testsuite.MakeField(fieldHash("body"), 1, testsuite.MakeToken("contrato", 1))),
+	s := BuildStorageFromDocs(
+		testsuite.MakeDoc("lower", testsuite.MakeField(xxh3.HashString("body"), 1, testsuite.MakeToken("contrato", 1))),
 	)
 
-	assertions.Equal([]string{"lower"}, matchedSet(t, "contrato", s), "exact case must match")
-	assertions.Empty(matchedSet(t, "Contrato", s), "different case must not match (compiler does not fold)")
+	for _, q := range []string{"contrato", "Contrato", "CONTRATO"} {
+		assertions.Equal([]string{"lower"}, testsuite.EnglishMatchedSet(t, q, s),
+			"query %q must analyze to the stored token", q)
+	}
+}
+
+// A multi-word phrase is analyzed into several terms. As a bare (Should) phrase
+// each term is added independently, so a doc carrying any of them matches.
+func TestCompilePhraseExpandsToTerms(t *testing.T) {
+	assertions := assert.New(t)
+
+	body := xxh3.HashString("body")
+	s := BuildStorageFromDocs(
+		testsuite.MakeDoc("both", testsuite.MakeField(body, 2,
+			testsuite.MakeToken("obra", 1), testsuite.MakeToken("publica", 1))),
+		testsuite.MakeDoc("one", testsuite.MakeField(body, 1,
+			testsuite.MakeToken("publica", 1))),
+		testsuite.MakeDoc("none", testsuite.MakeField(body, 1,
+			testsuite.MakeToken("privada", 1))),
+	)
+
+	// The phrase compiles to two Should keywords [obras, publicas].
+	sq := testsuite.CompileSpanishQuery(t, `"Obras Publicas"`)
+	if assertions.NotNil(sq) {
+		assertions.Len(sq.Shoulds.Keywords, 2, "phrase must expand into one Should per term")
+	}
+
+	got := testsuite.SpanishMatchedSet(t, `"Obras Publicas"`, s)
+	assertions.Equal([]string{"both", "one"}, got, "any term of the phrase matches as a Should")
+}
+
+// THE critical case for the design question: Musts are analyzed too. If they
+// were not, "+CORRIENDO" would look up the literal bytes, miss the stored
+// (folded) token, and FilterDocuments would CLEAR the whole result set — zero
+// results. Analysis makes it fold to "corriendo" and match.
+func TestCompileMustIsAnalyzed(t *testing.T) {
+	assertions := assert.New(t)
+
+	body := xxh3.HashString("body")
+	s := BuildStorageFromDocs(
+		testsuite.MakeDoc("has", testsuite.MakeField(body, 1, testsuite.MakeToken("corriendo", 1))),
+		testsuite.MakeDoc("hasnt", testsuite.MakeField(body, 1, testsuite.MakeToken("caminando", 1))),
+	)
+
+	// Upper-case Must term still finds the lower-case stored token.
+	assertions.Equal([]string{"has"}, testsuite.EnglishMatchedSet(t, "+CORRIENDO", s),
+		"an analyzed Must folds to the stored token instead of zeroing the result set")
+
+	// MustNot is analyzed as well: "-Caminando" excludes the doc storing "caminando".
+	assertions.Equal([]string{"has"}, testsuite.EnglishMatchedSet(t, "+corriendo -Caminando", s),
+		"MustNot is analyzed and excludes the matching doc")
 }
 
 // ── Operators: +Must, -MustNot, bare Should ───────────────────────────────────
@@ -194,8 +160,8 @@ func TestCompileKeywordIsCaseSensitive(t *testing.T) {
 func TestCompileOperators(t *testing.T) {
 	// Each token lives in its own field-less-collision body so plain keyword
 	// scans stay unambiguous; ids encode which tokens a doc carries.
-	body := fieldHash("body")
-	s := buildStorage(
+	body := xxh3.HashString("body")
+	s := BuildStorageFromDocs(
 		testsuite.MakeDoc("ab", testsuite.MakeField(body, 2,
 			testsuite.MakeToken("alpha", 1), testsuite.MakeToken("beta", 1))),
 		testsuite.MakeDoc("a", testsuite.MakeField(body, 1,
@@ -223,7 +189,7 @@ func TestCompileOperators(t *testing.T) {
 			assertions := assert.New(t)
 			want := slices.Clone(tc.want)
 			slices.Sort(want)
-			assertions.Equal(want, matchedSet(t, tc.query, s), "matched set for %q", tc.query)
+			assertions.Equal(want, testsuite.EnglishMatchedSet(t, tc.query, s), "matched set for %q", tc.query)
 		})
 	}
 }
@@ -235,23 +201,55 @@ func TestCompileFieldKeywordScoped(t *testing.T) {
 
 	// Both docs hold the token "active" but in different fields. A scoped
 	// "status:active" must only reach the one whose status field carries it.
-	s := buildStorage(
+	s := BuildStorageFromDocs(
 		testsuite.MakeDoc("in-status",
-			testsuite.MakeField(fieldHash("status"), 1, testsuite.MakeToken("active", 1))),
+			testsuite.MakeField(xxh3.HashString("status"), 1, testsuite.MakeToken("active", 1))),
 		testsuite.MakeDoc("in-type",
-			testsuite.MakeField(fieldHash("type"), 1, testsuite.MakeToken("active", 1))),
+			testsuite.MakeField(xxh3.HashString("type"), 1, testsuite.MakeToken("active", 1))),
 	)
 
-	assertions.Equal([]string{"in-status"}, matchedSet(t, "status:active", s),
+	assertions.Equal([]string{"in-status"}, testsuite.EnglishMatchedSet(t, "status:active", s),
 		"scoped field keyword must ignore the same token in another field")
-	assertions.Equal([]string{"in-type"}, matchedSet(t, "type:active", s))
+	assertions.Equal([]string{"in-type"}, testsuite.EnglishMatchedSet(t, "type:active", s))
 
 	// Unscoped, the same token is reached in every field.
-	assertions.Equal([]string{"in-status", "in-type"}, matchedSet(t, "active", s),
+	assertions.Equal([]string{"in-status", "in-type"}, testsuite.EnglishMatchedSet(t, "active", s),
 		"bare keyword reaches the token in any field")
 
 	// Scoping to a field that has no such token matches nothing.
-	assertions.Empty(matchedSet(t, "status:inactive", s))
+	assertions.Empty(testsuite.EnglishMatchedSet(t, "status:inactive", s))
+}
+
+// A field listed in fieldsTokenizer is analyzed with ITS tokenizer, not the
+// default. Here "codigo" uses a verbatim (case-preserving) analyzer while the
+// default folds case, so the index stores "AB12" verbatim and only a
+// case-exact scoped query reaches it.
+func TestCompileFieldTokenizerSelected(t *testing.T) {
+	assertions := assert.New(t)
+
+	codigo := xxh3.HashString("codigo")
+	// Index-time: codigo is a verbatim field, so the stored token keeps its case.
+	s := BuildStorageFromDocs(
+		testsuite.MakeDoc("c", testsuite.MakeField(codigo, 1, testsuite.MakeToken("AB12", 1))),
+	)
+
+	fields := map[uint64]tokenizer.Tokenizer{codigo: verbatim}
+
+	// Field analyzer (verbatim) keeps case → exact query matches.
+	assertions.Equal([]string{"c"}, testsuite.MatchedSetWith(t, "codigo:AB12", s, en.Tokenizer, fields),
+		"scoped match must use the field's verbatim analyzer")
+
+	// Same field, folded query → verbatim analyzer does NOT fold → no match.
+	assertions.Empty(testsuite.MatchedSetWith(t, "codigo:ab12", s, en.Tokenizer, fields),
+		"the field analyzer is verbatim, so case must matter here")
+
+	// A field NOT in the map falls back to the default analyzer.
+	otro := xxh3.HashString("otro")
+	s2 := BuildStorageFromDocs(
+		testsuite.MakeDoc("d", testsuite.MakeField(otro, 1, testsuite.MakeToken("rojo", 1))),
+	)
+	assertions.Equal([]string{"d"}, testsuite.MatchedSetWith(t, "otro:ROJO", s2, en.Tokenizer, fields),
+		"unmapped field falls back to the default analyzer (which folds case)")
 }
 
 // ── Numeric / float / date exact matches use sortable encoding ────────────────
@@ -259,52 +257,52 @@ func TestCompileFieldKeywordScoped(t *testing.T) {
 func TestCompileIntegerExact(t *testing.T) {
 	assertions := assert.New(t)
 
-	price := fieldHash("price")
-	s := buildStorage(
+	price := xxh3.HashString("price")
+	s := BuildStorageFromDocs(
 		testsuite.MakeDoc("p100", testsuite.MakeField(price, 1, testsuite.MakeToken(testsuite.SortableInt64(100), 1))),
 		testsuite.MakeDoc("p200", testsuite.MakeField(price, 1, testsuite.MakeToken(testsuite.SortableInt64(200), 1))),
 		testsuite.MakeDoc("p300", testsuite.MakeField(price, 1, testsuite.MakeToken(testsuite.SortableInt64(300), 1))),
 	)
 
-	assertions.Equal([]string{"p200"}, matchedSet(t, "price:200", s), "exact integer match")
-	assertions.Empty(matchedSet(t, "price:250", s), "no doc at 250")
+	assertions.Equal([]string{"p200"}, testsuite.EnglishMatchedSet(t, "price:200", s), "exact integer match")
+	assertions.Empty(testsuite.EnglishMatchedSet(t, "price:250", s), "no doc at 250")
 	// Quoted form parses to the same integer.
-	assertions.Equal([]string{"p100"}, matchedSet(t, `price:"100"`, s), "quoted integer match")
+	assertions.Equal([]string{"p100"}, testsuite.EnglishMatchedSet(t, `price:"100"`, s), "quoted integer match")
 }
 
 func TestCompileFloatExact(t *testing.T) {
 	assertions := assert.New(t)
 
-	rate := fieldHash("rate")
-	s := buildStorage(
+	rate := xxh3.HashString("rate")
+	s := BuildStorageFromDocs(
 		testsuite.MakeDoc("r-low", testsuite.MakeField(rate, 1, testsuite.MakeToken(testsuite.SortableFloat64(0.5), 1))),
 		testsuite.MakeDoc("r-mid", testsuite.MakeField(rate, 1, testsuite.MakeToken(testsuite.SortableFloat64(1.5), 1))),
 		testsuite.MakeDoc("r-high", testsuite.MakeField(rate, 1, testsuite.MakeToken(testsuite.SortableFloat64(2.5), 1))),
 	)
 
-	assertions.Equal([]string{"r-mid"}, matchedSet(t, "rate:1.5", s), "exact float match")
-	assertions.Empty(matchedSet(t, "rate:1.6", s))
+	assertions.Equal([]string{"r-mid"}, testsuite.EnglishMatchedSet(t, "rate:1.5", s), "exact float match")
+	assertions.Empty(testsuite.EnglishMatchedSet(t, "rate:1.6", s))
 }
 
 func TestCompileDateExact(t *testing.T) {
 	assertions := assert.New(t)
 
-	created := fieldHash("created_at")
-	s := buildStorage(
-		testsuite.MakeDoc("d2019", testsuite.MakeField(created, 1, testsuite.MakeToken(sortableDate(t, "2019-06-15"), 1))),
-		testsuite.MakeDoc("d2020", testsuite.MakeField(created, 1, testsuite.MakeToken(sortableDate(t, "2020-01-31"), 1))),
+	created := xxh3.HashString("created_at")
+	s := BuildStorageFromDocs(
+		testsuite.MakeDoc("d2019", testsuite.MakeField(created, 1, testsuite.MakeToken(testsuite.SortableDate(t, "2019-06-15"), 1))),
+		testsuite.MakeDoc("d2020", testsuite.MakeField(created, 1, testsuite.MakeToken(testsuite.SortableDate(t, "2020-01-31"), 1))),
 	)
 
-	assertions.Equal([]string{"d2020"}, matchedSet(t, "created_at:2020-01-31", s), "exact date match")
-	assertions.Equal([]string{"d2020"}, matchedSet(t, `created_at:"2020-01-31"`, s), "quoted date match")
-	assertions.Empty(matchedSet(t, "created_at:2021-01-01", s))
+	assertions.Equal([]string{"d2020"}, testsuite.EnglishMatchedSet(t, "created_at:2020-01-31", s), "exact date match")
+	assertions.Equal([]string{"d2020"}, testsuite.EnglishMatchedSet(t, `created_at:"2020-01-31"`, s), "quoted date match")
+	assertions.Empty(testsuite.EnglishMatchedSet(t, "created_at:2021-01-01", s))
 }
 
 // ── Range matches: inclusive boundaries, ">" == ">=", "<" == "<=" ─────────────
 
 func TestCompileIntegerRanges(t *testing.T) {
-	price := fieldHash("price")
-	s := buildStorage(
+	price := xxh3.HashString("price")
+	s := BuildStorageFromDocs(
 		testsuite.MakeDoc("p50", testsuite.MakeField(price, 1, testsuite.MakeToken(testsuite.SortableInt64(50), 1))),
 		testsuite.MakeDoc("p100", testsuite.MakeField(price, 1, testsuite.MakeToken(testsuite.SortableInt64(100), 1))),
 		testsuite.MakeDoc("p150", testsuite.MakeField(price, 1, testsuite.MakeToken(testsuite.SortableInt64(150), 1))),
@@ -331,7 +329,7 @@ func TestCompileIntegerRanges(t *testing.T) {
 			assertions := assert.New(t)
 			want := slices.Clone(tc.want)
 			slices.Sort(want)
-			assertions.Equal(want, matchedSet(t, tc.query, s), "matched set for %q", tc.query)
+			assertions.Equal(want, testsuite.EnglishMatchedSet(t, tc.query, s), "matched set for %q", tc.query)
 		})
 	}
 }
@@ -339,17 +337,17 @@ func TestCompileIntegerRanges(t *testing.T) {
 func TestCompileFloatRange(t *testing.T) {
 	assertions := assert.New(t)
 
-	rate := fieldHash("rate")
-	s := buildStorage(
+	rate := xxh3.HashString("rate")
+	s := BuildStorageFromDocs(
 		testsuite.MakeDoc("neg", testsuite.MakeField(rate, 1, testsuite.MakeToken(testsuite.SortableFloat64(-3.5), 1))),
 		testsuite.MakeDoc("zero", testsuite.MakeField(rate, 1, testsuite.MakeToken(testsuite.SortableFloat64(0.0), 1))),
 		testsuite.MakeDoc("pos", testsuite.MakeField(rate, 1, testsuite.MakeToken(testsuite.SortableFloat64(2.25), 1))),
 	)
 
 	// Sortable float encoding must keep negative < zero < positive ordering.
-	assertions.Equal([]string{"pos", "zero"}, matchedSet(t, "rate:>=0.0", s),
+	assertions.Equal([]string{"pos", "zero"}, testsuite.EnglishMatchedSet(t, "rate:>=0.0", s),
 		"range over floats must respect signed numeric order")
-	assertions.Equal([]string{"neg", "zero"}, matchedSet(t, "rate:<=0.0", s))
+	assertions.Equal([]string{"neg", "zero"}, testsuite.EnglishMatchedSet(t, "rate:<=0.0", s))
 }
 
 // ── A ";boost" suffix scales the field match's BM25 contribution ──────────────
@@ -357,13 +355,13 @@ func TestCompileFloatRange(t *testing.T) {
 func TestCompileBoostScalesScore(t *testing.T) {
 	assertions := assert.New(t)
 
-	status := fieldHash("status")
-	s := buildStorage(
+	status := xxh3.HashString("status")
+	s := BuildStorageFromDocs(
 		testsuite.MakeDoc("only", testsuite.MakeField(status, 1, testsuite.MakeToken("active", 1))),
 	)
 
-	plain := compileQuery(t, "status:active")
-	boosted := compileQuery(t, "status:active;3.0")
+	plain := testsuite.CompileEnglishQuery(t, "status:active")
+	boosted := testsuite.CompileEnglishQuery(t, "status:active;3.0")
 	if plain == nil || boosted == nil {
 		return
 	}
@@ -383,6 +381,35 @@ func TestCompileBoostScalesScore(t *testing.T) {
 		"boost of 3.0 must triple the score of the field match")
 }
 
+// ── Realistic analyzer: the index stores stems, the query is the full word ────
+
+// This is the scenario behind the design question. With a real stemmer the
+// stored token is NOT the raw word ("corriendo" → its Spanish stem). Because
+// Compile applies the same analyzer, both a bare Should and a +Must reach it —
+// the stored token is computed from the very same tokenizer so the test can
+// never drift from the stemmer's actual output.
+func TestCompileWithRealSpanishStemmer(t *testing.T) {
+	assertions := assert.New(t)
+
+	stem := func(word string) string {
+		for tk := range es.Tokenizer([]byte(word)) {
+			return string(tk.Value)
+		}
+		return word
+	}
+
+	body := xxh3.HashString("body")
+	s := BuildStorageFromDocs(
+		testsuite.MakeDoc("run", testsuite.MakeField(body, 1, testsuite.MakeToken(stem("corriendo"), 1))),
+		testsuite.MakeDoc("walk", testsuite.MakeField(body, 1, testsuite.MakeToken(stem("caminando"), 1))),
+	)
+
+	assertions.Equal([]string{"run"}, testsuite.MatchedSetWith(t, "corriendo", s, es.Tokenizer, nil),
+		"bare Should analyzed by the Spanish tokenizer matches the stored stem")
+	assertions.Equal([]string{"run"}, testsuite.MatchedSetWith(t, "+Corriendo", s, es.Tokenizer, nil),
+		"a Must analyzed by the Spanish tokenizer still matches the stored stem")
+}
+
 // ── Compound queries: Must / Should-range / MustNot interaction ───────────────
 //
 // IMPORTANT BEHAVIOUR (pinned, possibly surprising):
@@ -397,14 +424,14 @@ func TestCompileBoostScalesScore(t *testing.T) {
 // These two sub-tests pin both halves of that contract so a future change to
 // FilterDocuments shows up here loudly.
 func TestCompileCompoundQuery(t *testing.T) {
-	body := fieldHash("body")
-	estado := fieldHash("estado")
-	valor := fieldHash("valor")
+	body := xxh3.HashString("body")
+	estado := xxh3.HashString("estado")
+	valor := xxh3.HashString("valor")
 
 	// Three contracts. "too-cheap" is below the value threshold; "annulled" is
 	// estado:anulado.
 	build := func() *storage.Storage {
-		return buildStorage(
+		return BuildStorageFromDocs(
 			testsuite.MakeDoc("good",
 				testsuite.MakeField(body, 1, testsuite.MakeToken("contrato", 1)),
 				testsuite.MakeField(estado, 1, testsuite.MakeToken("activo", 1)),
@@ -427,7 +454,7 @@ func TestCompileCompoundQuery(t *testing.T) {
 		// +contrato defines the set; -estado:anulado removes the annulled doc.
 		// valor:>=1000000 is a Should range, so "too-cheap" is NOT filtered out
 		// despite being below the threshold.
-		got := matchedSet(t, "+contrato valor:>=1000000 -estado:anulado", s)
+		got := testsuite.SpanishMatchedSet(t, "+contrato valor:>=1000000 -estado:anulado", s)
 		assertions.Equal([]string{"good", "too-cheap"}, got,
 			"with a Must present, the unprefixed range does not constrain membership")
 	})
@@ -439,7 +466,7 @@ func TestCompileCompoundQuery(t *testing.T) {
 		// +valor:>=1000000 now joins the Must set. Only one distinct in-range
 		// value (2_000_000) exists, so the Must intersection is well defined:
 		// {good, annulled} ∩ {contrato docs} then minus anulado → {good}.
-		got := matchedSet(t, "+contrato +valor:>=1000000 -estado:anulado", s)
+		got := testsuite.SpanishMatchedSet(t, "+contrato +valor:>=1000000 -estado:anulado", s)
 		assertions.Equal([]string{"good"}, got,
 			"a +range filters the candidate set alongside the +keyword")
 	})

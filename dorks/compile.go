@@ -66,5 +66,5 @@ func (q *Query) Compile(defTokenizer tokenizer.Tokenizer, fieldsTokenizer map[ui
 			targetClause.FieldRange(fieldHash, data, nil, boost)
 		}
 	}
-	return nil
+	return sq
 }

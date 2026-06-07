@@ -251,7 +251,7 @@ func TestFieldScorePipelineFilterThenSort(t *testing.T) {
 
 	// 2. Re-rank the survivors by the numeric amount field (ascending).
 	searcher.FieldScore(ctx, fieldAmount)
-	idxs := searcher.ResolveBM25(ctx)
+	idxs := searcher.ResolveScores(ctx)
 
 	assertions.Equal([]string{"c-small", "c-mid", "c-big"}, testsuite.ResolveDocumentIndexes(s, idxs),
 		"survivors ranked ascending by amount")

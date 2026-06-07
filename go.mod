@@ -1,9 +1,10 @@
 module github.com/RogueTeam/textiplex
 
-go 1.25.3
+go 1.26.4
 
 require (
 	github.com/RoaringBitmap/roaring v1.9.4
+	github.com/alecthomas/participle/v2 v2.1.4
 	github.com/stretchr/testify v1.7.0
 	github.com/tidwall/btree v1.8.1
 	github.com/zeebo/xxh3 v1.1.0
@@ -12,7 +13,6 @@ require (
 )
 
 require (
-	github.com/alecthomas/participle/v2 v2.1.4 // indirect
 	github.com/bits-and-blooms/bitset v1.12.0 // indirect
 	github.com/davecgh/go-spew v1.1.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect

@@ -3,6 +3,7 @@ package dorks
 import (
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/alecthomas/participle/v2"
@@ -48,6 +49,21 @@ func (i *Integer) Capture(values []string) (err error) {
 	return err
 }
 
+type Keyword string
+
+func (k *Keyword) Capture(values []string) (err error) {
+	value := values[0]
+	if len(value) == 0 {
+		return nil
+	}
+	if value[0] == '"' {
+		*k = Keyword(strings.Clone(values[0][1 : len(values[0])-1]))
+	} else {
+		*k = Keyword(strings.Clone(values[0]))
+	}
+	return nil
+}
+
 type Match struct {
 	Operator string   `parser:"':' @MatchOperator?" json:"operator,omitzero"`
 	Date     *Time    `parser:"(@Time" json:"date,omitzero"`
@@ -57,9 +73,9 @@ type Match struct {
 }
 
 type Dork struct {
-	Operator string `parser:"@( '+' | '-')?" json:"operator,omitzero"`
-	Keyword  string `parser:"@(Int | Float | Phrase | Keyword)" json:"keyword,omitzero"`
-	Match    *Match `parser:"@@?" json:"match,omitzero"`
+	Operator string  `parser:"@( '+' | '-')?" json:"operator,omitzero"`
+	Keyword  Keyword `parser:"@(Time | Float | Int | Phrase | Keyword)" json:"keyword,omitzero"`
+	Match    *Match  `parser:"@@?" json:"match,omitzero"`
 }
 
 type Query struct {

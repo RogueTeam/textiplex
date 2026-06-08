@@ -1,7 +1,7 @@
 package dorks
 
 import (
-	"bytes"
+	"iter"
 
 	"github.com/RogueTeam/textiplex/numeric"
 	"github.com/RogueTeam/textiplex/query"
@@ -9,27 +9,16 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
-// analyze runs value through tok and returns the normalized terms, each copied
-// out of the tokenizer's reused buffer so the clause can safely retain them
-// (the tokenizer contract reuses one *Token and its Value between iterations).
-//
-// A nil tokenizer means "no analysis": the value is returned verbatim as a
-// single term. A nil/empty result is possible when analysis drops everything
-// (e.g. the value was only stopwords or punctuation); callers add nothing then.
-func analyze(tok tokenizer.Tokenizer, value []byte) (terms [][]byte) {
+func TokenizeOrPushValue(tok tokenizer.Tokenizer, value []byte) (seq iter.Seq[*tokenizer.Token]) {
 	if tok == nil {
-		return [][]byte{bytes.Clone(value)}
+		return func(yield func(*tokenizer.Token) bool) {
+			yield(&tokenizer.Token{Value: value})
+		}
 	}
-	for t := range tok(value) {
-		terms = append(terms, bytes.Clone(t.Value))
-	}
-	return terms
+	return tok(value)
 }
 
-// fieldTokenizer picks the tokenizer for a scoped field match: the one assigned
-// to the field if present, otherwise the default. This mirrors index-time
-// analysis so query terms normalize to the same tokens stored in the index.
-func fieldTokenizer(defTokenizer tokenizer.Tokenizer, fieldsTokenizer map[uint64]tokenizer.Tokenizer, fieldHash uint64) tokenizer.Tokenizer {
+func PickTokenizer(defTokenizer tokenizer.Tokenizer, fieldsTokenizer map[uint64]tokenizer.Tokenizer, fieldHash uint64) (toknizer tokenizer.Tokenizer) {
 	if fieldsTokenizer != nil {
 		if ft, ok := fieldsTokenizer[fieldHash]; ok {
 			return ft
@@ -59,8 +48,8 @@ func (q *Query) Compile(defTokenizer tokenizer.Tokenizer, fieldsTokenizer map[ui
 		// 1. Bare keyword (no field, no value): free text, analyzed with the
 		//    default tokenizer and expanded into one entry per produced term.
 		if dork.Match == nil {
-			for _, term := range analyze(defTokenizer, []byte(dork.Keyword)) {
-				targetClause.Keyword(term, 1.0)
+			for token := range TokenizeOrPushValue(defTokenizer, []byte(dork.Keyword)) {
+				targetClause.Keyword(token.Value, 1.0)
 			}
 			continue
 		}
@@ -92,9 +81,9 @@ func (q *Query) Compile(defTokenizer tokenizer.Tokenizer, fieldsTokenizer map[ui
 			// (field:>value) keeps its literal lexicographic bound, so it falls
 			// through to the range handling below unanalyzed.
 			if match.Operator == MatchOperatorNone {
-				tok := fieldTokenizer(defTokenizer, fieldsTokenizer, fieldHash)
-				for _, term := range analyze(tok, []byte(*match.Keyword)) {
-					targetClause.FieldKeyword(fieldHash, term, boost)
+				toknizer := PickTokenizer(defTokenizer, fieldsTokenizer, fieldHash)
+				for token := range TokenizeOrPushValue(toknizer, []byte(*match.Keyword)) {
+					targetClause.FieldKeyword(fieldHash, token.Value, boost)
 				}
 				continue
 			}

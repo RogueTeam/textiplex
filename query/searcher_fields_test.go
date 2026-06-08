@@ -246,7 +246,7 @@ func TestFieldScorePipelineFilterThenSort(t *testing.T) {
 
 	// 1. Build the candidate set with a normal filter.
 	q := &query.SimpleQuery{}
-	q.Musts.Keyword([]byte("contrato"), 1.0)
+	q.Musts.Keyword([]byte("contrato"), 1.0, 0)
 	searcher.FilterDocuments(ctx, q)
 
 	// 2. Re-rank the survivors by the numeric amount field (ascending).

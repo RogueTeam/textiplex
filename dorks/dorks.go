@@ -122,13 +122,14 @@ type Match struct {
 	Float    *Float        `parser:"| @Float" json:"float,omitzero"`
 	Integer  *Integer      `parser:"| @Int" json:"integer,omitzero"`
 	Keyword  *string       `parser:"| @(Keyword | Phrase))" json:"keyword,omitzero"`
-	Boost    *float64      `parser:"(';' @(Float | Int))?" json:"boost,omitzero"`
 }
 
 type Dork struct {
 	Operator Operator `parser:"@( '+' | '-')?" json:"operator,omitzero"`
 	Keyword  Keyword  `parser:"@(Time | Float | Int | Phrase | Keyword)" json:"keyword,omitzero"`
 	Match    *Match   `parser:"@@?" json:"match,omitzero"`
+	Boost    *float64 `parser:"(';' @(Float | Int))?" json:"boost,omitzero"`
+	Fuzzy    *uint8   `parser:"('~' @Int)?" json:"fuzzy,omitzero"`
 }
 
 type Query struct {

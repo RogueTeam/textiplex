@@ -60,9 +60,9 @@ func BenchmarkSearchShould(b *testing.B) {
 
 	for b.Loop() {
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("term-1"), 1.0)
-		q.Shoulds.Keyword([]byte("term-2"), 1.0)
-		q.Shoulds.Keyword([]byte("term-3"), 1.0)
+		q.Shoulds.Keyword([]byte("term-1"), 1.0, 0)
+		q.Shoulds.Keyword([]byte("term-2"), 1.0, 0)
+		q.Shoulds.Keyword([]byte("term-3"), 1.0, 0)
 
 		ctx := &query.QueryContext{}
 		searcher.FilterDocuments(ctx, q)
@@ -83,9 +83,9 @@ func BenchmarkSearchMust(b *testing.B) {
 
 	for b.Loop() {
 		q := &query.SimpleQuery{}
-		q.Musts.Keyword([]byte("term-1"), 1.0)
-		q.Musts.Keyword([]byte("term-2"), 1.0)
-		q.Musts.Keyword([]byte("term-3"), 1.0)
+		q.Musts.Keyword([]byte("term-1"), 1.0, 0)
+		q.Musts.Keyword([]byte("term-2"), 1.0, 0)
+		q.Musts.Keyword([]byte("term-3"), 1.0, 0)
 
 		ctx := &query.QueryContext{}
 		searcher.FilterDocuments(ctx, q)
@@ -105,10 +105,10 @@ func BenchmarkSearchCombined(b *testing.B) {
 
 	for b.Loop() {
 		q := &query.SimpleQuery{}
-		q.Musts.Keyword([]byte("term-1"), 1.0)
-		q.Shoulds.Keyword([]byte("term-2"), 2.0)
-		q.Shoulds.Keyword([]byte("term-3"), 1.0)
-		q.MustNots.Keyword([]byte("term-40"), 1.0)
+		q.Musts.Keyword([]byte("term-1"), 1.0, 0)
+		q.Shoulds.Keyword([]byte("term-2"), 2.0, 0)
+		q.Shoulds.Keyword([]byte("term-3"), 1.0, 0)
+		q.MustNots.Keyword([]byte("term-40"), 1.0, 0)
 
 		ctx := &query.QueryContext{}
 		searcher.FilterDocuments(ctx, q)
@@ -129,7 +129,7 @@ func BenchmarkSearchSelective(b *testing.B) {
 
 	for b.Loop() {
 		q := &query.SimpleQuery{}
-		q.Musts.Keyword([]byte(target), 1.0)
+		q.Musts.Keyword([]byte(target), 1.0, 0)
 
 		ctx := &query.QueryContext{}
 		searcher.FilterDocuments(ctx, q)

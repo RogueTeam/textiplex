@@ -24,6 +24,7 @@ type Range struct {
 
 type Keyword struct {
 	Boost float64
+	Fuzzy uint8
 	Value []byte
 }
 
@@ -42,19 +43,21 @@ func (c *Clause) Count() (count int) {
 	return len(c.Keywords) + len(c.FieldKeywords) + len(c.FieldRanges)
 }
 
-func (c *Clause) Keyword(kw []byte, boost float64) {
+func (c *Clause) Keyword(kw []byte, boost float64, fuzzy uint8) {
 	c.Keywords = append(c.Keywords, &Keyword{
 		Value: kw,
 		Boost: boost,
+		Fuzzy: fuzzy,
 	})
 }
 
-func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float64) {
+func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float64, fuzzy uint8) {
 	c.FieldKeywords = append(c.FieldKeywords, &ClauseEntry[Keyword]{
 		FieldHash: field,
 		Value: Keyword{
 			Value: kw,
 			Boost: boost,
+			Fuzzy: fuzzy,
 		},
 	})
 }
@@ -104,9 +107,7 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 				continue
 			}
 
-			// Do not even attempt levenshtein
-			// K is zero meaning searcher is not permitting any typo
-			// TODO: Levenshtein
+			// TODO: Levenshtein use the fuzzyK of defined in the keyword
 		}
 
 		// For those that were not found we need to do something
@@ -121,14 +122,17 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 		state.Boost = entry.Value.Boost
 
 		state.Field, state.Found = s.Storage.Fields[entry.FieldHash]
-		if !state.Found {
+		if state.Found {
+			tokensKey.Value = entry.Value.Value
+			state.Token, state.Found = state.Field.Tokens.Get(&tokensKey)
+
 			handle(&state)
 			continue
 		}
 
-		tokensKey.Value = entry.Value.Value
-		state.Token, state.Found = state.Field.Tokens.Get(&tokensKey)
-
+		// TODO: Levenshtein use the fuzzyK of defined in the keyword
+		// TODO: If everything fail, send state with nothing
+		state.Found = false
 		handle(&state)
 	}
 

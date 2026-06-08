@@ -11,7 +11,6 @@ type Searcher struct {
 	Storage           *storage.Storage
 	BM25Saturation    float64
 	BM25LengthPenalty float64
-	LevenshteinK      int
 	LevenshteinM      int
 }
 

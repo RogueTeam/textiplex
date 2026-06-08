@@ -45,22 +45,29 @@ func (q *Query) Compile(defTokenizer tokenizer.Tokenizer, fieldsTokenizer map[ui
 			targetClause = &sq.Shoulds
 		}
 
+		var boost float64
+		if dork.Boost != nil {
+			boost = *dork.Boost
+		} else {
+			boost = 1.0
+		}
+
+		var fuzzy uint8
+		if dork.Fuzzy != nil {
+			fuzzy = *dork.Fuzzy
+		}
+
 		// 1. Bare keyword (no field, no value): free text, analyzed with the
 		//    default tokenizer and expanded into one entry per produced term.
 		if dork.Match == nil {
 			for token := range TokenizeOrPushValue(defTokenizer, []byte(dork.Keyword)) {
-				targetClause.Keyword(token.Value, 1.0)
+				targetClause.Keyword(token.Value, boost, fuzzy)
 			}
 			continue
 		}
 
 		fieldHash := xxh3.HashString(string(dork.Keyword))
 		match := dork.Match
-
-		boost := 1.0
-		if match.Boost != nil {
-			boost = *match.Boost
-		}
 
 		// 2. Structured values are NEVER analyzed: numbers and dates are
 		//    sortable-encoded, and any range keeps its literal bound.
@@ -83,7 +90,7 @@ func (q *Query) Compile(defTokenizer tokenizer.Tokenizer, fieldsTokenizer map[ui
 			if match.Operator == MatchOperatorNone {
 				toknizer := PickTokenizer(defTokenizer, fieldsTokenizer, fieldHash)
 				for token := range TokenizeOrPushValue(toknizer, []byte(*match.Keyword)) {
-					targetClause.FieldKeyword(fieldHash, token.Value, boost)
+					targetClause.FieldKeyword(fieldHash, token.Value, boost, fuzzy)
 				}
 				continue
 			}
@@ -92,7 +99,7 @@ func (q *Query) Compile(defTokenizer tokenizer.Tokenizer, fieldsTokenizer map[ui
 
 		switch match.Operator {
 		case MatchOperatorNone:
-			targetClause.FieldKeyword(fieldHash, data, boost)
+			targetClause.FieldKeyword(fieldHash, data, boost, fuzzy)
 		case MatchOperatorGreater:
 			targetClause.FieldRange(fieldHash, data, nil, query.RangeCaptureModeRight, boost)
 		case MatchOperatorGreaterEqual:

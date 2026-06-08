@@ -208,7 +208,14 @@ func TestParse(t *testing.T) {
 			{Query: `-author:"Gabriel García"`, Expect: dorks.Query{Dorks: []*dorks.Dork{{Operator: dorks.OperatorMustNot, Keyword: "author", Match: &dorks.Match{Keyword: new("Gabriel García")}}}}},
 			{Query: "", Expect: dorks.Query{}},
 			{Query: "Hello\n", Expect: dorks.Query{Dorks: []*dorks.Dork{{Keyword: "Hello"}}}},
-			{Query: "age:>=30;30.0", Expect: dorks.Query{Dorks: []*dorks.Dork{{Keyword: "age", Match: &dorks.Match{Operator: dorks.MatchOperatorGreaterEqual, Integer: integer(30), Boost: new(30.0)}}}}},
+			{Query: "age:>=30;30.0", Expect: dorks.Query{
+				Dorks: []*dorks.Dork{
+					{
+						Keyword: "age",
+						Match:   &dorks.Match{Operator: dorks.MatchOperatorGreaterEqual, Integer: integer(30)},
+						Boost:   new(30.0),
+					},
+				}}},
 			{Query: "+Antonio Donis age:<=30 +country:Colombia", Expect: dorks.Query{Dorks: []*dorks.Dork{
 				{Operator: dorks.OperatorMust, Keyword: "Antonio"},
 				{Keyword: "Donis"},

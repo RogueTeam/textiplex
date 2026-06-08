@@ -69,7 +69,7 @@ func TestShouldSingleTerm(t *testing.T) {
 			s.SortAndBuildFrom(tc.docs...)
 
 			q := &query.SimpleQuery{}
-			q.Shoulds.Keyword([]byte(tc.term), 1.0)
+			q.Shoulds.Keyword([]byte(tc.term), 1.0, 0)
 
 			idxs, ctx := testsuite.RunQuery(q, &s)
 
@@ -106,7 +106,7 @@ func TestRankingByTermFrequency(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("contrato"), 1.0)
+	q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 
 	idxs, ctx := testsuite.RunQuery(q, &s)
 
@@ -132,7 +132,7 @@ func TestRankingByDocumentLength(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("contrato"), 1.0)
+	q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 
 	idxs, _ := testsuite.RunQuery(q, &s)
 
@@ -157,8 +157,8 @@ func TestRankingByInverseDocumentFrequency(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("rare"), 1.0)
-	q.Shoulds.Keyword([]byte("common"), 1.0)
+	q.Shoulds.Keyword([]byte("rare"), 1.0, 0)
+	q.Shoulds.Keyword([]byte("common"), 1.0, 0)
 
 	_, ctx := testsuite.RunQuery(q, &s)
 
@@ -185,8 +185,8 @@ func TestMustIntersection(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Musts.Keyword([]byte("contrato"), 1.0)
-	q.Musts.Keyword([]byte("interventoria"), 1.0)
+	q.Musts.Keyword([]byte("contrato"), 1.0, 0)
+	q.Musts.Keyword([]byte("interventoria"), 1.0, 0)
 
 	idxs, _ := testsuite.RunQuery(q, &s)
 
@@ -208,8 +208,8 @@ func TestMustNotExclusion(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("contrato"), 1.0)
-	q.MustNots.Keyword([]byte("vetado"), 1.0)
+	q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
+	q.MustNots.Keyword([]byte("vetado"), 1.0, 0)
 
 	idxs, ctx := testsuite.RunQuery(q, &s)
 
@@ -243,9 +243,9 @@ func TestCombinedClauses(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Musts.Keyword([]byte("contrato"), 1.0)
-	q.Shoulds.Keyword([]byte("bogota"), 1.0)
-	q.MustNots.Keyword([]byte("anulado"), 1.0)
+	q.Musts.Keyword([]byte("contrato"), 1.0, 0)
+	q.Shoulds.Keyword([]byte("bogota"), 1.0, 0)
+	q.MustNots.Keyword([]byte("anulado"), 1.0, 0)
 
 	idxs, _ := testsuite.RunQuery(q, &s)
 
@@ -273,7 +273,7 @@ func TestFieldScopedKeyword(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.FieldKeyword(fieldTitle, []byte("alerta"), 1.0)
+	q.Shoulds.FieldKeyword(fieldTitle, []byte("alerta"), 1.0, 0)
 
 	idxs, _ := testsuite.RunQuery(q, &s)
 
@@ -296,13 +296,13 @@ func TestBoostAffectsScore(t *testing.T) {
 
 	s1 := build()
 	q1 := &query.SimpleQuery{}
-	q1.Shoulds.Keyword([]byte("contrato"), 1.0)
+	q1.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 	_, ctx1 := testsuite.RunQuery(q1, s1)
 	base := ctx1.Scores[0]
 
 	s2 := build()
 	q2 := &query.SimpleQuery{}
-	q2.Shoulds.Keyword([]byte("contrato"), 2.0)
+	q2.Shoulds.Keyword([]byte("contrato"), 2.0, 0)
 	_, ctx2 := testsuite.RunQuery(q2, s2)
 	boosted := ctx2.Scores[0]
 
@@ -415,8 +415,8 @@ func TestShouldMultiTermAdditive(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("alpha"), 1.0)
-	q.Shoulds.Keyword([]byte("beta"), 1.0)
+	q.Shoulds.Keyword([]byte("alpha"), 1.0, 0)
+	q.Shoulds.Keyword([]byte("beta"), 1.0, 0)
 
 	idxs, ctx := testsuite.RunQuery(q, s)
 
@@ -437,12 +437,12 @@ func TestShouldDuplicateTerm(t *testing.T) {
 	}
 
 	q1 := &query.SimpleQuery{}
-	q1.Shoulds.Keyword([]byte("contrato"), 1.0)
+	q1.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 	idxs1, ctx1 := testsuite.RunQuery(q1, docs())
 
 	q2 := &query.SimpleQuery{}
-	q2.Shoulds.Keyword([]byte("contrato"), 1.0)
-	q2.Shoulds.Keyword([]byte("contrato"), 1.0)
+	q2.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
+	q2.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 	idxs2, ctx2 := testsuite.RunQuery(q2, docs())
 
 	assertions.Len(idxs1, 1)
@@ -463,7 +463,7 @@ func TestShouldTermInAllDocs(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("contrato"), 1.0)
+	q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 
 	idxs, ctx := testsuite.RunQuery(q, s)
 
@@ -485,7 +485,7 @@ func TestShouldRankingFullOrder(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("contrato"), 1.0)
+	q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 
 	idxs, ctx := testsuite.RunQuery(q, s)
 
@@ -510,7 +510,7 @@ func TestKeywordSpansFields(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("alerta"), 1.0)
+	q.Shoulds.Keyword([]byte("alerta"), 1.0, 0)
 
 	idxs, _ := testsuite.RunQuery(q, s)
 	got := testsuite.ResolveDocumentIndexes(s, idxs)
@@ -538,9 +538,9 @@ func TestMustThreeWayIntersection(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Musts.Keyword([]byte("a"), 1.0)
-	q.Musts.Keyword([]byte("b"), 1.0)
-	q.Musts.Keyword([]byte("c"), 1.0)
+	q.Musts.Keyword([]byte("a"), 1.0, 0)
+	q.Musts.Keyword([]byte("b"), 1.0, 0)
+	q.Musts.Keyword([]byte("c"), 1.0, 0)
 
 	idxs, _ := testsuite.RunQuery(q, s)
 	assertions.Equal([]string{"doc-all"}, testsuite.ResolveDocumentIndexes(s, idxs))
@@ -556,8 +556,8 @@ func TestMustNoMatchEmpty(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Musts.Keyword([]byte("contrato"), 1.0)
-	q.Musts.Keyword([]byte("inexistente"), 1.0)
+	q.Musts.Keyword([]byte("contrato"), 1.0, 0)
+	q.Musts.Keyword([]byte("inexistente"), 1.0, 0)
 
 	idxs, ctx := testsuite.RunQuery(q, s)
 	assertions.Empty(idxs)
@@ -574,7 +574,7 @@ func TestMustAllMatch(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Musts.Keyword([]byte("contrato"), 1.0)
+	q.Musts.Keyword([]byte("contrato"), 1.0, 0)
 
 	idxs, ctx := testsuite.RunQuery(q, s)
 	assertions.Len(idxs, 2)
@@ -593,8 +593,8 @@ func TestMustPlusShouldRanking(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Musts.Keyword([]byte("contrato"), 1.0)
-	q.Shoulds.Keyword([]byte("bogota"), 1.0)
+	q.Musts.Keyword([]byte("contrato"), 1.0, 0)
+	q.Shoulds.Keyword([]byte("bogota"), 1.0, 0)
 
 	idxs, _ := testsuite.RunQuery(q, s)
 	assertions.Equal([]string{"doc-boosted", "doc-plain"}, testsuite.ResolveDocumentIndexes(s, idxs),
@@ -617,8 +617,8 @@ func TestMustNotRemovesAll(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("contrato"), 1.0)
-	q.MustNots.Keyword([]byte("vetado"), 1.0)
+	q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
+	q.MustNots.Keyword([]byte("vetado"), 1.0, 0)
 
 	idxs, ctx := testsuite.RunQuery(q, s)
 	assertions.Empty(idxs)
@@ -635,8 +635,8 @@ func TestMustNotAbsentIsNoop(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("contrato"), 1.0)
-	q.MustNots.Keyword([]byte("jamas"), 1.0)
+	q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
+	q.MustNots.Keyword([]byte("jamas"), 1.0, 0)
 
 	idxs, _ := testsuite.RunQuery(q, s)
 	got := testsuite.ResolveDocumentIndexes(s, idxs)
@@ -657,9 +657,9 @@ func TestMustNotMultiple(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("contrato"), 1.0)
-	q.MustNots.Keyword([]byte("vetadoX"), 1.0)
-	q.MustNots.Keyword([]byte("vetadoY"), 1.0)
+	q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
+	q.MustNots.Keyword([]byte("vetadoX"), 1.0, 0)
+	q.MustNots.Keyword([]byte("vetadoY"), 1.0, 0)
 
 	idxs, ctx := testsuite.RunQuery(q, s)
 	assertions.Equal([]string{"doc-keep"}, testsuite.ResolveDocumentIndexes(s, idxs))
@@ -684,13 +684,13 @@ func TestMustNotIsPureFilter(t *testing.T) {
 	}
 
 	base := &query.SimpleQuery{}
-	base.Shoulds.Keyword([]byte("contrato"), 1.0)
+	base.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 	sBase := build()
 	_, ctxBase := testsuite.RunQuery(base, sBase)
 
 	filtered := &query.SimpleQuery{}
-	filtered.Shoulds.Keyword([]byte("contrato"), 1.0)
-	filtered.MustNots.Keyword([]byte("vetado"), 1.0)
+	filtered.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
+	filtered.MustNots.Keyword([]byte("vetado"), 1.0, 0)
 	sFil := build()
 	_, ctxFil := testsuite.RunQuery(filtered, sFil)
 
@@ -720,7 +720,7 @@ func TestFieldKeywordScoping(t *testing.T) {
 		assertions := assert.New(t)
 		s := build()
 		q := &query.SimpleQuery{}
-		q.Shoulds.FieldKeyword(fieldTitle, []byte("alerta"), 1.0)
+		q.Shoulds.FieldKeyword(fieldTitle, []byte("alerta"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-title-hit"}, testsuite.ResolveDocumentIndexes(s, idxs))
 		assertions.Equal(uint64(1), ctx.Bitmap.GetCardinality())
@@ -730,7 +730,7 @@ func TestFieldKeywordScoping(t *testing.T) {
 		assertions := assert.New(t)
 		s := build()
 		q := &query.SimpleQuery{}
-		q.Shoulds.FieldKeyword(uint64(9999), []byte("alerta"), 1.0)
+		q.Shoulds.FieldKeyword(uint64(9999), []byte("alerta"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Empty(idxs)
 		assertions.Zero(ctx.Bitmap.GetCardinality())
@@ -740,12 +740,12 @@ func TestFieldKeywordScoping(t *testing.T) {
 		assertions := assert.New(t)
 
 		scoped := &query.SimpleQuery{}
-		scoped.Shoulds.FieldKeyword(fieldBody, []byte("alerta"), 1.0)
+		scoped.Shoulds.FieldKeyword(fieldBody, []byte("alerta"), 1.0, 0)
 		sScoped := build()
 		idxScoped, _ := testsuite.RunQuery(scoped, sScoped)
 
 		unscoped := &query.SimpleQuery{}
-		unscoped.Shoulds.Keyword([]byte("alerta"), 1.0)
+		unscoped.Shoulds.Keyword([]byte("alerta"), 1.0, 0)
 		sUn := build()
 		idxUn, _ := testsuite.RunQuery(unscoped, sUn)
 
@@ -766,7 +766,7 @@ func TestBoostScalesLinearly(t *testing.T) {
 	}
 
 	baseQ := &query.SimpleQuery{}
-	baseQ.Shoulds.Keyword([]byte("contrato"), 1.0)
+	baseQ.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 	_, baseCtx := testsuite.RunQuery(baseQ, build())
 	base := baseCtx.Scores[0]
 
@@ -783,7 +783,7 @@ func TestBoostScalesLinearly(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			assertions := assert.New(t)
 			q := &query.SimpleQuery{}
-			q.Shoulds.Keyword([]byte("contrato"), tc.boost)
+			q.Shoulds.Keyword([]byte("contrato"), tc.boost, 0)
 			_, ctx := testsuite.RunQuery(q, build())
 			assertions.Greater(base, 0.0)
 			assertions.InDelta(tc.want, ctx.Scores[0], 1e-9)
@@ -802,8 +802,8 @@ func TestBoostFlipsRanking(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("alpha"), 1.0)
-	q.Shoulds.Keyword([]byte("beta"), 5.0)
+	q.Shoulds.Keyword([]byte("alpha"), 1.0, 0)
+	q.Shoulds.Keyword([]byte("beta"), 5.0, 0)
 
 	idxs, _ := testsuite.RunQuery(q, s)
 	assertions.Equal([]string{"doc-beta", "doc-alpha"}, testsuite.ResolveDocumentIndexes(s, idxs),
@@ -827,11 +827,11 @@ func TestDeterministicOrdering(t *testing.T) {
 	}
 
 	q1 := &query.SimpleQuery{}
-	q1.Shoulds.Keyword([]byte("contrato"), 1.0)
+	q1.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 	idxs1, _ := testsuite.RunQuery(q1, build())
 
 	q2 := &query.SimpleQuery{}
-	q2.Shoulds.Keyword([]byte("contrato"), 1.0)
+	q2.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 	idxs2, _ := testsuite.RunQuery(q2, build())
 
 	assertions.Equal(idxs1, idxs2, "ranking must be deterministic")
@@ -849,7 +849,7 @@ func TestResultsConsistentWithBitmap(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("contrato"), 1.0)
+	q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 
 	idxs, ctx := testsuite.RunQuery(q, s)
 
@@ -875,7 +875,7 @@ func TestScoresZeroForNonMatched(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("contrato"), 1.0)
+	q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 
 	idxs, ctx := testsuite.RunQuery(q, s)
 	assertions.Equal([]string{"doc-match"}, testsuite.ResolveDocumentIndexes(s, idxs))
@@ -894,7 +894,7 @@ func TestEmptyStorageNoPanic(t *testing.T) {
 	s := buildStorage()
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("contrato"), 1.0)
+	q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 
 	idxs, ctx := testsuite.RunQuery(q, s)
 	assertions.Empty(idxs)
@@ -910,7 +910,7 @@ func TestMustNotOnlyIsEmpty(t *testing.T) {
 	)
 
 	q := &query.SimpleQuery{}
-	q.MustNots.Keyword([]byte("contrato"), 1.0)
+	q.MustNots.Keyword([]byte("contrato"), 1.0, 0)
 
 	idxs, ctx := testsuite.RunQuery(q, s)
 	assertions.Empty(idxs)
@@ -1052,7 +1052,7 @@ func TestPropertyResultsSortedByScore(t *testing.T) {
 	s := buildStorage(docs...)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("contrato"), 1.0)
+	q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 
 	idxs, ctx := testsuite.RunQuery(q, s)
 
@@ -1093,8 +1093,8 @@ func TestPropertyMustNotPureFilter(t *testing.T) {
 	s := buildStorage(docs...)
 
 	q := &query.SimpleQuery{}
-	q.Shoulds.Keyword([]byte("contrato"), 1.0)
-	q.MustNots.Keyword([]byte("vetado"), 1.0)
+	q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
+	q.MustNots.Keyword([]byte("vetado"), 1.0, 0)
 
 	idxs, _ := testsuite.RunQuery(q, s)
 	got := testsuite.ResolveDocumentIndexes(s, idxs)
@@ -1144,7 +1144,7 @@ func TestMultiFieldScoring(t *testing.T) {
 		)
 
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("alerta"), 1.0)
+		q.Shoulds.Keyword([]byte("alerta"), 1.0, 0)
 
 		idxs, _ := testsuite.RunQuery(q, s)
 		got := testsuite.ResolveDocumentIndexes(s, idxs)
@@ -1169,7 +1169,7 @@ func TestMultiFieldScoring(t *testing.T) {
 		)
 
 		q := &query.SimpleQuery{}
-		q.Shoulds.FieldKeyword(fieldNotes, []byte("alerta"), 1.0)
+		q.Shoulds.FieldKeyword(fieldNotes, []byte("alerta"), 1.0, 0)
 
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-notes"}, testsuite.ResolveDocumentIndexes(s, idxs),
@@ -1191,7 +1191,7 @@ func TestMultiFieldScoring(t *testing.T) {
 		)
 
 		q := &query.SimpleQuery{}
-		q.Shoulds.FieldKeyword(fieldBody, []byte("contrato"), 1.0)
+		q.Shoulds.FieldKeyword(fieldBody, []byte("contrato"), 1.0, 0)
 
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-short", "doc-long"}, testsuite.ResolveDocumentIndexes(s, idxs),
@@ -1208,7 +1208,7 @@ func TestMultiFieldScoring(t *testing.T) {
 		)
 
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("anexo"), 1.0)
+		q.Shoulds.Keyword([]byte("anexo"), 1.0, 0)
 
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-a"}, testsuite.ResolveDocumentIndexes(s, idxs))
@@ -1223,7 +1223,7 @@ func TestMultiFieldScoring(t *testing.T) {
 		)
 
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("clave"), 1.0)
+		q.Shoulds.Keyword([]byte("clave"), 1.0, 0)
 
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Len(idxs, 2)
@@ -1247,7 +1247,7 @@ func TestBoostEdgeCases(t *testing.T) {
 	t.Run("zero boost contributes nothing", func(t *testing.T) {
 		assertions := assert.New(t)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("contrato"), 0.0)
+		q.Shoulds.Keyword([]byte("contrato"), 0.0, 0)
 		_, ctx := testsuite.RunQuery(q, single())
 		// The clause matched but its contribution is scaled to zero.
 		assertions.InDelta(0.0, ctx.Scores[0], 1e-12, "a zero boost must add no score")
@@ -1257,11 +1257,11 @@ func TestBoostEdgeCases(t *testing.T) {
 		assertions := assert.New(t)
 
 		baseQ := &query.SimpleQuery{}
-		baseQ.Musts.Keyword([]byte("contrato"), 1.0)
+		baseQ.Musts.Keyword([]byte("contrato"), 1.0, 0)
 		_, baseCtx := testsuite.RunQuery(baseQ, single())
 
 		boostQ := &query.SimpleQuery{}
-		boostQ.Musts.Keyword([]byte("contrato"), 4.0)
+		boostQ.Musts.Keyword([]byte("contrato"), 4.0, 0)
 		_, boostCtx := testsuite.RunQuery(boostQ, single())
 
 		assertions.Greater(baseCtx.Scores[0], 0.0)
@@ -1277,11 +1277,11 @@ func TestBoostEdgeCases(t *testing.T) {
 			)
 		}
 		baseQ := &query.SimpleQuery{}
-		baseQ.Shoulds.FieldKeyword(fieldTitle, []byte("alerta"), 1.0)
+		baseQ.Shoulds.FieldKeyword(fieldTitle, []byte("alerta"), 1.0, 0)
 		_, baseCtx := testsuite.RunQuery(baseQ, build())
 
 		boostQ := &query.SimpleQuery{}
-		boostQ.Shoulds.FieldKeyword(fieldTitle, []byte("alerta"), 2.5)
+		boostQ.Shoulds.FieldKeyword(fieldTitle, []byte("alerta"), 2.5, 0)
 		_, boostCtx := testsuite.RunQuery(boostQ, build())
 
 		assertions.InDelta(2.5*baseCtx.Scores[0], boostCtx.Scores[0], 1e-9)
@@ -1297,11 +1297,11 @@ func TestBoostEdgeCases(t *testing.T) {
 			)
 		}
 		low := &query.SimpleQuery{}
-		low.Shoulds.Keyword([]byte("contrato"), 0.1)
+		low.Shoulds.Keyword([]byte("contrato"), 0.1, 0)
 		idxLow, _ := testsuite.RunQuery(low, build())
 
 		high := &query.SimpleQuery{}
-		high.Shoulds.Keyword([]byte("contrato"), 9.0)
+		high.Shoulds.Keyword([]byte("contrato"), 9.0, 0)
 		idxHigh, _ := testsuite.RunQuery(high, build())
 
 		assertions.Equal(resolvedIDSet(build(), idxLow), resolvedIDSet(build(), idxHigh),
@@ -1311,7 +1311,7 @@ func TestBoostEdgeCases(t *testing.T) {
 	t.Run("huge boost keeps score finite", func(t *testing.T) {
 		assertions := assert.New(t)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("contrato"), 1e9)
+		q.Shoulds.Keyword([]byte("contrato"), 1e9, 0)
 		_, ctx := testsuite.RunQuery(q, single())
 		assertions.False(math.IsNaN(ctx.Scores[0]) || math.IsInf(ctx.Scores[0], 0))
 		assertions.Greater(ctx.Scores[0], 0.0)
@@ -1327,14 +1327,14 @@ func TestBoostEdgeCases(t *testing.T) {
 			)
 		}
 		q1 := &query.SimpleQuery{}
-		q1.Shoulds.Keyword([]byte("contrato"), 1.0)
-		q1.MustNots.Keyword([]byte("vetado"), 1.0)
+		q1.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
+		q1.MustNots.Keyword([]byte("vetado"), 1.0, 0)
 		s1 := build()
 		_, ctx1 := testsuite.RunQuery(q1, s1)
 
 		q2 := &query.SimpleQuery{}
-		q2.Shoulds.Keyword([]byte("contrato"), 1.0)
-		q2.MustNots.Keyword([]byte("vetado"), 50.0)
+		q2.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
+		q2.MustNots.Keyword([]byte("vetado"), 50.0, 0)
 		s2 := build()
 		_, ctx2 := testsuite.RunQuery(q2, s2)
 
@@ -1355,8 +1355,8 @@ func TestClauseContradictions(t *testing.T) {
 			testsuite.MakeDoc("doc-b", testsuite.MakeField(fieldBody, 2, testsuite.MakeToken("contrato", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Musts.Keyword([]byte("contrato"), 1.0)
-		q.MustNots.Keyword([]byte("contrato"), 1.0)
+		q.Musts.Keyword([]byte("contrato"), 1.0, 0)
+		q.MustNots.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Empty(idxs)
 		assertions.Zero(ctx.Bitmap.GetCardinality())
@@ -1368,8 +1368,8 @@ func TestClauseContradictions(t *testing.T) {
 			testsuite.MakeDoc("doc-a", testsuite.MakeField(fieldBody, 2, testsuite.MakeToken("contrato", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("contrato"), 1.0)
-		q.MustNots.Keyword([]byte("contrato"), 1.0)
+		q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
+		q.MustNots.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Empty(idxs)
 	})
@@ -1382,12 +1382,12 @@ func TestClauseContradictions(t *testing.T) {
 			)
 		}
 		mustOnly := &query.SimpleQuery{}
-		mustOnly.Musts.Keyword([]byte("contrato"), 1.0)
+		mustOnly.Musts.Keyword([]byte("contrato"), 1.0, 0)
 		_, ctxMust := testsuite.RunQuery(mustOnly, build())
 
 		both := &query.SimpleQuery{}
-		both.Musts.Keyword([]byte("contrato"), 1.0)
-		both.Shoulds.Keyword([]byte("contrato"), 1.0)
+		both.Musts.Keyword([]byte("contrato"), 1.0, 0)
+		both.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		idxBoth, ctxBoth := testsuite.RunQuery(both, build())
 
 		assertions.Len(idxBoth, 1)
@@ -1403,8 +1403,8 @@ func TestClauseContradictions(t *testing.T) {
 				testsuite.MakeToken("contrato", 1), testsuite.MakeToken("vetado", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Musts.Keyword([]byte("contrato"), 1.0)
-		q.MustNots.Keyword([]byte("vetado"), 1.0)
+		q.Musts.Keyword([]byte("contrato"), 1.0, 0)
+		q.MustNots.Keyword([]byte("vetado"), 1.0, 0)
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-keep"}, testsuite.ResolveDocumentIndexes(s, idxs))
 	})
@@ -1418,8 +1418,8 @@ func TestClauseContradictions(t *testing.T) {
 				testsuite.MakeToken("contrato", 1), testsuite.MakeToken("vetado", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Musts.Keyword([]byte("contrato"), 1.0)
-		q.MustNots.Keyword([]byte("vetado"), 1.0)
+		q.Musts.Keyword([]byte("contrato"), 1.0, 0)
+		q.MustNots.Keyword([]byte("vetado"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Empty(idxs)
 		assertions.Zero(ctx.Bitmap.GetCardinality())
@@ -1445,9 +1445,9 @@ func TestClauseCombinationsExtended(t *testing.T) {
 				testsuite.MakeToken("bogota", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Musts.Keyword([]byte("contrato"), 1.0)
-		q.Shoulds.Keyword([]byte("bogota"), 1.0)
-		q.MustNots.Keyword([]byte("anulado"), 1.0)
+		q.Musts.Keyword([]byte("contrato"), 1.0, 0)
+		q.Shoulds.Keyword([]byte("bogota"), 1.0, 0)
+		q.MustNots.Keyword([]byte("anulado"), 1.0, 0)
 
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-best", "doc-ok"}, testsuite.ResolveDocumentIndexes(s, idxs))
@@ -1462,12 +1462,12 @@ func TestClauseCombinationsExtended(t *testing.T) {
 			)
 		}
 		plain := &query.SimpleQuery{}
-		plain.Musts.Keyword([]byte("contrato"), 1.0)
+		plain.Musts.Keyword([]byte("contrato"), 1.0, 0)
 		idxPlain, _ := testsuite.RunQuery(plain, build())
 
 		withGhost := &query.SimpleQuery{}
-		withGhost.Musts.Keyword([]byte("contrato"), 1.0)
-		withGhost.Shoulds.Keyword([]byte("inexistente"), 5.0)
+		withGhost.Musts.Keyword([]byte("contrato"), 1.0, 0)
+		withGhost.Shoulds.Keyword([]byte("inexistente"), 5.0, 0)
 		idxGhost, _ := testsuite.RunQuery(withGhost, build())
 
 		assertions.Equal(testsuite.ResolveDocumentIndexes(build(), idxPlain), testsuite.ResolveDocumentIndexes(build(), idxGhost),
@@ -1483,9 +1483,9 @@ func TestClauseCombinationsExtended(t *testing.T) {
 				testsuite.MakeToken("a", 1), testsuite.MakeToken("b", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Musts.Keyword([]byte("a"), 1.0)
-		q.Musts.Keyword([]byte("b"), 1.0)
-		q.Shoulds.Keyword([]byte("plus"), 1.0)
+		q.Musts.Keyword([]byte("a"), 1.0, 0)
+		q.Musts.Keyword([]byte("b"), 1.0, 0)
+		q.Shoulds.Keyword([]byte("plus"), 1.0, 0)
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-boosted", "doc-plain"}, testsuite.ResolveDocumentIndexes(s, idxs))
 	})
@@ -1499,8 +1499,8 @@ func TestClauseCombinationsExtended(t *testing.T) {
 			testsuite.MakeDoc("doc-z", testsuite.MakeField(fieldBody, 5, testsuite.MakeToken("contrato", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Musts.Keyword([]byte("contrato"), 1.0)
-		q.Shoulds.Keyword([]byte("destacado"), 1.0)
+		q.Musts.Keyword([]byte("contrato"), 1.0, 0)
+		q.Shoulds.Keyword([]byte("destacado"), 1.0, 0)
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Equal("doc-y", string(s.DocumentsIds[idxs[0]]),
 			"the only must-match carrying the should term must rank first")
@@ -1519,9 +1519,9 @@ func TestClauseCombinationsExtended(t *testing.T) {
 				testsuite.MakeToken("contrato", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Musts.Keyword([]byte("contrato"), 1.0)
-		q.Shoulds.Keyword([]byte("bogota"), 100.0)
-		q.MustNots.Keyword([]byte("anulado"), 1.0)
+		q.Musts.Keyword([]byte("contrato"), 1.0, 0)
+		q.Shoulds.Keyword([]byte("bogota"), 100.0, 0)
+		q.MustNots.Keyword([]byte("anulado"), 1.0, 0)
 
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-b", "doc-c"}, testsuite.ResolveDocumentIndexes(s, idxs))
@@ -1552,7 +1552,7 @@ func TestFieldKeywordVariants(t *testing.T) {
 		assertions := assert.New(t)
 		s := build()
 		q := &query.SimpleQuery{}
-		q.Musts.FieldKeyword(fieldTitle, []byte("alerta"), 1.0)
+		q.Musts.FieldKeyword(fieldTitle, []byte("alerta"), 1.0, 0)
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-title-hit"}, testsuite.ResolveDocumentIndexes(s, idxs))
 	})
@@ -1573,8 +1573,8 @@ func TestFieldKeywordVariants(t *testing.T) {
 			),
 		)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("relleno"), 1.0)
-		q.MustNots.FieldKeyword(fieldTitle, []byte("alerta"), 1.0)
+		q.Shoulds.Keyword([]byte("relleno"), 1.0, 0)
+		q.MustNots.FieldKeyword(fieldTitle, []byte("alerta"), 1.0, 0)
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-keep"}, testsuite.ResolveDocumentIndexes(s, idxs),
 			"a field-scoped exclusion must not fire on the term in another field")
@@ -1593,8 +1593,8 @@ func TestFieldKeywordVariants(t *testing.T) {
 			),
 		)
 		q := &query.SimpleQuery{}
-		q.Musts.FieldKeyword(fieldTitle, []byte("alpha"), 1.0)
-		q.Musts.FieldKeyword(fieldBody, []byte("beta"), 1.0)
+		q.Musts.FieldKeyword(fieldTitle, []byte("alpha"), 1.0, 0)
+		q.Musts.FieldKeyword(fieldBody, []byte("beta"), 1.0, 0)
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-both"}, testsuite.ResolveDocumentIndexes(s, idxs),
 			"only the doc with the right term in the right field survives")
@@ -1605,7 +1605,7 @@ func TestFieldKeywordVariants(t *testing.T) {
 		s := build()
 		q := &query.SimpleQuery{}
 		// alerta exists, but never in the notes field.
-		q.Shoulds.FieldKeyword(fieldNotes, []byte("alerta"), 1.0)
+		q.Shoulds.FieldKeyword(fieldNotes, []byte("alerta"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Empty(idxs)
 		assertions.Zero(ctx.Bitmap.GetCardinality())
@@ -1615,8 +1615,8 @@ func TestFieldKeywordVariants(t *testing.T) {
 		assertions := assert.New(t)
 		s := build()
 		q := &query.SimpleQuery{}
-		q.Shoulds.FieldKeyword(fieldTitle, []byte("alerta"), 1.0) // hits doc-title-hit
-		q.Shoulds.Keyword([]byte("relleno"), 1.0)                 // hits doc-title-hit body
+		q.Shoulds.FieldKeyword(fieldTitle, []byte("alerta"), 1.0, 0) // hits doc-title-hit
+		q.Shoulds.Keyword([]byte("relleno"), 1.0, 0)                 // hits doc-title-hit body
 		idxs, _ := testsuite.RunQuery(q, s)
 		got := resolvedIDSet(s, idxs)
 		assertions.True(got["doc-title-hit"], "doc matched by both should clauses must be present")
@@ -1626,7 +1626,7 @@ func TestFieldKeywordVariants(t *testing.T) {
 		assertions := assert.New(t)
 		s := build()
 		q := &query.SimpleQuery{}
-		q.Shoulds.FieldKeyword(fieldBody, []byte("inexistente"), 1.0)
+		q.Shoulds.FieldKeyword(fieldBody, []byte("inexistente"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Empty(idxs)
 		assertions.Zero(ctx.Bitmap.GetCardinality())
@@ -1645,7 +1645,7 @@ func TestRankingSubtleties(t *testing.T) {
 			testsuite.MakeDoc("doc-b", testsuite.MakeField(fieldBody, 5, testsuite.MakeToken("contrato", 2))),
 		)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("contrato"), 1.0)
+		q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Len(idxs, 2)
 		assertions.InDelta(ctx.Scores[idxs[0]], ctx.Scores[idxs[1]], 1e-12,
@@ -1659,7 +1659,7 @@ func TestRankingSubtleties(t *testing.T) {
 			testsuite.MakeDoc("doc-sparse", testsuite.MakeField(fieldBody, 30, testsuite.MakeToken("contrato", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("contrato"), 1.0)
+		q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-dense", "doc-sparse"}, testsuite.ResolveDocumentIndexes(s, idxs))
 	})
@@ -1673,7 +1673,7 @@ func TestRankingSubtleties(t *testing.T) {
 			testsuite.MakeDoc("doc-lo", testsuite.MakeField(fieldBody, 5, testsuite.MakeToken("contrato", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("contrato"), 1.0)
+		q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertSortedDescByScore(assertions, ctx, idxs)
 		assertions.Equal("doc-hi", string(s.DocumentsIds[idxs[0]]))
@@ -1686,7 +1686,7 @@ func TestRankingSubtleties(t *testing.T) {
 			testsuite.MakeDoc("doc-one", testsuite.MakeField(fieldBody, 10, testsuite.MakeToken("contrato", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("contrato"), 1.0)
+		q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-huge", "doc-one"}, testsuite.ResolveDocumentIndexes(s, idxs))
 		for _, idx := range idxs {
@@ -1706,7 +1706,7 @@ func TestRankingSubtleties(t *testing.T) {
 		}
 		s := buildStorage(docs...)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("contrato"), 1.0)
+		q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-hit"}, testsuite.ResolveDocumentIndexes(s, idxs))
 		assertions.Equal(uint64(1), ctx.Bitmap.GetCardinality())
@@ -1724,7 +1724,7 @@ func TestCorpusLevelIDF(t *testing.T) {
 			testsuite.MakeDoc("doc-a", testsuite.MakeField(fieldBody, 3, testsuite.MakeToken("contrato", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("contrato"), 1.0)
+		q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Len(idxs, 1)
 		assertions.Greater(ctx.Scores[0], 0.0, "smoothed idf must stay positive even at N==n==1")
@@ -1743,8 +1743,8 @@ func TestCorpusLevelIDF(t *testing.T) {
 		}
 		s := buildStorage(docs...)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("comun"), 1.0)
-		q.Shoulds.Keyword([]byte("raro"), 1.0)
+		q.Shoulds.Keyword([]byte("comun"), 1.0, 0)
+		q.Shoulds.Keyword([]byte("raro"), 1.0, 0)
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Equal("doc-rare", string(s.DocumentsIds[idxs[0]]),
 			"the doc carrying the rare term must rank first")
@@ -1760,7 +1760,7 @@ func TestCorpusLevelIDF(t *testing.T) {
 		}
 		q := func() *query.SimpleQuery {
 			x := &query.SimpleQuery{}
-			x.Shoulds.Keyword([]byte("contrato"), 1.0)
+			x.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 			return x
 		}
 
@@ -1788,8 +1788,8 @@ func TestCorpusLevelIDF(t *testing.T) {
 			testsuite.MakeDoc("doc-beta", testsuite.MakeField(fieldBody, 4, testsuite.MakeToken("beta", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("alpha"), 1.0)
-		q.Shoulds.Keyword([]byte("beta"), 1.0)
+		q.Shoulds.Keyword([]byte("alpha"), 1.0, 0)
+		q.Shoulds.Keyword([]byte("beta"), 1.0, 0)
 		_, ctx := testsuite.RunQuery(q, s)
 		assertions.InDelta(scoreByID(s, ctx, "doc-alpha"), scoreByID(s, ctx, "doc-beta"), 1e-12,
 			"equal frequency, tf and length must produce equal scores")
@@ -1807,7 +1807,7 @@ func TestDegenerateInputs(t *testing.T) {
 			testsuite.MakeDoc("doc-a", testsuite.MakeField(fieldBody, 2, testsuite.MakeToken("contrato", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte(""), 1.0)
+		q.Shoulds.Keyword([]byte(""), 1.0, 0)
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Empty(idxs, "an empty term is not a stored token")
 	})
@@ -1818,7 +1818,7 @@ func TestDegenerateInputs(t *testing.T) {
 			testsuite.MakeDoc("doc-a", testsuite.MakeField(fieldBody, 2, testsuite.MakeToken("contrato", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("jamas"), 1.0)
+		q.Shoulds.Keyword([]byte("jamas"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Empty(idxs)
 		assertions.Zero(ctx.Bitmap.GetCardinality())
@@ -1831,8 +1831,8 @@ func TestDegenerateInputs(t *testing.T) {
 			testsuite.MakeDoc("doc-b", testsuite.MakeField(fieldBody, 3, testsuite.MakeToken("otro", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Musts.Keyword([]byte("contrato"), 1.0)
-		q.Musts.Keyword([]byte("contrato"), 1.0)
+		q.Musts.Keyword([]byte("contrato"), 1.0, 0)
+		q.Musts.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-a"}, testsuite.ResolveDocumentIndexes(s, idxs),
 			"a doubled must term must behave like the single term")
@@ -1845,7 +1845,7 @@ func TestDegenerateInputs(t *testing.T) {
 			testsuite.MakeDoc("doc-a", testsuite.MakeField(fieldBody, 7, testsuite.MakeToken("contrato", 7))),
 		)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("contrato"), 1.0)
+		q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Len(idxs, 1)
 		assertions.False(math.IsNaN(ctx.Scores[0]) || math.IsInf(ctx.Scores[0], 0))
@@ -1858,8 +1858,8 @@ func TestDegenerateInputs(t *testing.T) {
 			testsuite.MakeDoc("doc-a", testsuite.MakeField(fieldBody, 2, testsuite.MakeToken("contrato", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.MustNots.Keyword([]byte("uno"), 1.0)
-		q.MustNots.Keyword([]byte("dos"), 1.0)
+		q.MustNots.Keyword([]byte("uno"), 1.0, 0)
+		q.MustNots.Keyword([]byte("dos"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Empty(idxs)
 		assertions.Zero(ctx.Bitmap.GetCardinality())
@@ -1878,7 +1878,7 @@ func TestUnicodeTokens(t *testing.T) {
 			testsuite.MakeDoc("doc-plain", testsuite.MakeField(fieldBody, 2, testsuite.MakeToken("contratacion", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("contratación"), 1.0)
+		q.Shoulds.Keyword([]byte("contratación"), 1.0, 0)
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-acc"}, testsuite.ResolveDocumentIndexes(s, idxs),
 			"the accented term must not collide with its unaccented form")
@@ -1891,7 +1891,7 @@ func TestUnicodeTokens(t *testing.T) {
 			testsuite.MakeDoc("doc-nn", testsuite.MakeField(fieldBody, 2, testsuite.MakeToken("nino", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("niño"), 1.0)
+		q.Shoulds.Keyword([]byte("niño"), 1.0, 0)
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-enye"}, testsuite.ResolveDocumentIndexes(s, idxs))
 	})
@@ -1903,7 +1903,7 @@ func TestUnicodeTokens(t *testing.T) {
 			testsuite.MakeDoc("doc-upper", testsuite.MakeField(fieldBody, 2, testsuite.MakeToken("Contrato", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("Contrato"), 1.0)
+		q.Shoulds.Keyword([]byte("Contrato"), 1.0, 0)
 		idxs, _ := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-upper"}, testsuite.ResolveDocumentIndexes(s, idxs),
 			"raw byte tokens are not folded, so case must separate them")
@@ -2003,12 +2003,12 @@ func TestStructuralInvariantsExtended(t *testing.T) {
 	t.Run("scores are identical across repeated queries", func(t *testing.T) {
 		assertions := assert.New(t)
 		q1 := &query.SimpleQuery{}
-		q1.Shoulds.Keyword([]byte("contrato"), 1.0)
+		q1.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		s1 := corpus()
 		idx1, ctx1 := testsuite.RunQuery(q1, s1)
 
 		q2 := &query.SimpleQuery{}
-		q2.Shoulds.Keyword([]byte("contrato"), 1.0)
+		q2.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		s2 := corpus()
 		idx2, ctx2 := testsuite.RunQuery(q2, s2)
 
@@ -2026,8 +2026,8 @@ func TestStructuralInvariantsExtended(t *testing.T) {
 			testsuite.MakeDoc("doc-b", testsuite.MakeField(fieldBody, 4, testsuite.MakeToken("alpha", 1))),
 		)
 		ab := &query.SimpleQuery{}
-		ab.Shoulds.Keyword([]byte("alpha"), 1.0)
-		ab.Shoulds.Keyword([]byte("beta"), 1.0)
+		ab.Shoulds.Keyword([]byte("alpha"), 1.0, 0)
+		ab.Shoulds.Keyword([]byte("beta"), 1.0, 0)
 		sAB := buildStorage(
 			testsuite.MakeDoc("doc-a", testsuite.MakeField(fieldBody, 4,
 				testsuite.MakeToken("alpha", 1), testsuite.MakeToken("beta", 1))),
@@ -2036,8 +2036,8 @@ func TestStructuralInvariantsExtended(t *testing.T) {
 		idxAB, ctxAB := testsuite.RunQuery(ab, sAB)
 
 		ba := &query.SimpleQuery{}
-		ba.Shoulds.Keyword([]byte("beta"), 1.0)
-		ba.Shoulds.Keyword([]byte("alpha"), 1.0)
+		ba.Shoulds.Keyword([]byte("beta"), 1.0, 0)
+		ba.Shoulds.Keyword([]byte("alpha"), 1.0, 0)
 		idxBA, ctxBA := testsuite.RunQuery(ba, s)
 
 		assertions.Equal(testsuite.ResolveDocumentIndexes(sAB, idxAB), testsuite.ResolveDocumentIndexes(s, idxBA))
@@ -2058,7 +2058,7 @@ func TestStructuralInvariantsExtended(t *testing.T) {
 		)
 		mk := func() *query.SimpleQuery {
 			q := &query.SimpleQuery{}
-			q.Shoulds.Keyword([]byte("contrato"), 1.0)
+			q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 			return q
 		}
 		idxF, ctxF := testsuite.RunQuery(mk(), forward)
@@ -2081,8 +2081,8 @@ func TestStructuralInvariantsExtended(t *testing.T) {
 			testsuite.MakeDoc("doc-c", testsuite.MakeField(fieldBody, 3, testsuite.MakeToken("a", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Musts.Keyword([]byte("a"), 1.0)
-		q.Musts.Keyword([]byte("b"), 1.0)
+		q.Musts.Keyword([]byte("a"), 1.0, 0)
+		q.Musts.Keyword([]byte("b"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Equal(uint64(len(idxs)), ctx.Bitmap.GetCardinality())
 	})
@@ -2096,8 +2096,8 @@ func TestStructuralInvariantsExtended(t *testing.T) {
 			testsuite.MakeDoc("doc-miss", testsuite.MakeField(fieldBody, 3, testsuite.MakeToken("otro", 1))),
 		)
 		q := &query.SimpleQuery{}
-		q.Musts.Keyword([]byte("contrato"), 1.0)
-		q.MustNots.Keyword([]byte("vetado"), 1.0)
+		q.Musts.Keyword([]byte("contrato"), 1.0, 0)
+		q.MustNots.Keyword([]byte("vetado"), 1.0, 0)
 		_, ctx := testsuite.RunQuery(q, s)
 		for _, id := range []string{"doc-drop", "doc-miss"} {
 			idx, _ := testsuite.IndexOfDocument(s, id)
@@ -2110,7 +2110,7 @@ func TestStructuralInvariantsExtended(t *testing.T) {
 		assertions := assert.New(t)
 		s := corpus()
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("contrato"), 3.7)
+		q.Shoulds.Keyword([]byte("contrato"), 3.7, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		seen := map[uint64]bool{}
 		for _, idx := range idxs {
@@ -2144,12 +2144,12 @@ func TestPropertyInvariantsExtended(t *testing.T) {
 		s := buildStorage(docs...)
 
 		mustQ := &query.SimpleQuery{}
-		mustQ.Musts.Keyword([]byte("alpha"), 1.0)
-		mustQ.Musts.Keyword([]byte("beta"), 1.0)
+		mustQ.Musts.Keyword([]byte("alpha"), 1.0, 0)
+		mustQ.Musts.Keyword([]byte("beta"), 1.0, 0)
 		idxMust, _ := testsuite.RunQuery(mustQ, s)
 
 		shouldQ := &query.SimpleQuery{}
-		shouldQ.Shoulds.Keyword([]byte("alpha"), 1.0)
+		shouldQ.Shoulds.Keyword([]byte("alpha"), 1.0, 0)
 		idxShould, _ := testsuite.RunQuery(shouldQ, s)
 
 		shouldSet := resolvedIDSet(s, idxShould)
@@ -2175,12 +2175,12 @@ func TestPropertyInvariantsExtended(t *testing.T) {
 		s := buildStorage(docs...)
 
 		base := &query.SimpleQuery{}
-		base.Shoulds.Keyword([]byte("alpha"), 1.0)
+		base.Shoulds.Keyword([]byte("alpha"), 1.0, 0)
 		idxBase, _ := testsuite.RunQuery(base, s)
 
 		filtered := &query.SimpleQuery{}
-		filtered.Shoulds.Keyword([]byte("alpha"), 1.0)
-		filtered.MustNots.Keyword([]byte("beta"), 1.0)
+		filtered.Shoulds.Keyword([]byte("alpha"), 1.0, 0)
+		filtered.MustNots.Keyword([]byte("beta"), 1.0, 0)
 		idxFiltered, _ := testsuite.RunQuery(filtered, s)
 
 		assertions.LessOrEqual(len(idxFiltered), len(idxBase),
@@ -2205,12 +2205,12 @@ func TestPropertyInvariantsExtended(t *testing.T) {
 		_ = rng
 
 		low := &query.SimpleQuery{}
-		low.Shoulds.Keyword([]byte("contrato"), 0.3)
+		low.Shoulds.Keyword([]byte("contrato"), 0.3, 0)
 		sLow := mk()
 		idxLow, _ := testsuite.RunQuery(low, sLow)
 
 		high := &query.SimpleQuery{}
-		high.Shoulds.Keyword([]byte("contrato"), 12.0)
+		high.Shoulds.Keyword([]byte("contrato"), 12.0, 0)
 		sHigh := mk()
 		idxHigh, _ := testsuite.RunQuery(high, sHigh)
 
@@ -2237,7 +2237,7 @@ func TestPropertyInvariantsExtended(t *testing.T) {
 		s := buildStorage(docs...)
 
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("contrato"), 1.0)
+		q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 
 		assertions.NotEmpty(idxs)
@@ -2265,7 +2265,7 @@ func TestPropertyInvariantsExtended(t *testing.T) {
 
 		mk := func() *query.SimpleQuery {
 			q := &query.SimpleQuery{}
-			q.Shoulds.Keyword([]byte("contrato"), 1.0)
+			q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 			return q
 		}
 		sForward := buildStorage(base...)

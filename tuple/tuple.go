@@ -6,6 +6,11 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
+func Hash2[T any](a, b T) (hash uint64) {
+	var tuple = Tuple2[T]{A: a, B: b}
+	return tuple.Hash()
+}
+
 type Tuple2[T any] struct {
 	A, B T
 }

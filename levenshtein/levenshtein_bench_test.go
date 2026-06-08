@@ -1,10 +1,10 @@
-package query_test
+package levenshtein_test
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/RogueTeam/textiplex/query"
+	"github.com/RogueTeam/textiplex/levenshtein"
 )
 
 func BenchmarkLevenshtein(b *testing.B) {
@@ -42,7 +42,7 @@ func BenchmarkLevenshtein(b *testing.B) {
 		s2 := []byte(tc.s2)
 		b.Run(tc.name, func(b *testing.B) {
 			for b.Loop() {
-				query.LevenshteinMatch(s1, s2, tc.k)
+				levenshtein.LevenshteinMatch(s1, s2, tc.k)
 			}
 		})
 	}

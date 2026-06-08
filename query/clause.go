@@ -7,9 +7,19 @@ import (
 	"github.com/RogueTeam/textiplex/storage"
 )
 
+type RangeCaptureMode uint8
+
+const (
+	RangeCaptureModeNone RangeCaptureMode = iota
+	RangeCaptureModeLeft
+	RangeCaptureModeRight
+	RangeCaptureModeBoth
+)
+
 type Range struct {
-	Boost     float64
-	Low, High []byte
+	CaptureMode RangeCaptureMode
+	Boost       float64
+	Low, High   []byte
 }
 
 type Keyword struct {
@@ -49,13 +59,14 @@ func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float64) {
 	})
 }
 
-func (c *Clause) FieldRange(field uint64, hi, lo []byte, boost float64) {
+func (c *Clause) FieldRange(field uint64, lo, hi []byte, mode RangeCaptureMode, boost float64) {
 	c.FieldRanges = append(c.FieldRanges, &ClauseEntry[Range]{
 		FieldHash: field,
 		Value: Range{
-			High:  hi,
-			Low:   lo,
-			Boost: boost,
+			CaptureMode: mode,
+			Low:         lo,
+			High:        hi,
+			Boost:       boost,
 		},
 	})
 }
@@ -151,9 +162,23 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 
 		var found bool
 		tokenKey.Value = lo
-		for valid := it.Seek(&tokenKey); valid; valid = it.Next() {
+
+		valid := it.Seek(&tokenKey)
+		if valid &&
+			(entry.Value.CaptureMode == RangeCaptureModeRight || entry.Value.CaptureMode == RangeCaptureModeNone) {
+			valid = it.Next()
+		}
+
+		for ; valid; valid = it.Next() {
 			state.Token = it.Item()
-			if bytes.Compare(state.Token.Value, hi) > 0 {
+
+			tokenCmp := bytes.Compare(state.Token.Value, hi)
+			if tokenCmp > 0 {
+				break
+			}
+
+			if tokenCmp == 0 &&
+				(entry.Value.CaptureMode == RangeCaptureModeLeft || entry.Value.CaptureMode == RangeCaptureModeNone) {
 				break
 			}
 

@@ -317,9 +317,9 @@ func TestCompileIntegerRanges(t *testing.T) {
 	// NOTE: the boundary is inclusive and ">" is lowered to the same range as
 	// ">=", so "price:>100" includes the doc at exactly 100. Same for "<"/"<=".
 	tests := []Test{
-		{"greater than (inclusive)", "price:>100", []string{"p100", "p150", "p200"}},
+		{"greater than", "price:>100", []string{"p150", "p200"}},
 		{"greater or equal", "price:>=100", []string{"p100", "p150", "p200"}},
-		{"less than (inclusive)", "price:<150", []string{"p100", "p150", "p50"}},
+		{"less than", "price:<150", []string{"p100", "p50"}},
 		{"less or equal", "price:<=150", []string{"p100", "p150", "p50"}},
 		{"above everything", "price:>1000", []string{}},
 		{"below everything", "price:<10", []string{}},

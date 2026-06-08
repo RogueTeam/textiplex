@@ -104,10 +104,14 @@ func (q *Query) Compile(defTokenizer tokenizer.Tokenizer, fieldsTokenizer map[ui
 		switch match.Operator {
 		case MatchOperatorNone:
 			targetClause.FieldKeyword(fieldHash, data, boost)
-		case MatchOperatorGreater, MatchOperatorGreaterEqual:
-			targetClause.FieldRange(fieldHash, nil, data, boost)
-		case MatchOperatorLess, MatchOperatorLessEqual:
-			targetClause.FieldRange(fieldHash, data, nil, boost)
+		case MatchOperatorGreater:
+			targetClause.FieldRange(fieldHash, data, nil, query.RangeCaptureModeRight, boost)
+		case MatchOperatorGreaterEqual:
+			targetClause.FieldRange(fieldHash, data, nil, query.RangeCaptureModeBoth, boost)
+		case MatchOperatorLess:
+			targetClause.FieldRange(fieldHash, nil, data, query.RangeCaptureModeLeft, boost)
+		case MatchOperatorLessEqual:
+			targetClause.FieldRange(fieldHash, nil, data, query.RangeCaptureModeBoth, boost)
 		}
 	}
 	return sq

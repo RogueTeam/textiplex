@@ -4,8 +4,8 @@ import "iter"
 
 const (
 	MaxLevenshteinLength = 60
-	DefaultLevenshteinK  = 1
-	DefaultLevenshteinM  = 10
+	DefaultK             = 1
+	DefaultM             = 10
 )
 
 // LevenshteinSeeds yields prefix and suffix substrings of src to use as btree

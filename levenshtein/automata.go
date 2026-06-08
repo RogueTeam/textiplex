@@ -136,8 +136,8 @@ func (a *Levenshtein) NextSeek(stack []State, key []byte, matched int) []byte {
 // Matches yields every term within edit distance k of the keyword, in ascending
 // key order, capped at m. The yielded slice aliases the tree's stored key; copy
 // it if you need to retain or mutate it.
-func (a *Levenshtein) Matches() iter.Seq[[]byte] {
-	return func(yield func([]byte) bool) {
+func (a *Levenshtein) Matches() iter.Seq[*storage.Token] {
+	return func(yield func(*storage.Token) bool) {
 		count := 0
 		var seek storage.Token // empty pivot => first key
 
@@ -165,7 +165,7 @@ func (a *Levenshtein) Matches() iter.Seq[[]byte] {
 			}
 
 			if matched == len(key.Value) && a.Accept(stack[matched]) {
-				if !yield(key.Value) {
+				if !yield(key) {
 					return
 				}
 				if count++; a.m > 0 && count >= a.m {

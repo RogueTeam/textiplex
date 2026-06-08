@@ -129,7 +129,7 @@ type Dork struct {
 	Keyword  Keyword  `parser:"@(Time | Float | Int | Phrase | Keyword)" json:"keyword,omitzero"`
 	Match    *Match   `parser:"@@?" json:"match,omitzero"`
 	Boost    *float64 `parser:"(';' @(Float | Int))?" json:"boost,omitzero"`
-	Fuzzy    *uint8   `parser:"('~' @Int)?" json:"fuzzy,omitzero"`
+	Fuzzy    *int     `parser:"('~' @Int)?" json:"fuzzy,omitzero"`
 }
 
 type Query struct {
@@ -141,14 +141,14 @@ var parser = participle.MustBuild[Query](
 	participle.Lexer(lexer.MustSimple([]lexer.SimpleRule{
 		{Name: "whitespace", Pattern: `[ \t\n\r]+`},
 
-		{Name: "Punctuation", Pattern: `:|;`},
+		{Name: "Punctuation", Pattern: `:|;|~`},
 		{Name: "MustOperator", Pattern: `\+|\-`},
 		{Name: "MatchOperator", Pattern: "(<=)|(>=)|<|>"},
 		{Name: "Time", Pattern: `(\d{4}-\d{2}-\d{2})|("\d{4}-\d{2}-\d{2}")`},
 		{Name: "Float", Pattern: `(\d+\.\d+)|("\d+\.\d+")`},
 		{Name: "Int", Pattern: `\d+|("\d+")`},
 		{Name: "Phrase", Pattern: `"(\\"|[^"])*"`},
-		{Name: "Keyword", Pattern: `[áéíóúñA-Za-z0-9]+[áéíóúñA-Za-z0-9!%"#$%&'()*+*,\-./<=>?@[\\\]^_` + "`" + `{|}~]*`},
+		{Name: "Keyword", Pattern: `[áéíóúñA-Za-z0-9]+[áéíóúñA-Za-z0-9!%"#$%&'()*+*,\-./<=>?@[\\\]^_` + "`" + `{|}]*`},
 	})),
 )
 

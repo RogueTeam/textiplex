@@ -4,10 +4,11 @@ import (
 	"bytes"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/RogueTeam/textiplex/levenshtein"
 	"github.com/RogueTeam/textiplex/storage"
 )
 
-type RangeCaptureMode uint8
+type RangeCaptureMode int
 
 const (
 	RangeCaptureModeNone RangeCaptureMode = iota
@@ -24,7 +25,7 @@ type Range struct {
 
 type Keyword struct {
 	Boost float64
-	Fuzzy uint8
+	Fuzzy int
 	Value []byte
 }
 
@@ -43,7 +44,7 @@ func (c *Clause) Count() (count int) {
 	return len(c.Keywords) + len(c.FieldKeywords) + len(c.FieldRanges)
 }
 
-func (c *Clause) Keyword(kw []byte, boost float64, fuzzy uint8) {
+func (c *Clause) Keyword(kw []byte, boost float64, fuzzy int) {
 	c.Keywords = append(c.Keywords, &Keyword{
 		Value: kw,
 		Boost: boost,
@@ -51,7 +52,7 @@ func (c *Clause) Keyword(kw []byte, boost float64, fuzzy uint8) {
 	})
 }
 
-func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float64, fuzzy uint8) {
+func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float64, fuzzy int) {
 	c.FieldKeywords = append(c.FieldKeywords, &ClauseEntry[Keyword]{
 		FieldHash: field,
 		Value: Keyword{
@@ -107,7 +108,25 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 				continue
 			}
 
-			// TODO: Levenshtein use the fuzzyK of defined in the keyword
+			// Levenshtein use the fuzzyK of defined in the keyword
+			k := min(s.LevenshteinMaxK, kw.Fuzzy)
+			var m int
+			if s.LevenshteinM != 0 {
+				m = s.LevenshteinM
+			} else {
+				m = levenshtein.DefaultM
+			}
+			if k > 0 && m > 0 {
+				automata := levenshtein.New(k, m, kw.Value, state.Field.Tokens)
+				for state.Token = range automata.Matches() {
+					state.Found = true
+					if !found {
+						found = true
+					}
+					handle(&state)
+					break
+				}
+			}
 		}
 
 		// For those that were not found we need to do something
@@ -117,6 +136,7 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 		}
 	}
 
+fieldKwLoop:
 	for _, entry := range c.FieldKeywords {
 		state.FieldHash = entry.FieldHash
 		state.Boost = entry.Value.Boost
@@ -130,8 +150,24 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 			continue
 		}
 
-		// TODO: Levenshtein use the fuzzyK of defined in the keyword
-		// TODO: If everything fail, send state with nothing
+		// Levenshtein use the fuzzyK of defined in the keyword
+		k := min(s.LevenshteinMaxK, entry.Value.Fuzzy)
+		var m int
+		if s.LevenshteinM != 0 {
+			m = s.LevenshteinM
+		} else {
+			m = levenshtein.DefaultM
+		}
+		if k > 0 && m > 0 {
+			automata := levenshtein.New(k, m, entry.Value.Value, state.Field.Tokens)
+			for state.Token = range automata.Matches() {
+				state.Found = true
+				handle(&state)
+				continue fieldKwLoop
+			}
+		}
+
+		// If everything fail, send state with nothing
 		state.Found = false
 		handle(&state)
 	}

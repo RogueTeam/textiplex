@@ -12,7 +12,8 @@ type Searcher struct {
 	BM25Saturation    float64
 	BM25LengthPenalty float64
 	// Maximum amount of entries challenged against levenshtein fuzz algorithm
-	LevenshteinM int
+	LevenshteinM    int
+	LevenshteinMaxK int
 }
 
 func New(s *storage.Storage) (searcher *Searcher) {

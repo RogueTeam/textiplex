@@ -3,6 +3,7 @@ package testsuite
 import (
 	"bytes"
 
+	"github.com/RogueTeam/textiplex/levenshtein"
 	"github.com/RogueTeam/textiplex/query"
 	"github.com/RogueTeam/textiplex/storage"
 )
@@ -12,6 +13,8 @@ import (
 // raw scores and the resolved bitmap.
 func RunQuery(q *query.SimpleQuery, s *storage.Storage) (idxs []uint64, ctx *query.QueryContext) {
 	searcher := query.New(s)
+	searcher.LevenshteinM = levenshtein.DefaultM
+	searcher.LevenshteinMaxK = levenshtein.DefaultK
 	ctx = &query.QueryContext{}
 	searcher.FilterDocuments(ctx, q)
 	searcher.BM25Score(ctx, q)

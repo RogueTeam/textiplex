@@ -1,7 +1,6 @@
 package testsuite
 
 import (
-	"fmt"
 	"iter"
 	"slices"
 	"strings"
@@ -25,16 +24,19 @@ func CompileQueryWith(t *testing.T, q string, def tokenizer.Tokenizer, fields ma
 		return nil
 	}
 
-	sq := parsed.Compile(func(in []byte) (seq iter.Seq[*tokenizer.Token]) {
-		return func(yield func(*tokenizer.Token) bool) {
-			for entry := range def(in) {
-				fmt.Println(string(entry.Value))
-				if !yield(entry) {
-					return
+	sq := parsed.Compile(
+		func(in []byte) (seq iter.Seq[*tokenizer.Token]) {
+			return func(yield func(*tokenizer.Token) bool) {
+				for entry := range def(in) {
+					t.Logf("Entry Value: %s", entry.Value)
+					if !yield(entry) {
+						return
+					}
 				}
 			}
-		}
-	}, fields)
+		},
+		fields,
+	)
 	if !assertions.NotNil(sq, "Compile(%q) returned nil — it must return the SimpleQuery it built", q) {
 		return nil
 	}

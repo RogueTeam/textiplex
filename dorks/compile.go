@@ -52,7 +52,7 @@ func (q *Query) Compile(defTokenizer tokenizer.Tokenizer, fieldsTokenizer map[ui
 			boost = 1.0
 		}
 
-		var fuzzy uint8
+		var fuzzy int
 		if dork.Fuzzy != nil {
 			fuzzy = *dork.Fuzzy
 		}

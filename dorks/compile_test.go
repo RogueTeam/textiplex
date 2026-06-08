@@ -471,3 +471,52 @@ func TestCompileCompoundQuery(t *testing.T) {
 			"a +range filters the candidate set alongside the +keyword")
 	})
 }
+
+// ==== Fuzzy search
+
+func TestCompileFuzzySearch(t *testing.T) {
+
+	// Both docs hold the token "active" but in different fields. A scoped
+	// "status:active" must only reach the one whose status field carries it.
+	s := BuildStorageFromDocs(
+		testsuite.MakeDoc(
+			"person-1",
+			testsuite.MakeField(
+				xxh3.HashString("first-name"), 1,
+				testsuite.MakeToken("antonio", 1),
+			),
+			testsuite.MakeField(
+				xxh3.HashString("last-name"), 1,
+				testsuite.MakeToken("donis", 1),
+			),
+		),
+		testsuite.MakeDoc(
+			"person-2",
+			testsuite.MakeField(
+				xxh3.HashString("first-name"), 1,
+				testsuite.MakeToken("juan", 1),
+			),
+			testsuite.MakeField(
+				xxh3.HashString("last-name"), 1,
+				testsuite.MakeToken("donis", 1),
+			),
+		),
+	)
+
+	type Test struct {
+		Query  string
+		Expect []string
+	}
+	tests := []Test{
+		{Query: "doni~1", Expect: []string{"person-1", "person-2"}},
+		{Query: "antonyo~1", Expect: []string{"person-1"}},
+		{Query: "4nt0nyo~3", Expect: []string{}}, // Should Fail, testsuite is configured to use at max K = 1 (levenshtein.DefaultK)
+	}
+
+	for _, test := range tests {
+		t.Run(test.Query, func(t *testing.T) {
+			assertions := assert.New(t)
+			assertions.Equal(test.Expect, testsuite.EnglishMatchedSet(t, test.Query, s), "results doesn't match")
+		})
+	}
+}

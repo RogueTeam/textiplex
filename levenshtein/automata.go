@@ -7,6 +7,12 @@ import (
 	"github.com/tidwall/btree"
 )
 
+const (
+	MaxLevenshteinLength = 60
+	DefaultK             = 1
+	DefaultM             = 10
+)
+
 // Levenshtein intersects a Levenshtein automaton (fixed target keyword, max
 // edit distance K) with a byte-sorted tidwall BTreeG[[]byte].
 //

@@ -45,14 +45,27 @@ func (s *Searcher) UpdateScoresWithBM25(ctx *QueryContext, state *ClauseState) {
 		freq := freqs[freqIdx].Frequency
 		freqs = freqs[1+freqIdx:]
 
+		var saturation, lengthPenalty float64
+		if s.BM25Saturation != 0 {
+			saturation = s.BM25Saturation
+		} else {
+			saturation = DefaultSaturation
+		}
+
+		if s.BM25LengthPenalty != 0 {
+			lengthPenalty = s.BM25LengthPenalty
+		} else {
+			lengthPenalty = DefaultLengthPenalty
+		}
+
 		ctx.Scores[docIdx] += state.Boost * ScoreTermBM25(
 			/* docCoun */ uint64(len(field.DocumentLengths)),
 			/* tokenDocFreq */ token.FrequencyCount,
 			/* tokenFreq */ freq,
 			/* documentLength */ docLength,
 			/* avgDocLength */ field.AvgDocumentLength,
-			/* saturation */ DefaultSaturation,
-			/* lengthPenalty */ DefaultLengthPenalty,
+			/* saturation */ saturation,
+			/* lengthPenalty */ lengthPenalty,
 		)
 	}
 }

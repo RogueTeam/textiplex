@@ -8,7 +8,9 @@ import (
 )
 
 type Searcher struct {
-	Storage *storage.Storage
+	Storage           *storage.Storage
+	BM25Saturation    float64
+	BM25LengthPenalty float64
 }
 
 func New(s *storage.Storage) (searcher *Searcher) {

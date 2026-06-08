@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/RogueTeam/textiplex/levenshtein"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLevenshtein(t *testing.T) {
@@ -11,7 +12,7 @@ func TestLevenshtein(t *testing.T) {
 		name   string
 		s1, s2 string
 		k      int
-		want   bool
+		expect bool
 	}{
 		// --- Exact match ---
 		{"exact/empty", "", "", 1, true},
@@ -80,10 +81,10 @@ func TestLevenshtein(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := levenshtein.LevenshteinMatch([]byte(tc.s1), []byte(tc.s2), tc.k)
-			if got != tc.want {
-				t.Errorf("Levenshtein(%q, %q, k=%d) = %v, want %v",
-					tc.s1, tc.s2, tc.k, got, tc.want)
+			assertions := assert.New(t)
+			match := levenshtein.LevenshteinMatch([]byte(tc.s1), []byte(tc.s2), tc.k)
+			if !assertions.Equal(tc.expect, match, "match should be equal to expected") {
+				return
 			}
 		})
 	}

@@ -1,35 +1,38 @@
 package query
 
-import (
-	"iter"
+import "iter"
+
+const (
+	MaxLevenshteinLength = 60
+	DefaultLevenshteinK  = 1
+	DefaultLevenshteinM  = 10
 )
 
-const MaxLevenshteinLength = 60
-
+// LevenshteinSeeds yields prefix and suffix substrings of src to use as btree
+// seek targets when doing heuristic fuzzy fallback. Not used by the automata
+// traversal but kept for reference and potential hybrid use.
 func LevenshteinSeeds(src []byte) (seq iter.Seq[[]byte]) {
 	return func(yield func([]byte) bool) {
-		// Yield as prefix
+		// Shrink from right: "acount" -> "acoun", "acou", ...
 		for n := 1; n < len(src); n++ {
-			sub := src[:len(src)-n]
-			if !yield(sub) {
+			if !yield(src[:len(src)-n]) {
 				return
 			}
 		}
-		// Yield as suffix
+		// Shrink from left: "acount" -> "count", "ount", ...
+		// Covers leading-deletion candidates that sort before the query.
 		for n := 1; n < len(src); n++ {
-			sub := src[n:]
-			if !yield(sub) {
+			if !yield(src[n:]) {
 				return
 			}
 		}
 	}
 }
 
-// Computes the LevenshteinMatch of between two byte arrays
-// Max Supported K is 3
-// Max supported string length is MaxLevenshteinLength
-func LevenshteinMatch(s1, s2 []byte, k int) (match bool) {
-	// Prevent exploits from attackers wanting a DDoS by forcing the server to allocate a huge buffer
+// LevenshteinMatch reports whether the edit distance between s1 and s2 is <= k.
+// Max supported k is 3. Strings longer than MaxLevenshteinLength return false
+// to prevent DoS via large allocation.
+func LevenshteinMatch(s1, s2 []byte, k int) bool {
 	if len(s1) >= MaxLevenshteinLength || len(s2) >= MaxLevenshteinLength {
 		return false
 	}
@@ -40,13 +43,14 @@ func LevenshteinMatch(s1, s2 []byte, k int) (match bool) {
 
 	stride := k + 1
 
-	size := (len(s2) + 1) * (k + 1)
+	size := (len(s2) + 1) * stride
+	buffer := make([]bool, 2*size)
 	// index is computed from
 	// i2 (character position on string 2) * stride + k
-	buffer := make([]bool, 2*size)
 	current := buffer[:size]
 	next := buffer[size:]
 
+	// Initial state: (i2=0, d=k)
 	current[k] = true // (i2=0, d=k) -- your initial state
 
 	// Once all characters of string 1

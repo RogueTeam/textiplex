@@ -7,11 +7,6 @@ import (
 	"github.com/RogueTeam/textiplex/storage"
 )
 
-const (
-	DefaultLevenshteinK = 1
-	DefaultLevenshteinM = 10
-)
-
 type Searcher struct {
 	Storage           *storage.Storage
 	BM25Saturation    float64

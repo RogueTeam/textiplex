@@ -42,7 +42,7 @@ func BenchmarkLevenshtein(b *testing.B) {
 		s2 := []byte(tc.s2)
 		b.Run(tc.name, func(b *testing.B) {
 			for b.Loop() {
-				query.Levenshtein(s1, s2, tc.k)
+				query.LevenshteinMatch(s1, s2, tc.k)
 			}
 		})
 	}

@@ -86,9 +86,16 @@ type ClauseState struct {
 type HandleClauseFunc func(state *ClauseState)
 
 func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
+	var levenshteinM int
+	if s.LevenshteinM == 0 {
+		levenshteinM = DefaultLevenshteinM
+	} else {
+		levenshteinM = s.LevenshteinM
+	}
+
 	var state ClauseState
 
-	var tokensKey storage.Token
+	var levenshteinSeekKey, tokensKey storage.Token
 	for _, kw := range c.Keywords {
 		state.Boost = kw.Boost
 		tokensKey.Value = kw.Value
@@ -96,14 +103,41 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 		var found bool
 		for state.FieldHash, state.Field = range s.Storage.Fields {
 			state.Token, state.Found = state.Field.Tokens.Get(&tokensKey)
-			if !state.Found {
+			if state.Found {
+				handle(&state)
+				if !found {
+					found = true
+				}
 				continue
 			}
 
-			handle(&state)
-			if !found {
-				found = true
+			// Do not even attempt levenshtein
+			// K is zero meaning searcher is not permitting any typo
+			if s.LevenshteinK == 0 {
+				continue
 			}
+
+			it := state.Field.Tokens.Iter()
+
+		levenshtein:
+			for levenshteinSeekKey.Value = range LevenshteinSeeds(kw.Value) {
+				var m int
+				for valid := it.Seek(&levenshteinSeekKey); m < levenshteinM && valid; m, valid = m+1, it.Next() {
+					state.Token = it.Item()
+
+					if !LevenshteinMatch(state.Token.Value, kw.Value, s.LevenshteinK) {
+						continue
+					}
+
+					state.Found = true
+					if !found {
+						found = true
+					}
+					handle(&state)
+					break levenshtein
+				}
+			}
+			it.Release()
 		}
 
 		// For those that were not found we need to do something

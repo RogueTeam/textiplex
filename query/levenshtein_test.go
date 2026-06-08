@@ -80,7 +80,7 @@ func TestLevenshtein(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := query.Levenshtein([]byte(tc.s1), []byte(tc.s2), tc.k)
+			got := query.LevenshteinMatch([]byte(tc.s1), []byte(tc.s2), tc.k)
 			if got != tc.want {
 				t.Errorf("Levenshtein(%q, %q, k=%d) = %v, want %v",
 					tc.s1, tc.s2, tc.k, got, tc.want)

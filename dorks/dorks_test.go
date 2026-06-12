@@ -15,7 +15,7 @@ func date(tb testing.TB, s string) (t *dorks.Time) {
 
 	assertions := assert.New(tb)
 	v, err := time.Parse(time.DateOnly, s)
-	if !assertions.Nil(err, "failed to parse time") {
+	if !assertions.NoError(err, "failed to parse time") {
 		return nil
 	}
 	return &dorks.Time{
@@ -228,7 +228,7 @@ func TestParse(t *testing.T) {
 				assertions := assert.New(t)
 
 				q, err := dorks.Parse(strings.NewReader(test.Query))
-				if !assertions.Nil(err, "failed to parse query") {
+				if !assertions.NoError(err, "failed to parse query") {
 					return
 				}
 

@@ -526,7 +526,7 @@ func TestLoadBytesErrors(t *testing.T) {
 
 			filename := testsuite.TempFilename(t, "invalid_*.bin")
 			err := os.WriteFile(filename, tc.buf, 0o700)
-			if !assertions.Nil(err, "failed to write invalid buffer") {
+			if !assertions.NoError(err, "failed to write invalid buffer") {
 				return
 			}
 

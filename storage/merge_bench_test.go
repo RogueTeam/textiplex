@@ -100,7 +100,7 @@ func BenchmarkMerge(b *testing.B) {
 
 	for b.Loop() {
 		err := m.Merge(out, &a, &bb)
-		if !assertions.Nil(err, "merge failed") {
+		if !assertions.NoError(err, "merge failed") {
 			return
 		}
 	}

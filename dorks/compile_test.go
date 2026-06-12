@@ -40,7 +40,7 @@ func TestCompileReturnsBuiltQuery(t *testing.T) {
 	assertions := assert.New(t)
 
 	parsed, err := dorks.Parse(strings.NewReader("contrato +medellin precio:>1000"))
-	if !assertions.Nil(err) {
+	if !assertions.NoError(err) {
 		return
 	}
 

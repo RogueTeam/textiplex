@@ -74,7 +74,7 @@ func BenchmarkLoadBytes(b *testing.B) {
 	filename := testsuite.TempFilename(b, "storage_bench_*.bin")
 
 	err := s.SaveTo(filename)
-	if !assertions.Nil(err, "failed to save storage into file") {
+	if !assertions.NoError(err, "failed to save storage into file") {
 		return
 	}
 	b.Cleanup(func() {
@@ -88,7 +88,7 @@ func BenchmarkLoadBytes(b *testing.B) {
 	for b.Loop() {
 		var loaded storage.Storage
 		err := loaded.Load(filename)
-		if !assertions.Nil(err, "failed to load bytes") {
+		if !assertions.NoError(err, "failed to load bytes") {
 			return
 		}
 		loaded.Close()

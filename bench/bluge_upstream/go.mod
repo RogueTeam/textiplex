@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/blugelabs/bluge v0.2.2
 	github.com/pluto-org-co/bluge v0.0.0-20260531030518-64dc3ecde620
+	github.com/stretchr/testify v1.11.1
 )
 
 require (
@@ -27,7 +28,6 @@ require (
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

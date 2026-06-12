@@ -13,7 +13,7 @@ func TempFilename(tb testing.TB, pattern string) (name string) {
 	assertions := assert.New(tb)
 
 	file, err := os.CreateTemp(tb.TempDir(), pattern)
-	if !assertions.Nil(err, "failed to create temporary file") {
+	if !assertions.NoError(err, "failed to create temporary file") {
 		return ""
 	}
 	file.Close()
@@ -22,4 +22,20 @@ func TempFilename(tb testing.TB, pattern string) (name string) {
 	})
 
 	return file.Name()
+}
+
+func TempDirectory(tb testing.TB, pattern string) (name string) {
+	tb.Helper()
+
+	assertions := assert.New(tb)
+
+	name, err := os.MkdirTemp(tb.TempDir(), pattern)
+	if !assertions.NoError(err, "failed to create temporary file") {
+		return ""
+	}
+	tb.Cleanup(func() {
+		os.RemoveAll(name)
+	})
+
+	return name
 }

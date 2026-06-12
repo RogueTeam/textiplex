@@ -83,6 +83,6 @@ func SortableDate(t *testing.T, s string) []byte {
 	t.Helper()
 	assertions := assert.New(t)
 	tm, err := time.Parse(time.DateOnly, s)
-	assertions.Nil(err, "parse date %q", s)
+	assertions.NoError(err, "parse date %q", s)
 	return SortableInt64(tm.UnixNano())
 }

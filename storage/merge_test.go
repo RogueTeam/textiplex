@@ -19,13 +19,13 @@ func mergeAndLoad(t *testing.T, a, b *storage.Storage) *storage.Storage {
 
 	m := storage.Merger{TempDir: t.TempDir()}
 	err := m.Merge(out, a, b)
-	if !assertions.Nil(err, "merge must not fail") {
+	if !assertions.NoError(err, "merge must not fail") {
 		t.FailNow()
 	}
 
 	var merged storage.Storage
 	err = merged.Load(out)
-	if !assertions.Nil(err, "loading merged file must not fail") {
+	if !assertions.NoError(err, "loading merged file must not fail") {
 		t.FailNow()
 	}
 	t.Cleanup(func() { merged.Close() })

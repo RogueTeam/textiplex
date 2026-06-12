@@ -20,7 +20,7 @@ func CompileQueryWith(t *testing.T, q string, def tokenizer.Tokenizer, fields ma
 	assertions := assert.New(t)
 
 	parsed, err := dorks.Parse(strings.NewReader(q))
-	if !assertions.Nil(err, "parse %q", q) {
+	if !assertions.NoError(err, "parse %q", q) {
 		return nil
 	}
 

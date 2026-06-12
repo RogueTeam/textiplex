@@ -34,14 +34,14 @@ func RoundTrip(tb testing.TB, s *storage.Storage) *storage.Storage {
 	filename := TempFilename(tb, "roundtrip_*.bin")
 
 	err := s.SaveTo(filename)
-	if !assertions.Nil(err, "save into file") {
+	if !assertions.NoError(err, "save into file") {
 		return nil
 	}
 
 	loaded := &storage.Storage{}
 
 	err = loaded.Load(filename)
-	if !assertions.Nil(err, "failed to load file") {
+	if !assertions.NoError(err, "failed to load file") {
 		return nil
 	}
 	tb.Cleanup(func() {

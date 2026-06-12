@@ -2,7 +2,10 @@ module bluge_fork
 
 go 1.26
 
-require github.com/pluto-org-co/bluge v0.0.0-20260531030518-64dc3ecde620
+require (
+	github.com/pluto-org-co/bluge v0.0.0-20260531030518-64dc3ecde620
+	github.com/stretchr/testify v1.11.1
+)
 
 require (
 	github.com/RoaringBitmap/roaring v1.9.4 // indirect
@@ -20,7 +23,6 @@ require (
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect

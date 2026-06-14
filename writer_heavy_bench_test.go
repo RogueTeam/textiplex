@@ -103,7 +103,10 @@ func BenchmarkHeavyWriter(b *testing.B) {
 
 			for batch := range batchsCh {
 				wg.Go(func() {
-					defer func() { workers <- struct{}{} }()
+					defer func() {
+						workers <- struct{}{}
+						batchPool.Put(batch)
+					}()
 
 					b.Logf("Inserting batch of size %d", batch.Size)
 					err := writer.Batch(batch)

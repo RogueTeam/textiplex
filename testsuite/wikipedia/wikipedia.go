@@ -43,7 +43,10 @@ func Pages() (seq iter.Seq[*Page], err error) {
 			line := scanner.Bytes()
 
 			page := poolPage.Get()
-			json.Unmarshal(line, page)
+			err := json.Unmarshal(line, page)
+			if err != nil {
+				continue
+			}
 
 			if !yield(page) {
 				return

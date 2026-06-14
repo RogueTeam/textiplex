@@ -135,7 +135,6 @@ func convertToJson() {
 		}
 
 		encoder.Encode(&wPage)
-		buffered.WriteByte('\n')
 	}
 
 	err = buffered.Flush()

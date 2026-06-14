@@ -18,8 +18,13 @@ func TestPages(t *testing.T) {
 	}
 
 	start := time.Now()
+
+	var count int
 	for page := range pages {
-		fmt.Println(string(page.Title))
+		count++
+		if count%1_000_000 == 0 {
+			fmt.Println(count, string(page.Title))
+		}
 	}
 
 	t.Logf("Spent: %v", time.Since(start))

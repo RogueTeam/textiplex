@@ -1,15 +1,15 @@
 package wikipedia
 
 import (
-	"bufio"
+	"bytes"
 	_ "embed"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"iter"
-	"log"
 	"os"
 
 	"github.com/RogueTeam/textiplex/pool"
+	"golang.org/x/sys/unix"
 )
 
 const WikipediaFilenameVar = "WIKIPEDIA_FILENAME"
@@ -31,16 +31,38 @@ func Pages() (seq iter.Seq[*Page], err error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file defined by: %s: %w", WikipediaFilename, err)
 	}
+	defer func() {
+		if err != nil {
+			file.Close()
+		}
+	}()
+
+	info, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file info: %w", err)
+	}
+
+	data, err := unix.Mmap(
+		int(file.Fd()),
+		0,
+		int(info.Size()),
+		unix.PROT_READ,
+		unix.MAP_PRIVATE)
+	if err != nil {
+		return nil, fmt.Errorf("failed to mmap file: %w", err)
+	}
+
 	return func(yield func(*Page) bool) {
-		defer file.Close()
-
-		buffered := bufio.NewReaderSize(file, 1024*1024)
-
-		scanner := bufio.NewScanner(buffered)
+		defer func() {
+			unix.Munmap(data)
+			file.Close()
+		}()
 
 		var poolPage = pool.New[Page](1_000)
-		for scanner.Scan() {
-			line := scanner.Bytes()
+		for line := range bytes.SplitSeq(data, []byte("\n")) {
+			if len(line) == 0 {
+				continue
+			}
 
 			page := poolPage.Get()
 			err := json.Unmarshal(line, page)
@@ -51,11 +73,6 @@ func Pages() (seq iter.Seq[*Page], err error) {
 			if !yield(page) {
 				return
 			}
-		}
-
-		err := scanner.Err()
-		if err != nil {
-			log.Printf("failed to scan json file: %v", err)
 		}
 	}, nil
 }

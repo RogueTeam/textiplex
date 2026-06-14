@@ -1,7 +1,6 @@
 package wikipedia_test
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -23,7 +22,7 @@ func TestPages(t *testing.T) {
 	for page := range pages {
 		count++
 		if count%1_000_000 == 0 {
-			fmt.Println(count, string(page.Title))
+			t.Logf("Delta to: %d - %s - %v", count, string(page.Title), time.Since(start))
 		}
 	}
 

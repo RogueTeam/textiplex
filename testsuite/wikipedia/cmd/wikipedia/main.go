@@ -134,8 +134,8 @@ func convertToJson() {
 			Content: page.Revisions[last].Text.Text,
 		}
 
-		buffered.WriteByte('\n')
 		encoder.Encode(&wPage)
+		buffered.WriteByte('\n')
 	}
 
 	err = buffered.Flush()

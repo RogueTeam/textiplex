@@ -21,29 +21,9 @@ const MaxBatchSize = 1024 * 1024 * 1024
 func BenchmarkHeavyWriter(b *testing.B) {
 	b.StopTimer()
 
-	assertions := assert.New(b)
-
 	var writer = textiplex.Writer{
 		TemporaryDirectory: testsuite.TempDirectory(b, "temp-*"),
 		Directory:          testsuite.TempDirectory(b, "segments-*"),
-	}
-
-	maxWorkers := min(4, runtime.NumCPU())
-
-	batchPool := sync.Pool{
-		New: func() any {
-			return fields.NewBatch(1_000)
-		},
-	}
-
-	var workers = make(chan struct{}, maxWorkers)
-	for range maxWorkers {
-		workers <- struct{}{}
-	}
-
-	pages, err := wikipedia.Pages()
-	if !assertions.NoError(err, "failed to prepare pages reader") {
-		return
 	}
 
 	b.ResetTimer()
@@ -53,7 +33,25 @@ func BenchmarkHeavyWriter(b *testing.B) {
 	b.Run("Indexing", func(b *testing.B) {
 		b.StopTimer()
 
+		maxWorkers := min(4, runtime.NumCPU())
+
+		var workers = make(chan struct{}, maxWorkers)
+		for range maxWorkers {
+			workers <- struct{}{}
+		}
+
+		batchPool := sync.Pool{
+			New: func() any {
+				return fields.NewBatch(1_000)
+			},
+		}
+
 		assertions := assert.New(b)
+
+		pages, err := wikipedia.Pages()
+		if !assertions.NoError(err, "failed to prepare pages reader") {
+			return
+		}
 
 		b.ResetTimer()
 		b.ReportAllocs()

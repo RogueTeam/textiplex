@@ -128,6 +128,8 @@ func BenchmarkHeavyWriter(b *testing.B) {
 		}
 	})
 
+	runtime.GC()
+
 	b.Run("Merge", func(b *testing.B) {
 		b.StopTimer()
 

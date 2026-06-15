@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"runtime"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -39,6 +40,12 @@ func (w *Writer) Batch(batch *fields.Batch) (err error) {
 // Or when no insertions are happening in the background
 func (w *Writer) Merge() (err error) {
 	var allErrors []error
+	numWorkers := min(4, runtime.NumCPU())
+	var workers = make(chan struct{}, numWorkers)
+	for range numWorkers {
+		workers <- struct{}{}
+	}
+
 	for {
 		dirEntries, err := os.ReadDir(w.Directory)
 		if err != nil {
@@ -55,7 +62,9 @@ func (w *Writer) Merge() (err error) {
 
 		var wg sync.WaitGroup
 		for pair := range slices.Chunk(dirEntries, 2) {
+			<-workers
 			wg.Go(func() {
+				defer func() { workers <- struct{}{} }()
 				if len(pair) != 2 {
 					return
 				}

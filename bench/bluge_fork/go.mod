@@ -1,8 +1,9 @@
 module bluge_fork
 
-go 1.26
+go 1.26.4
 
 require (
+	github.com/RogueTeam/textiplex v0.0.0-00010101000000-000000000000
 	github.com/pluto-org-co/bluge v0.0.0-20260531030518-64dc3ecde620
 	github.com/stretchr/testify v1.11.1
 )
@@ -28,3 +29,5 @@ require (
 	golang.org/x/text v0.37.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/RogueTeam/textiplex => ../../

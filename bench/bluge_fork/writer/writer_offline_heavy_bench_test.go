@@ -89,7 +89,7 @@ func BenchmarkOfflineWriterHeavyWithDefinitionsManagedId(b *testing.B) {
 					workers <- struct{}{}
 				}()
 
-				err = writer.Batch(batch)
+				err := writer.Batch(batch)
 				if err != nil {
 					errorsCh <- err
 				}

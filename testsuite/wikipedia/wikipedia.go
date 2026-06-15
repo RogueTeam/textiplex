@@ -1,7 +1,7 @@
 package wikipedia
 
 import (
-	"bytes"
+	"bufio"
 	_ "embed"
 	"encoding/json/v2"
 	"fmt"
@@ -9,7 +9,6 @@ import (
 	"os"
 
 	"github.com/RogueTeam/textiplex/pool"
-	"golang.org/x/sys/unix"
 )
 
 const WikipediaFilenameVar = "WIKIPEDIA_FILENAME"
@@ -37,29 +36,21 @@ func Pages() (seq iter.Seq[*Page], err error) {
 		}
 	}()
 
-	info, err := file.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get file info: %w", err)
-	}
-
-	data, err := unix.Mmap(
-		int(file.Fd()),
-		0,
-		int(info.Size()),
-		unix.PROT_READ,
-		unix.MAP_PRIVATE)
-	if err != nil {
-		return nil, fmt.Errorf("failed to mmap file: %w", err)
-	}
-
 	return func(yield func(*Page) bool) {
 		defer func() {
-			unix.Munmap(data)
 			file.Close()
 		}()
 
+		buffered := bufio.NewReaderSize(file, 1024*1024)
+
+		scanner := bufio.NewScanner(buffered)
+		scanner.Buffer(make([]byte, 5*1024*1024), 5*1024*1024)
+		scanner.Split(bufio.ScanLines)
+
 		var poolPage = pool.New[Page](1_000)
-		for line := range bytes.SplitSeq(data, []byte("\n")) {
+		for scanner.Scan() {
+			line := scanner.Bytes()
+
 			if len(line) == 0 {
 				continue
 			}

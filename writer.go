@@ -101,6 +101,8 @@ func (w *Writer) Merge() (err error) {
 
 				os.Remove(storageAFilename)
 				os.Remove(storageBFilename)
+
+				runtime.GC()
 			})
 		}
 		go func() {

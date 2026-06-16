@@ -186,10 +186,11 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 	s.PostingLists = make([]PostingList, 0, postingListsCounter)
 	s.TokenFrequencies = make([]TokenFrequencyEntry, 0, tokensFreqsCounter)
 
-	var fieldsPrealloc = make([]Field, len(fieldsAccumulators))
+	var fieldsPool = pool.New[Field](20)
+	var tokensPool = pool.New[Token](20)
 	for fieldHash, acc := range fieldsAccumulators {
-		field := &fieldsPrealloc[0]
-		fieldsPrealloc = fieldsPrealloc[1:]
+		field := fieldsPool.Get()
+
 		*field = Field{
 			Tokens:          btree.NewBTreeGOptions(TokenLessFunc, btree.Options{NoLocks: true}),
 			DocumentLengths: acc.DocumentsLengths,
@@ -200,7 +201,6 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 
 		it := acc.Tokens.Iter()
 
-		tokensPrealloc := make([]Token, acc.Tokens.Len())
 		for valid := it.First(); valid; valid = it.Next() {
 			pd := it.Item()
 
@@ -210,8 +210,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 			freqIndex := uint64(len(s.TokenFrequencies))
 			s.TokenFrequencies = append(s.TokenFrequencies, pd.Freqs...)
 
-			token := &tokensPrealloc[0]
-			tokensPrealloc = tokensPrealloc[1:]
+			token := tokensPool.Get()
 			*token = Token{
 				FrequencyCount:   pd.Bitmap.GetCardinality(),
 				PostingListIndex: plIndex,
@@ -495,7 +494,8 @@ func (s *Storage) Load(name string) (err error) {
 	}
 
 	s.Fields = make(map[uint64]*Field, header.FieldCount)
-	var fieldsPrealloc = make([]Field, header.FieldCount)
+	var fieldsPool = pool.New[Field](20)
+	var tokensPool = pool.New[Token](20)
 	for range header.FieldCount {
 		if uintptr(len(inUseBuffer)) < FieldHeaderSize {
 			return fmt.Errorf("not enough space for loading fields from buffer")
@@ -504,13 +504,12 @@ func (s *Storage) Load(name string) (err error) {
 		fHeader := (*FieldHeader)(unsafe.Pointer(&inUseBuffer[0]))
 		inUseBuffer = inUseBuffer[FieldHeaderSize:]
 
-		field := &fieldsPrealloc[0]
+		field := fieldsPool.Get()
 		// Assign at once the field so we don't forget about it later
 		s.Fields[fHeader.Hash] = field
 
 		field.AvgDocumentLength = fHeader.AvgDocumentLength
 		field.Tokens = btree.NewBTreeGOptions(TokenLessFunc, btree.Options{NoLocks: true})
-		fieldsPrealloc = fieldsPrealloc[1:]
 
 		docsLengthSize := DocumentLengthEntrySize * uintptr(fHeader.DocumentLengthCount)
 		if uintptr(len(inUseBuffer)) < docsLengthSize {
@@ -523,7 +522,6 @@ func (s *Storage) Load(name string) (err error) {
 		)
 		inUseBuffer = inUseBuffer[docsLengthSize:]
 
-		var tokensPrealloc = make([]Token, fHeader.TokenCount)
 		for range fHeader.TokenCount {
 			if uintptr(len(inUseBuffer)) < TokenHeaderSize {
 				return fmt.Errorf("not enough space for loading fields from buffer")
@@ -538,12 +536,11 @@ func (s *Storage) Load(name string) (err error) {
 			contents := inUseBuffer[:tHeader.Size]
 			inUseBuffer = inUseBuffer[tHeader.Size:]
 
-			token := &tokensPrealloc[0]
+			token := tokensPool.Get()
 			token.FrequencyCount = tHeader.DocumentFrequencyCount
 			token.PostingListIndex = tHeader.PostingListIndex
 			token.FrequenciesIndex = tHeader.FrequenciesIndex
 			token.Value = contents
-			tokensPrealloc = tokensPrealloc[1:]
 
 			field.Tokens.Set(token)
 		}

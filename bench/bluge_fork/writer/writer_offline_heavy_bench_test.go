@@ -15,11 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const MaxBatchSize = 50_000
+const MaxBatchSize = 10_000
 
 func BenchmarkOfflineWriterHeavyWithDefinitionsManagedId(b *testing.B) {
 	assertions := assert.New(b)
-
 	b.StopTimer()
 
 	batchPool := sync.Pool{
@@ -29,7 +28,6 @@ func BenchmarkOfflineWriterHeavyWithDefinitionsManagedId(b *testing.B) {
 	}
 
 	tmpIndexPath := testsuite.TemporaryDirectory(b)
-
 	config := bluge.DefaultConfig(tmpIndexPath)
 	writer, err := bluge.OpenOfflineWriter(config)
 	if !assertions.NoError(err, "failed to open offline writer") {
@@ -45,60 +43,84 @@ func BenchmarkOfflineWriterHeavyWithDefinitionsManagedId(b *testing.B) {
 	b.StartTimer()
 
 	workerCount := min(4, runtime.NumCPU())
-	workers := make(chan struct{}, workerCount)
-	for range workerCount {
-		workers <- struct{}{}
-	}
 
+	// batchCh is the only backpressure mechanism: bounded to workerCount so the
+	// producer cannot get more than workerCount batches ahead of the consumers.
+	// The separate `workers` token channel is removed; it created a circular
+	// wait whenever a worker blocked sending to errorsCh while still owing a
+	// token to the producer.
 	batchCh := make(chan *index.Batch, workerCount)
+
+	// Producer: builds batches and hands them off. Bounded by batchCh capacity.
 	go func() {
 		defer close(batchCh)
 
-		var batchSize uint64
-
+		var totalProcessed, batchSize uint64
 		batch := batchPool.Get().(*index.Batch)
+		batch.Reset()
+
 		for page := range pages {
 			info, fields := documents.FieldsFromDefinitionsWithId(
 				fmt.Sprintf("%d", page.Id),
 				documents.NewKeywordFieldDefinition("title", page.Title),
 				documents.NewKeywordFieldDefinition("content", page.Content),
 			)
-
 			batch.Insert(documents.NewDocumentWithFieldsManagedId(info, fields...))
 			batchSize++
+			totalProcessed++
+
+			if totalProcessed%1_000_000 == 0 {
+				b.Logf("Total processed: %d", totalProcessed)
+			}
 
 			if batchSize >= MaxBatchSize {
-				<-workers
+
+				b.Logf("Processing Batch: %d", batchSize)
 				batchCh <- batch
 				batch = batchPool.Get().(*index.Batch)
+				batch.Reset()
 				batchSize = 0
 			}
 		}
 
+		if batchSize > 0 {
+			batchCh <- batch
+		} else {
+			batchPool.Put(batch)
+		}
 	}()
 
-	var errorsCh = make(chan error, workerCount)
-	go func() {
-		defer close(errorsCh)
+	// errorsCh is buffered to hold one error per possible failing batch is not
+	// feasible, so instead the consumer drains it concurrently below. We keep a
+	// small buffer and guarantee the drain goroutine runs in parallel, so a
+	// worker can never wedge on the send.
+	errorsCh := make(chan error, workerCount)
 
-		var wg sync.WaitGroup
-		for batch := range batchCh {
-			wg.Go(func() {
-				defer func() {
-					batchPool.Put(batch)
-					workers <- struct{}{}
-				}()
-
+	// Fan-out consumers with a fixed worker pool. Workers pull from batchCh,
+	// so concurrency is naturally capped at workerCount without a token channel.
+	var consumerWG sync.WaitGroup
+	consumerWG.Add(workerCount)
+	for range workerCount {
+		go func() {
+			defer consumerWG.Done()
+			for batch := range batchCh {
 				err := writer.Batch(batch)
+				batchPool.Put(batch)
 				if err != nil {
 					errorsCh <- err
 				}
-			})
-		}
+			}
+		}()
+	}
 
-		wg.Wait()
+	// Close errorsCh once all consumers are done.
+	go func() {
+		consumerWG.Wait()
+		close(errorsCh)
 	}()
 
+	// Drain errors concurrently with the consumers; this is what prevents any
+	// worker from blocking forever on `errorsCh <- err`.
 	var allErrors []error
 	for err := range errorsCh {
 		allErrors = append(allErrors, err)

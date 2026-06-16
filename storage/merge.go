@@ -560,6 +560,9 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 					case 0: // Equal
 						tokHash := tokA.Value.Hash()
 						if _, found := visitedTokens[tokHash]; found {
+							aIdx++
+							bIdx++
+							aValid, bValid = aIdx < len(fieldA.Tokens), bIdx < len(fieldB.Tokens)
 							continue
 						}
 						visitedTokens[tokHash] = struct{}{}
@@ -621,6 +624,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 					tokA := &fieldA.Tokens[aIdx]
 					tokAHash := tokA.Value.Hash()
 					if _, found := visitedTokens[tokAHash]; found {
+						aIdx++
+						aValid = aIdx < len(fieldA.Tokens)
 						continue
 					}
 					visitedTokens[tokAHash] = struct{}{}
@@ -636,6 +641,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 					tokB := &fieldB.Tokens[bIdx]
 					tokBHash := tokB.Value.Hash()
 					if _, found := visitedTokens[tokBHash]; found {
+						bIdx++
+						bValid = bIdx < len(fieldB.Tokens)
 						continue
 					}
 					visitedTokens[tokBHash] = struct{}{}

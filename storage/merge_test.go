@@ -1,6 +1,7 @@
 package storage_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/RogueTeam/textiplex/storage"
@@ -58,6 +59,11 @@ func getToken(t *testing.T, s *storage.Storage, fieldHash uint64, value string) 
 	if !assertions.True(ok, "field %d must exist", fieldHash) {
 		t.FailNow()
 	}
+
+	for _, tok := range field.Tokens {
+		fmt.Println("++++++++++", tok.Value.UnsafeString())
+	}
+
 	tok, ok := field.Tokens.GetString(value)
 	if !assertions.True(ok, "token %q must exist in field %d", value, fieldHash) {
 		t.FailNow()

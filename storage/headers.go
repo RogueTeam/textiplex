@@ -3,6 +3,8 @@ package storage
 import (
 	"bytes"
 	"unsafe"
+
+	"github.com/zeebo/xxh3"
 )
 
 const MagicNumber uint64 = 0x7E7127E9
@@ -81,6 +83,10 @@ func TokenValueFrom[T ~string | ~[]byte](b T) (v TokenValue) {
 
 func (v *TokenValue) Bytes() (b []byte) {
 	return v.Data[:min(MaxTokenSize, v.Size)]
+}
+
+func (v *TokenValue) Hash() (hash uint64) {
+	return xxh3.Hash(v.Data[:min(MaxTokenSize, v.Size)])
 }
 
 func (v *TokenValue) UnsafeString() (s string) {

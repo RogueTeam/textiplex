@@ -5,12 +5,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
-	"github.com/RogueTeam/textiplex/pool"
-	"github.com/tidwall/btree"
 )
 
 // Handles merges between storages
@@ -342,158 +341,28 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 	}
 
-	tokensPool := pool.New[Token](20)
-	// Phase 4, add collision fields
-	for _, fieldHash := range fieldCollisions {
-		fieldA := a.Fields[fieldHash]
-		fieldB := b.Fields[fieldHash]
-		var collisionTokensReferencedFromA []*Token
-
-		// We need to maintain all fields sorted prior write
-		// So it is impossible to not store something in memory at least meanwhile
-		var finalTokens = btree.NewBTreeGOptions(func(a, b *Token) bool {
-			return bytes.Compare(a.Value.Bytes(), b.Value.Bytes()) == -1
-		}, btree.Options{NoLocks: true})
-
-		for tokenIdx := range fieldA.Tokens {
-			token := &fieldA.Tokens[tokenIdx]
-
-			_, found := fieldB.Tokens.GetString(token.Value.UnsafeString())
-			if found {
-				collisionTokensReferencedFromA = append(collisionTokensReferencedFromA, token)
-				continue
-			}
-
-			newToken := tokensPool.Get()
-
-			*newToken = *token
-			newToken.PostingListIndex = postingListsCursor
+	visitedTokens := make(map[uint64]struct{})
+	// Helper function that resolves merging both, token A and token B
+	var finalTokensCount uint64
+	writeToken := func(fieldTokensW io.Writer, fieldHash uint64, tokenA, tokenB *Token) (err error) {
+		finalTokensCount++
+		var finalToken Token
+		switch {
+		case tokenA != nil && tokenB != nil: // Equal
+			finalToken = *tokenA
+			finalToken.FrequencyCount = tokenA.FrequencyCount + tokenB.FrequencyCount
+			finalToken.PostingListIndex = postingListsCursor
 			postingListsCursor++
-			newToken.FrequenciesIndex = freqsCursor
-			freqsCursor += newToken.FrequencyCount
-
-			// Add token to the pending for insertion
-			finalTokens.Set(newToken)
-
-			// Write the posting list
-			plBuffer.Reset()
-			postingList := &a.PostingLists[token.PostingListIndex]
-			size := postingList.GetSerializedSizeInBytes()
-			plBuffer.Grow(int(size))
-			postingList.WriteTo(&plBuffer)
-
-			data := binary.NativeEndian.AppendUint64(buffer, size)
-			_, err = postingsW.Write(data)
-			if err != nil {
-				return fmt.Errorf("failed to write A's field token posting list size: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-			}
-			_, err = postingsW.Write(plBuffer.Bytes())
-			if err != nil {
-				return fmt.Errorf("failed to write A's field token posting list contents: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-			}
-
-			// Write the frequencies
-			freqs := a.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
-			for index := range freqs {
-
-				freq := &freqs[index]
-
-				data := binary.NativeEndian.AppendUint64(buffer, freq.DocumentIndex)
-				_, err = tokenFreqsW.Write(data)
-				if err != nil {
-					return fmt.Errorf("failed to write A's field token frequency document index: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-				}
-				data = binary.NativeEndian.AppendUint64(buffer, freq.Frequency)
-				_, err = tokenFreqsW.Write(data)
-				if err != nil {
-					return fmt.Errorf("failed to write A's field token frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-				}
-			}
-		}
-
-		for tokenIdx := range fieldB.Tokens {
-			token := &fieldB.Tokens[tokenIdx]
-
-			_, found := fieldA.Tokens.GetString(token.Value.UnsafeString())
-			if found {
-				continue
-			}
-
-			newToken := tokensPool.Get()
-
-			*newToken = *token
-			newToken.PostingListIndex = postingListsCursor
-			postingListsCursor++
-			newToken.FrequenciesIndex = freqsCursor
-			freqsCursor += newToken.FrequencyCount
-
-			// Add token to the pending for insertion
-			finalTokens.Set(newToken)
-
-			// Write the posting list
-			plBuffer.Reset()
-			reusableBitmap.Clear()
-			for it := b.PostingLists[token.PostingListIndex].Iterator(); it.HasNext(); {
-				bDocId := docOffset + it.Next()
-				reusableBitmap.Add(bDocId)
-			}
-			size := reusableBitmap.GetSerializedSizeInBytes()
-			plBuffer.Grow(int(size))
-			reusableBitmap.WriteTo(&plBuffer)
-
-			data := binary.NativeEndian.AppendUint64(buffer, size)
-			_, err = postingsW.Write(data)
-			if err != nil {
-				return fmt.Errorf("failed to write B's field token posting list size: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-			}
-			_, err = postingsW.Write(plBuffer.Bytes())
-			if err != nil {
-				return fmt.Errorf("failed to write B's field token posting list contents: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-			}
-
-			// Write the frequencies
-			freqs := b.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
-			for index := range freqs {
-
-				freq := &freqs[index]
-
-				data := binary.NativeEndian.AppendUint64(buffer, docOffset+freq.DocumentIndex)
-				_, err = tokenFreqsW.Write(data)
-				if err != nil {
-					return fmt.Errorf("failed to write B's field token frequency document index: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-				}
-				data = binary.NativeEndian.AppendUint64(buffer, freq.Frequency)
-				_, err = tokenFreqsW.Write(data)
-				if err != nil {
-					return fmt.Errorf("failed to write B's field token frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-				}
-			}
-		}
-
-		for _, tokenA := range collisionTokensReferencedFromA {
-			reusableBitmap.Clear()
-
-			tokenB, _ := fieldB.Tokens.GetString(tokenA.Value.UnsafeString())
-
-			newToken := tokensPool.Get()
-
-			*newToken = *tokenA
-			newToken.FrequencyCount = tokenA.FrequencyCount + tokenB.FrequencyCount
-			newToken.PostingListIndex = postingListsCursor
-			postingListsCursor++
-			newToken.FrequenciesIndex = freqsCursor
-			freqsCursor += newToken.FrequencyCount
-
-			// Add token to the pending for insertion
-			finalTokens.Set(newToken)
+			finalToken.FrequenciesIndex = freqsCursor
+			freqsCursor += finalToken.FrequencyCount
 
 			bitmapA := a.PostingLists[tokenA.PostingListIndex]
 			bitmapB := b.PostingLists[tokenB.PostingListIndex]
 
+			reusableBitmap.Clear()
 			reusableBitmap.Or(&bitmapA.Bitmap)
 			for it := bitmapB.Iterator(); it.HasNext(); {
-				bDocId := docOffset + it.Next()
-				reusableBitmap.Add(bDocId)
+				reusableBitmap.Add(docOffset + it.Next())
 			}
 
 			// Write the posting list
@@ -542,113 +411,325 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 					return fmt.Errorf("failed to write Collision field token frequency: %w: %d:%s", err, fieldHash, tokenA.Value.UnsafeString())
 				}
 			}
+		case tokenA != nil:
+			finalToken = *tokenA
+			finalToken.PostingListIndex = postingListsCursor
+			postingListsCursor++
+			finalToken.FrequenciesIndex = freqsCursor
+			freqsCursor += finalToken.FrequencyCount
+
+			// Write the posting list
+			plBuffer.Reset()
+			postingList := &a.PostingLists[tokenA.PostingListIndex]
+			size := postingList.GetSerializedSizeInBytes()
+			plBuffer.Grow(int(size))
+			postingList.WriteTo(&plBuffer)
+
+			data := binary.NativeEndian.AppendUint64(buffer, size)
+			_, err = postingsW.Write(data)
+			if err != nil {
+				return fmt.Errorf("failed to write A's field token posting list size: %w: %d:%s", err, fieldHash, tokenA.Value.UnsafeString())
+			}
+			_, err = postingsW.Write(plBuffer.Bytes())
+			if err != nil {
+				return fmt.Errorf("failed to write A's field token posting list contents: %w: %d:%s", err, fieldHash, tokenA.Value.UnsafeString())
+			}
+
+			// Write the frequencies
+			freqs := a.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
+			for index := range freqs {
+
+				freq := &freqs[index]
+
+				data := binary.NativeEndian.AppendUint64(buffer, freq.DocumentIndex)
+				_, err = tokenFreqsW.Write(data)
+				if err != nil {
+					return fmt.Errorf("failed to write A's field token frequency document index: %w: %d:%s", err, fieldHash, tokenA.Value.UnsafeString())
+				}
+				data = binary.NativeEndian.AppendUint64(buffer, freq.Frequency)
+				_, err = tokenFreqsW.Write(data)
+				if err != nil {
+					return fmt.Errorf("failed to write A's field token frequency: %w: %d:%s", err, fieldHash, tokenA.Value.UnsafeString())
+				}
+			}
+		case tokenB != nil:
+			finalToken = *tokenB
+			finalToken.PostingListIndex = postingListsCursor
+			postingListsCursor++
+			finalToken.FrequenciesIndex = freqsCursor
+			freqsCursor += finalToken.FrequencyCount
+
+			// Write the posting list
+			plBuffer.Reset()
+			reusableBitmap.Clear()
+			for it := b.PostingLists[tokenB.PostingListIndex].Iterator(); it.HasNext(); {
+				bDocId := docOffset + it.Next()
+				reusableBitmap.Add(bDocId)
+			}
+			size := reusableBitmap.GetSerializedSizeInBytes()
+			plBuffer.Grow(int(size))
+			reusableBitmap.WriteTo(&plBuffer)
+
+			data := binary.NativeEndian.AppendUint64(buffer, size)
+			_, err = postingsW.Write(data)
+			if err != nil {
+				return fmt.Errorf("failed to write B's field token posting list size: %w: %d:%s", err, fieldHash, tokenB.Value.UnsafeString())
+			}
+			_, err = postingsW.Write(plBuffer.Bytes())
+			if err != nil {
+				return fmt.Errorf("failed to write B's field token posting list contents: %w: %d:%s", err, fieldHash, tokenB.Value.UnsafeString())
+			}
+
+			// Write the frequencies
+			freqs := b.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
+			for index := range freqs {
+
+				freq := &freqs[index]
+
+				data := binary.NativeEndian.AppendUint64(buffer, docOffset+freq.DocumentIndex)
+				_, err = tokenFreqsW.Write(data)
+				if err != nil {
+					return fmt.Errorf("failed to write B's field token frequency document index: %w: %d:%s", err, fieldHash, tokenB.Value.UnsafeString())
+				}
+				data = binary.NativeEndian.AppendUint64(buffer, freq.Frequency)
+				_, err = tokenFreqsW.Write(data)
+				if err != nil {
+					return fmt.Errorf("failed to write B's field token frequency: %w: %d:%s", err, fieldHash, tokenB.Value.UnsafeString())
+				}
+			}
 		}
 
-		// Prepare documents lengths
-		var totalDocumentLengths uint64
-		var documentsLengths = make([]DocumentLengthEntry, 0, len(fieldA.DocumentLengths)+len(fieldB.DocumentLengths))
-
-		for index := range fieldA.DocumentLengths {
-
-			dl := &fieldA.DocumentLengths[index]
-
-			totalDocumentLengths += dl.Length
-			documentsLengths = append(documentsLengths, *dl)
-		}
-		for index := range fieldB.DocumentLengths {
-			dl := &fieldB.DocumentLengths[index]
-
-			totalDocumentLengths += dl.Length
-			documentsLengths = append(documentsLengths, DocumentLengthEntry{
-				Index:  docOffset + dl.Index,
-				Length: dl.Length,
-			})
-		}
-
-		var avgDocumentLength = float64(totalDocumentLengths) / float64(len(documentsLengths))
-
-		// Write the field
-		// Write field header to temporary fields file
-		data := binary.NativeEndian.AppendUint64(buffer, fieldHash)
-		_, err = fieldsW.Write(data)
+		data := binary.NativeEndian.AppendUint64(buffer, finalToken.FrequencyCount)
+		_, err = fieldTokensW.Write(data)
 		if err != nil {
-			return fmt.Errorf("failed to write B's field hash: %w: %d", err, fieldHash)
-		}
-		data = binary.NativeEndian.AppendUint64(buffer, *(*uint64)(unsafe.Pointer(&avgDocumentLength)))
-		_, err = fieldsW.Write(data)
-		if err != nil {
-			return fmt.Errorf("failed to write B's field avgdl: %w: %d", err, fieldHash)
-		}
-		data = binary.NativeEndian.AppendUint64(buffer, uint64(finalTokens.Len()))
-		_, err = fieldsW.Write(data)
-		if err != nil {
-			return fmt.Errorf("failed to write B's tokens length: %w: %d", err, fieldHash)
-		}
-		data = binary.NativeEndian.AppendUint64(buffer, uint64(len(documentsLengths)))
-		_, err = fieldsW.Write(data)
-		if err != nil {
-			return fmt.Errorf("failed to write B's documents lengths: %w: %d", err, fieldHash)
+			return fmt.Errorf("failed to write Collision field token document frequency: %w: %d:%s", err, fieldHash, finalToken.Value.UnsafeString())
 		}
 
-		// Write documents lengths
-		for index := range documentsLengths {
-			docLength := &documentsLengths[index]
+		// Add posting list cursor
+		data = binary.NativeEndian.AppendUint64(buffer, finalToken.PostingListIndex)
+		_, err = fieldTokensW.Write(data)
+		if err != nil {
+			return fmt.Errorf("failed to write Collision field token posting list index: %w: %d:%s", err, fieldHash, finalToken.Value.UnsafeString())
+		}
 
-			data := binary.NativeEndian.AppendUint64(buffer, docLength.Index)
+		// Add freqs index
+		data = binary.NativeEndian.AppendUint64(buffer, finalToken.FrequenciesIndex)
+		_, err = fieldTokensW.Write(data)
+		if err != nil {
+			return fmt.Errorf("failed to write B's field token frequencies index: %w: %d:%s", err, fieldHash, finalToken.Value.UnsafeString())
+		}
+
+		data = binary.NativeEndian.AppendUint64(buffer, finalToken.Value.Size)
+		_, err = fieldTokensW.Write(data)
+		if err != nil {
+			return fmt.Errorf("failed to write B's field token value length: %w: %d:%s", err, fieldHash, finalToken.Value.UnsafeString())
+		}
+		_, err = fieldTokensW.Write(finalToken.Value.Data[:])
+		if err != nil {
+			return fmt.Errorf("failed to write B's field token value: %w: %d:%s", err, fieldHash, finalToken.Value.UnsafeString())
+		}
+		return nil
+	}
+	// Phase 4, add collision fields
+	for _, fieldHash := range fieldCollisions {
+		err := func() (err error) {
+			tmpFieldTokensFile, err := m.CreateTemp(fmt.Sprintf("field-%d-tokens.part", fieldHash))
+			if err != nil {
+				return fmt.Errorf("failed to create temporary field tokens file: %w", err)
+			}
+			defer func() {
+				tmpFieldTokensFile.Close()
+				os.Remove(tmpFieldTokensFile.Name())
+			}()
+
+			fieldTokensW := bufio.NewWriterSize(tmpFieldTokensFile, 2<<20)
+
+			clear(visitedTokens)
+
+			fieldA := a.Fields[fieldHash]
+			fieldB := b.Fields[fieldHash]
+
+			var aIdx, bIdx int
+			var aValid, bValid = aIdx < len(fieldA.Tokens), bIdx < len(fieldB.Tokens)
+			for aValid || bValid {
+				switch {
+				case aValid && bValid:
+					tokA, tokB := &fieldA.Tokens[aIdx], &fieldB.Tokens[bIdx]
+
+					switch bytes.Compare(tokA.Value.Bytes(), tokB.Value.Bytes()) {
+					case 0: // Equal
+						tokHash := tokA.Value.Hash()
+						if _, found := visitedTokens[tokHash]; found {
+							continue
+						}
+						visitedTokens[tokHash] = struct{}{}
+
+						err = writeToken(fieldTokensW, fieldHash, tokA, tokB)
+						if err != nil {
+							return fmt.Errorf("failed to write equal tokens: A and B: %w", err)
+						}
+					case -1: // A first
+						tokAHash := tokA.Value.Hash()
+						if _, found := visitedTokens[tokAHash]; !found {
+							visitedTokens[tokAHash] = struct{}{}
+
+							tokARefB, _ := fieldB.Tokens.GetString(tokA.Value.UnsafeString())
+							err = writeToken(fieldTokensW, fieldHash, tokA, tokARefB)
+							if err != nil {
+								return fmt.Errorf("failed to write equal tokens: A and B: %w", err)
+							}
+						}
+
+						tokBHash := tokB.Value.Hash()
+						if _, found := visitedTokens[tokBHash]; !found {
+							visitedTokens[tokBHash] = struct{}{}
+
+							tokBRefA, _ := fieldA.Tokens.GetString(tokB.Value.UnsafeString())
+							err = writeToken(fieldTokensW, fieldHash, tokBRefA, tokB)
+							if err != nil {
+								return fmt.Errorf("failed to write equal tokens: A and B: %w", err)
+							}
+						}
+					case 1: // B first
+						tokBHash := tokB.Value.Hash()
+						if _, found := visitedTokens[tokBHash]; !found {
+							visitedTokens[tokBHash] = struct{}{}
+
+							tokBRefA, _ := fieldA.Tokens.GetString(tokB.Value.UnsafeString())
+							err = writeToken(fieldTokensW, fieldHash, tokBRefA, tokB)
+							if err != nil {
+								return fmt.Errorf("failed to write equal tokens: A and B: %w", err)
+							}
+						}
+
+						tokAHash := tokA.Value.Hash()
+						if _, found := visitedTokens[tokAHash]; !found {
+							visitedTokens[tokAHash] = struct{}{}
+
+							tokARefB, _ := fieldB.Tokens.GetString(tokA.Value.UnsafeString())
+							err = writeToken(fieldTokensW, fieldHash, tokA, tokARefB)
+							if err != nil {
+								return fmt.Errorf("failed to write equal tokens: A and B: %w", err)
+							}
+						}
+					}
+
+					aIdx++
+					bIdx++
+					aValid, bValid = aIdx < len(fieldA.Tokens), bIdx < len(fieldB.Tokens)
+				case aValid:
+					tokA := &fieldA.Tokens[aIdx]
+					tokAHash := tokA.Value.Hash()
+					if _, found := visitedTokens[tokAHash]; found {
+						continue
+					}
+					visitedTokens[tokAHash] = struct{}{}
+
+					err = writeToken(fieldTokensW, fieldHash, tokA, nil)
+					if err != nil {
+						return fmt.Errorf("failed to write equal token: A : %w", err)
+					}
+
+					aIdx++
+					aValid = aIdx < len(fieldA.Tokens)
+				case bValid:
+					tokB := &fieldB.Tokens[bIdx]
+					tokBHash := tokB.Value.Hash()
+					if _, found := visitedTokens[tokBHash]; found {
+						continue
+					}
+					visitedTokens[tokBHash] = struct{}{}
+
+					err = writeToken(fieldTokensW, fieldHash, nil, tokB)
+					if err != nil {
+						return fmt.Errorf("failed to write equal token: B: %w", err)
+					}
+
+					bIdx++
+					bValid = bIdx < len(fieldB.Tokens)
+				}
+			}
+
+			err = fieldTokensW.Flush()
+			if err != nil {
+				return fmt.Errorf("failed to flush field tokens to underlying file: %w", err)
+			}
+			_, err = tmpFieldTokensFile.Seek(0, 0)
+			if err != nil {
+				return fmt.Errorf("failed to seek field tokens file to beginning: %w", err)
+			}
+
+			// Prepare documents lengths
+			var totalDocumentLengths uint64
+			var documentsLengths = make([]DocumentLengthEntry, 0, len(fieldA.DocumentLengths)+len(fieldB.DocumentLengths))
+
+			for index := range fieldA.DocumentLengths {
+
+				dl := &fieldA.DocumentLengths[index]
+
+				totalDocumentLengths += dl.Length
+				documentsLengths = append(documentsLengths, *dl)
+			}
+			for index := range fieldB.DocumentLengths {
+				dl := &fieldB.DocumentLengths[index]
+
+				totalDocumentLengths += dl.Length
+				documentsLengths = append(documentsLengths, DocumentLengthEntry{
+					Index:  docOffset + dl.Index,
+					Length: dl.Length,
+				})
+			}
+
+			var avgDocumentLength = float64(totalDocumentLengths) / float64(len(documentsLengths))
+
+			// Write the field
+			// Write field header to temporary fields file
+			data := binary.NativeEndian.AppendUint64(buffer, fieldHash)
 			_, err = fieldsW.Write(data)
 			if err != nil {
-				return fmt.Errorf("failed to write Collision document length index: %w: %d:%d", err, fieldHash, docLength.Index)
+				return fmt.Errorf("failed to write B's field hash: %w: %d", err, fieldHash)
 			}
-			data = binary.NativeEndian.AppendUint64(buffer, docLength.Length)
+			data = binary.NativeEndian.AppendUint64(buffer, *(*uint64)(unsafe.Pointer(&avgDocumentLength)))
 			_, err = fieldsW.Write(data)
 			if err != nil {
-				return fmt.Errorf("failed to write Collision document length length: %w: %d:%d", err, fieldHash, docLength.Index)
+				return fmt.Errorf("failed to write B's field avgdl: %w: %d", err, fieldHash)
 			}
-		}
+			data = binary.NativeEndian.AppendUint64(buffer, finalTokensCount)
+			_, err = fieldsW.Write(data)
+			if err != nil {
+				return fmt.Errorf("failed to write B's tokens length: %w: %d", err, fieldHash)
+			}
+			data = binary.NativeEndian.AppendUint64(buffer, uint64(len(documentsLengths)))
+			_, err = fieldsW.Write(data)
+			if err != nil {
+				return fmt.Errorf("failed to write B's documents lengths: %w: %d", err, fieldHash)
+			}
 
-		// Write the final state of tokens
-		it := finalTokens.Iter()
-		err = func() (err error) {
-			defer it.Release()
+			// Write documents lengths
+			for index := range documentsLengths {
+				docLength := &documentsLengths[index]
 
-			// Write tokens into field's file
-			for valid := it.First(); valid; valid = it.Next() {
-				token := it.Item()
-
-				data := binary.NativeEndian.AppendUint64(buffer, token.FrequencyCount)
+				data := binary.NativeEndian.AppendUint64(buffer, docLength.Index)
 				_, err = fieldsW.Write(data)
 				if err != nil {
-					return fmt.Errorf("failed to write Collision field token document frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
+					return fmt.Errorf("failed to write Collision document length index: %w: %d:%d", err, fieldHash, docLength.Index)
 				}
-
-				// Add posting list cursor
-				data = binary.NativeEndian.AppendUint64(buffer, token.PostingListIndex)
+				data = binary.NativeEndian.AppendUint64(buffer, docLength.Length)
 				_, err = fieldsW.Write(data)
 				if err != nil {
-					return fmt.Errorf("failed to write Collision field token posting list index: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-				}
-
-				// Add freqs index
-				data = binary.NativeEndian.AppendUint64(buffer, token.FrequenciesIndex)
-				_, err = fieldsW.Write(data)
-				if err != nil {
-					return fmt.Errorf("failed to write B's field token frequencies index: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-				}
-
-				data = binary.NativeEndian.AppendUint64(buffer, token.Value.Size)
-				_, err = fieldsW.Write(data)
-				if err != nil {
-					return fmt.Errorf("failed to write B's field token value length: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-				}
-				_, err = fieldsW.Write(token.Value.Data[:])
-				if err != nil {
-					return fmt.Errorf("failed to write B's field token value: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
+					return fmt.Errorf("failed to write Collision document length length: %w: %d:%d", err, fieldHash, docLength.Index)
 				}
 			}
+
+			_, err = fieldsW.ReadFrom(tmpFieldTokensFile)
+			if err != nil {
+				return fmt.Errorf("failed to merge field tokens into field writer: %w", err)
+			}
+
 			return nil
 		}()
 		if err != nil {
-			return fmt.Errorf("failed to iterate over field's final state tokens: %w", err)
+			return fmt.Errorf("failed to handle field hash: %w", err)
 		}
 	}
 

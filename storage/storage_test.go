@@ -163,11 +163,11 @@ func TestFieldStructure(t *testing.T) {
 				for _, wantVal := range tc.wantTokenValues {
 					t.Run(wantVal, func(t *testing.T) {
 						assertions := assert.New(t)
-						tok, ok := field.Tokens.Get(&storage.Token{Value: []byte(wantVal)})
+						tok, ok := field.Tokens.GetString(wantVal)
 						if !assertions.True(ok, "token %q must exist in field", wantVal) {
 							return
 						}
-						assertions.Equal([]byte(wantVal), tok.Value)
+						assertions.Equal([]byte(wantVal), tok.Value.Bytes())
 					})
 				}
 			}
@@ -236,7 +236,7 @@ func TestPostingLists(t *testing.T) {
 				return
 			}
 
-			tok, ok := field.Tokens.Get(&storage.Token{Value: []byte(tc.tokenValue)})
+			tok, ok := field.Tokens.GetString(tc.tokenValue)
 			if !assertions.True(ok, "token %q must exist", tc.tokenValue) {
 				return
 			}
@@ -311,7 +311,7 @@ func TestTokenFrequencies(t *testing.T) {
 				return
 			}
 
-			tok, ok := field.Tokens.Get(&storage.Token{Value: []byte(tc.tokenValue)})
+			tok, ok := field.Tokens.GetString(tc.tokenValue)
 			if !assertions.True(ok) {
 				return
 			}
@@ -417,13 +417,15 @@ func TestRoundTrip(t *testing.T) {
 
 					assertions.InDelta(origField.AvgDocumentLength, loadedField.AvgDocumentLength, 0.0001)
 					assertions.Equal(origField.DocumentLengths, loadedField.DocumentLengths)
-					assertions.Equal(origField.Tokens.Len(), loadedField.Tokens.Len())
+					assertions.Equal(len(origField.Tokens), len(loadedField.Tokens))
 
-					origField.Tokens.Scan(func(origTok *storage.Token) bool {
-						t.Run(string(origTok.Value), func(t *testing.T) {
+					for origTokIdx := range origField.Tokens {
+						origTok := &origField.Tokens[origTokIdx]
+
+						t.Run(origTok.Value.UnsafeString(), func(t *testing.T) {
 							assertions := assert.New(t)
 
-							loadedTok, ok := loadedField.Tokens.Get(origTok)
+							loadedTok, ok := loadedField.Tokens.GetString(origTok.Value.UnsafeString())
 							if !assertions.True(ok, "token %q must survive round-trip", origTok.Value) {
 								return
 							}
@@ -439,8 +441,7 @@ func TestRoundTrip(t *testing.T) {
 							loadedFreqs := loaded.TokenFrequencies[loadedTok.FrequenciesIndex : loadedTok.FrequenciesIndex+loadedTok.FrequencyCount]
 							assertions.Equal([]storage.TokenFrequencyEntry(origFreqs), []storage.TokenFrequencyEntry(loadedFreqs))
 						})
-						return true
-					})
+					}
 				})
 			}
 

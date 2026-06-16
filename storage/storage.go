@@ -14,19 +14,17 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type Token struct {
-	// Document frequency of the token in all documents
-	FrequencyCount uint64
-	// Posting list of the documents for this token
-	PostingListIndex uint64
-	// Token frequencies per document
-	FrequenciesIndex uint64
-	// Actual content of the token
-	Value []byte
-}
+type Tokens []Token
 
-func TokenLessFunc(a, b *Token) (less bool) {
-	return bytes.Compare(a.Value, b.Value) == -1
+func (s *Tokens) GetString(ss string) (token *Token, found bool) {
+	idx, found := slices.BinarySearchFunc(*s, ss, func(e Token, t string) int {
+		return bytes.Compare(e.Value.Bytes(), unsafe.Slice(unsafe.StringData(t), len(t)))
+	})
+
+	if !found {
+		return nil, false
+	}
+	return &(*s)[idx], true
 }
 
 type Field struct {
@@ -35,7 +33,7 @@ type Field struct {
 	// Tokens present on the file
 	// This field is stored in memory but most of its references
 	// are direct mmap zero-copied arrays
-	Tokens *btree.BTreeG[*Token]
+	Tokens Tokens
 	// DocumentLength entries
 	// Keys are indexes of the documents
 	DocumentLengths []DocumentLengthEntry
@@ -165,9 +163,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 					pd = pdPool.Get()
 					*pd = PostingData{Value: tokenDef.Value, Bitmap: bitmapPool.Get()}
 					fieldAccumulator.Tokens.Set(pd)
-
-					// token header + token bytes — new token only
-					s.Size += uint64(TokenHeaderSize) + uint64(len(tokenDef.Value))
+					s.Size += uint64(TokenSize)
 				}
 
 				pd.Bitmap.Add(internalID)
@@ -176,8 +172,6 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 					Frequency:     tokenDef.Frequency,
 				})
 				tokensFreqsCounter++
-
-				// one TF entry per token per document always
 				s.Size += uint64(TokenFrequencyEntrySize)
 			}
 		}
@@ -187,12 +181,11 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 	s.TokenFrequencies = make([]TokenFrequencyEntry, 0, tokensFreqsCounter)
 
 	var fieldsPool = pool.New[Field](20)
-	var tokensPool = pool.New[Token](20)
 	for fieldHash, acc := range fieldsAccumulators {
 		field := fieldsPool.Get()
 
 		*field = Field{
-			Tokens:          btree.NewBTreeGOptions(TokenLessFunc, btree.Options{NoLocks: true}),
+			Tokens:          make([]Token, acc.Tokens.Len()),
 			DocumentLengths: acc.DocumentsLengths,
 		}
 		if acc.DocumentsCount > 0 {
@@ -201,6 +194,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 
 		it := acc.Tokens.Iter()
 
+		var tokenIdx int
 		for valid := it.First(); valid; valid = it.Next() {
 			pd := it.Item()
 
@@ -210,14 +204,14 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 			freqIndex := uint64(len(s.TokenFrequencies))
 			s.TokenFrequencies = append(s.TokenFrequencies, pd.Freqs...)
 
-			token := tokensPool.Get()
+			token := &field.Tokens[tokenIdx]
+			tokenIdx++
 			*token = Token{
 				FrequencyCount:   pd.Bitmap.GetCardinality(),
 				PostingListIndex: plIndex,
 				FrequenciesIndex: freqIndex,
-				Value:            pd.Value,
+				Value:            TokenValueFrom(pd.Value),
 			}
-			field.Tokens.Set(token)
 		}
 		it.Release()
 
@@ -314,9 +308,8 @@ func (s *Storage) SaveTo(name string) (err error) {
 	for _, fieldHash := range fields {
 		field := s.Fields[fieldHash]
 
-		it := field.Tokens.Iter()
-		for valid := it.First(); valid; valid = it.Next() {
-			token := it.Item()
+		for tokenIdx := range field.Tokens {
+			token := &field.Tokens[tokenIdx]
 
 			newPlIndex := uint64(len(postingListCluster)) // Always update the index
 			postingListCluster = append(postingListCluster, s.PostingLists[token.PostingListIndex])
@@ -329,7 +322,6 @@ func (s *Storage) SaveTo(name string) (err error) {
 			)
 			token.FrequenciesIndex = newFreqIndex // Always update the index
 		}
-		it.Release()
 	}
 
 	// Re-assign so the update of token indexes point to the new clusters
@@ -342,7 +334,7 @@ func (s *Storage) SaveTo(name string) (err error) {
 
 		out = binary.NativeEndian.AppendUint64(out, fieldHash)
 		out = binary.NativeEndian.AppendUint64(out, *(*uint64)(unsafe.Pointer(&field.AvgDocumentLength)))
-		out = binary.NativeEndian.AppendUint64(out, uint64(field.Tokens.Len()))
+		out = binary.NativeEndian.AppendUint64(out, uint64(len(field.Tokens)))
 		out = binary.NativeEndian.AppendUint64(out, uint64(len(field.DocumentLengths)))
 
 		for index := range field.DocumentLengths {
@@ -352,19 +344,15 @@ func (s *Storage) SaveTo(name string) (err error) {
 			out = binary.NativeEndian.AppendUint64(out, docLength.Length)
 		}
 
-		it := field.Tokens.Iter()
-		for valid := it.First(); valid; valid = it.Next() {
-			token := it.Item()
+		for tokenIdx := range field.Tokens {
+			token := &field.Tokens[tokenIdx]
 
 			out = binary.NativeEndian.AppendUint64(out, token.FrequencyCount)
 			out = binary.NativeEndian.AppendUint64(out, token.PostingListIndex)
 			out = binary.NativeEndian.AppendUint64(out, token.FrequenciesIndex)
-			out = binary.NativeEndian.AppendUint16(out, uint16(len(token.Value)))
-			out = append(out, 0, 0, 0, 0, 0, 0) // Padding 6 bytes
-			out = append(out, token.Value...)
-
+			out = binary.NativeEndian.AppendUint64(out, token.Value.Size)
+			out = append(out, token.Value.Data[:]...)
 		}
-		it.Release()
 	}
 	// Write posting lists
 	var plBuffer bytes.Buffer
@@ -495,7 +483,6 @@ func (s *Storage) Load(name string) (err error) {
 
 	s.Fields = make(map[uint64]*Field, header.FieldCount)
 	var fieldsPool = pool.New[Field](20)
-	var tokensPool = pool.New[Token](20)
 	for range header.FieldCount {
 		if uintptr(len(inUseBuffer)) < FieldHeaderSize {
 			return fmt.Errorf("not enough space for loading fields from buffer")
@@ -509,7 +496,6 @@ func (s *Storage) Load(name string) (err error) {
 		s.Fields[fHeader.Hash] = field
 
 		field.AvgDocumentLength = fHeader.AvgDocumentLength
-		field.Tokens = btree.NewBTreeGOptions(TokenLessFunc, btree.Options{NoLocks: true})
 
 		docsLengthSize := DocumentLengthEntrySize * uintptr(fHeader.DocumentLengthCount)
 		if uintptr(len(inUseBuffer)) < docsLengthSize {
@@ -522,28 +508,12 @@ func (s *Storage) Load(name string) (err error) {
 		)
 		inUseBuffer = inUseBuffer[docsLengthSize:]
 
-		for range fHeader.TokenCount {
-			if uintptr(len(inUseBuffer)) < TokenHeaderSize {
-				return fmt.Errorf("not enough space for loading fields from buffer")
-			}
-
-			tHeader := (*TokenHeader)(unsafe.Pointer(&inUseBuffer[0]))
-			inUseBuffer = inUseBuffer[TokenHeaderSize:]
-
-			if len(inUseBuffer) < int(tHeader.Size) {
-				return fmt.Errorf("not enough space for loading fields from buffer")
-			}
-			contents := inUseBuffer[:tHeader.Size]
-			inUseBuffer = inUseBuffer[tHeader.Size:]
-
-			token := tokensPool.Get()
-			token.FrequencyCount = tHeader.DocumentFrequencyCount
-			token.PostingListIndex = tHeader.PostingListIndex
-			token.FrequenciesIndex = tHeader.FrequenciesIndex
-			token.Value = contents
-
-			field.Tokens.Set(token)
+		tokensSubBufferSize := TokenSize * uintptr(fHeader.TokenCount)
+		if uintptr(len(inUseBuffer)) < tokensSubBufferSize {
+			return fmt.Errorf("not enough space for loading field's tokens from buffer")
 		}
+		field.Tokens = unsafe.Slice((*Token)(unsafe.Pointer(&inUseBuffer[0])), fHeader.TokenCount)
+		inUseBuffer = inUseBuffer[tokensSubBufferSize:]
 	}
 
 	s.PostingLists = make([]PostingList, header.TotalPostingLists)

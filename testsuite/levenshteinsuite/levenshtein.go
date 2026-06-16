@@ -1,9 +1,8 @@
-package testsuite
+package levenshteinsuite
 
 import (
 	"slices"
 
-	"github.com/RogueTeam/textiplex/levenshtein"
 	"github.com/RogueTeam/textiplex/storage"
 	"github.com/tidwall/btree"
 )
@@ -12,11 +11,14 @@ import (
 // using the same TokenLessFunc and NoLocks options as production. Duplicate
 // terms collapse into a single key.
 func MakeTokenTree(terms ...string) *btree.BTreeG[*storage.Token] {
-	tree := btree.NewBTreeGOptions(storage.TokenLessFunc, btree.Options{NoLocks: true})
-	for _, term := range terms {
-		tree.Set(&storage.Token{Value: []byte(term)})
-	}
-	return tree
+	panic("implement me!")
+	// tree := btree.NewBTreeGOptions(storage.TokenLessFunc, btree.Options{NoLocks: true})
+	//
+	//	for _, term := range terms {
+	//		tree.Set(&storage.Token{Value: []byte(term)})
+	//	}
+	//
+	// return tree
 }
 
 // CollectLevenshteinMatches builds a token tree from terms, runs the automaton
@@ -24,16 +26,17 @@ func MakeTokenTree(terms ...string) *btree.BTreeG[*storage.Token] {
 // automaton yielded them. Values are copied out since Matches aliases tree keys.
 // It returns nil when levenshtein.New rejects the parameters.
 func CollectLevenshteinMatches(k, m int, keyword string, terms ...string) []string {
-	automata := levenshtein.New(k, m, []byte(keyword), MakeTokenTree(terms...))
-	if automata == nil {
-		return nil
-	}
-
-	out := make([]string, 0)
-	for token := range automata.Matches() {
-		out = append(out, string(token.Value))
-	}
-	return out
+	panic("implement me!")
+	// automata := levenshtein.New(k, m, []byte(keyword), MakeTokenTree(terms...))
+	// if automata == nil {
+	// 	return nil
+	// }
+	//
+	// out := make([]string, 0)
+	// for token := range automata.Matches() {
+	// 	out = append(out, string(token.Value))
+	// }
+	// return out
 }
 
 // LevenshteinDistance is a reference byte-level edit distance (insert, delete,

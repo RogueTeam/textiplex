@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/RogueTeam/textiplex/pool"
 	"github.com/tidwall/btree"
 )
 
@@ -368,6 +369,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 	}
 
+	tokensPool := pool.New[Token](20)
 	// Phase 4, add collision fields
 	for _, fieldHash := range fieldCollisions {
 		fieldA := a.Fields[fieldHash]
@@ -377,7 +379,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		// We need to maintain all fields sorted prior write
 		// So it is impossible to not store something in memory at least meanwhile
 		var finalTokens = btree.NewBTreeGOptions(TokenLessFunc, btree.Options{NoLocks: true})
-		preallocTokens := make([]Token, fieldA.Tokens.Len()+fieldB.Tokens.Len())
 
 		it := fieldA.Tokens.Iter()
 		err = func() (err error) {
@@ -392,8 +393,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 					continue
 				}
 
-				newToken := &preallocTokens[0]
-				preallocTokens = preallocTokens[1:]
+				newToken := tokensPool.Get()
 
 				*newToken = *token
 				newToken.PostingListIndex = postingListsCursor
@@ -457,8 +457,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 					continue
 				}
 
-				newToken := &preallocTokens[0]
-				preallocTokens = preallocTokens[1:]
+				newToken := tokensPool.Get()
 
 				*newToken = *token
 				newToken.PostingListIndex = postingListsCursor
@@ -519,8 +518,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 			tokenB, _ := fieldB.Tokens.Get(tokenA)
 
-			newToken := &preallocTokens[0]
-			preallocTokens = preallocTokens[1:]
+			newToken := tokensPool.Get()
 
 			*newToken = *tokenA
 			newToken.FrequencyCount = tokenA.FrequencyCount + tokenB.FrequencyCount

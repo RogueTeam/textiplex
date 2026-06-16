@@ -532,6 +532,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	}
 	// Phase 4, add collision fields
 	for _, fieldHash := range fieldCollisions {
+		finalTokensCount = 0
 		err := func() (err error) {
 			tmpFieldTokensFile, err := m.CreateTemp(fmt.Sprintf("field-%d-tokens.part", fieldHash))
 			if err != nil {
@@ -549,111 +550,31 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			fieldA := a.Fields[fieldHash]
 			fieldB := b.Fields[fieldHash]
 
-			var aIdx, bIdx int
-			var aValid, bValid = aIdx < len(fieldA.Tokens), bIdx < len(fieldB.Tokens)
-			for aValid || bValid {
+			aLen, bLen := len(fieldA.Tokens), len(fieldB.Tokens)
+			for aIdx, bIdx := 0, 0; aIdx < aLen || bIdx < bLen; {
 				switch {
-				case aValid && bValid:
-					tokA, tokB := &fieldA.Tokens[aIdx], &fieldB.Tokens[bIdx]
-
-					switch bytes.Compare(tokA.Value.Bytes(), tokB.Value.Bytes()) {
-					case 0: // Equal
-						tokHash := tokA.Value.Hash()
-						if _, found := visitedTokens[tokHash]; found {
-							aIdx++
-							bIdx++
-							aValid, bValid = aIdx < len(fieldA.Tokens), bIdx < len(fieldB.Tokens)
-							continue
-						}
-						visitedTokens[tokHash] = struct{}{}
-
-						err = writeToken(fieldTokensW, fieldHash, tokA, tokB)
-						if err != nil {
-							return fmt.Errorf("failed to write equal tokens: A and B: %w", err)
-						}
-					case -1: // A first
-						tokAHash := tokA.Value.Hash()
-						if _, found := visitedTokens[tokAHash]; !found {
-							visitedTokens[tokAHash] = struct{}{}
-
-							tokARefB, _ := fieldB.Tokens.GetString(tokA.Value.UnsafeString())
-							err = writeToken(fieldTokensW, fieldHash, tokA, tokARefB)
-							if err != nil {
-								return fmt.Errorf("failed to write equal tokens: A and B: %w", err)
-							}
-						}
-
-						tokBHash := tokB.Value.Hash()
-						if _, found := visitedTokens[tokBHash]; !found {
-							visitedTokens[tokBHash] = struct{}{}
-
-							tokBRefA, _ := fieldA.Tokens.GetString(tokB.Value.UnsafeString())
-							err = writeToken(fieldTokensW, fieldHash, tokBRefA, tokB)
-							if err != nil {
-								return fmt.Errorf("failed to write equal tokens: A and B: %w", err)
-							}
-						}
-					case 1: // B first
-						tokBHash := tokB.Value.Hash()
-						if _, found := visitedTokens[tokBHash]; !found {
-							visitedTokens[tokBHash] = struct{}{}
-
-							tokBRefA, _ := fieldA.Tokens.GetString(tokB.Value.UnsafeString())
-							err = writeToken(fieldTokensW, fieldHash, tokBRefA, tokB)
-							if err != nil {
-								return fmt.Errorf("failed to write equal tokens: A and B: %w", err)
-							}
-						}
-
-						tokAHash := tokA.Value.Hash()
-						if _, found := visitedTokens[tokAHash]; !found {
-							visitedTokens[tokAHash] = struct{}{}
-
-							tokARefB, _ := fieldB.Tokens.GetString(tokA.Value.UnsafeString())
-							err = writeToken(fieldTokensW, fieldHash, tokA, tokARefB)
-							if err != nil {
-								return fmt.Errorf("failed to write equal tokens: A and B: %w", err)
-							}
-						}
-					}
-
-					aIdx++
+				case aIdx >= aLen:
+					err = writeToken(fieldTokensW, fieldHash, nil, &fieldB.Tokens[bIdx])
 					bIdx++
-					aValid, bValid = aIdx < len(fieldA.Tokens), bIdx < len(fieldB.Tokens)
-				case aValid:
-					tokA := &fieldA.Tokens[aIdx]
-					tokAHash := tokA.Value.Hash()
-					if _, found := visitedTokens[tokAHash]; found {
+				case bIdx >= bLen:
+					err = writeToken(fieldTokensW, fieldHash, &fieldA.Tokens[aIdx], nil)
+					aIdx++
+				default:
+					switch bytes.Compare(fieldA.Tokens[aIdx].Value.Bytes(), fieldB.Tokens[bIdx].Value.Bytes()) {
+					case 0:
+						err = writeToken(fieldTokensW, fieldHash, &fieldA.Tokens[aIdx], &fieldB.Tokens[bIdx])
 						aIdx++
-						aValid = aIdx < len(fieldA.Tokens)
-						continue
-					}
-					visitedTokens[tokAHash] = struct{}{}
-
-					err = writeToken(fieldTokensW, fieldHash, tokA, nil)
-					if err != nil {
-						return fmt.Errorf("failed to write equal token: A : %w", err)
-					}
-
-					aIdx++
-					aValid = aIdx < len(fieldA.Tokens)
-				case bValid:
-					tokB := &fieldB.Tokens[bIdx]
-					tokBHash := tokB.Value.Hash()
-					if _, found := visitedTokens[tokBHash]; found {
 						bIdx++
-						bValid = bIdx < len(fieldB.Tokens)
-						continue
+					case -1:
+						err = writeToken(fieldTokensW, fieldHash, &fieldA.Tokens[aIdx], nil)
+						aIdx++
+					default:
+						err = writeToken(fieldTokensW, fieldHash, nil, &fieldB.Tokens[bIdx])
+						bIdx++
 					}
-					visitedTokens[tokBHash] = struct{}{}
-
-					err = writeToken(fieldTokensW, fieldHash, nil, tokB)
-					if err != nil {
-						return fmt.Errorf("failed to write equal token: B: %w", err)
-					}
-
-					bIdx++
-					bValid = bIdx < len(fieldB.Tokens)
+				}
+				if err != nil {
+					return fmt.Errorf("failed to write collision token: %w: %d", err, fieldHash)
 				}
 			}
 

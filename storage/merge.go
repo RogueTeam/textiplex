@@ -530,20 +530,30 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 		return nil
 	}
+
+	tmpFieldTokensFile, err := m.CreateTemp("field-tokens-*.part")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary field tokens file: %w", err)
+	}
+	defer func() {
+		tmpFieldTokensFile.Close()
+		os.Remove(tmpFieldTokensFile.Name())
+	}()
+
+	fieldTokensW := bufio.NewWriterSize(tmpFieldTokensFile, 2<<20)
+
 	// Phase 4, add collision fields
 	for _, fieldHash := range fieldCollisions {
+		tmpFieldTokensFile.Seek(0, 0)
+		err = tmpFieldTokensFile.Truncate(0)
+		if err != nil {
+			return fmt.Errorf("failed to retruncate field tokens file: %w", err)
+		}
+
+		fieldTokensW.Reset(tmpFieldTokensFile)
+
 		finalTokensCount = 0
 		err := func() (err error) {
-			tmpFieldTokensFile, err := m.CreateTemp(fmt.Sprintf("field-%d-tokens.part", fieldHash))
-			if err != nil {
-				return fmt.Errorf("failed to create temporary field tokens file: %w", err)
-			}
-			defer func() {
-				tmpFieldTokensFile.Close()
-				os.Remove(tmpFieldTokensFile.Name())
-			}()
-
-			fieldTokensW := bufio.NewWriterSize(tmpFieldTokensFile, 2<<20)
 
 			clear(visitedTokens)
 
@@ -649,7 +659,12 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				}
 			}
 
-			_, err = fieldsW.ReadFrom(tmpFieldTokensFile)
+			err = fieldsW.Flush()
+			if err != nil {
+				return fmt.Errorf("failed to flush remaining field data: %w", err)
+			}
+
+			_, err = tmpFieldFile.ReadFrom(tmpFieldTokensFile)
 			if err != nil {
 				return fmt.Errorf("failed to merge field tokens into field writer: %w", err)
 			}

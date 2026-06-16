@@ -58,7 +58,7 @@ func getToken(t *testing.T, s *storage.Storage, fieldHash uint64, value string) 
 	if !assertions.True(ok, "field %d must exist", fieldHash) {
 		t.FailNow()
 	}
-	tok, ok := field.Tokens.Get(&storage.Token{Value: []byte(value)})
+	tok, ok := field.Tokens.GetString(value)
 	if !assertions.True(ok, "token %q must exist in field %d", value, fieldHash) {
 		t.FailNow()
 	}
@@ -163,7 +163,7 @@ func TestMergeCollisionFieldDisjointTokens(t *testing.T) {
 	assertions.Len(merged.Fields, 1, "collision field must be merged into one")
 
 	field := merged.Fields[1]
-	assertions.Equal(2, field.Tokens.Len(), "both tokens present in merged field")
+	assertions.Equal(2, len(field.Tokens), "both tokens present in merged field")
 
 	// avgdl recomputed over both docs: (4 + 2) / 2 == 3.
 	assertions.InDelta(3.0, field.AvgDocumentLength, 0.0001)
@@ -274,7 +274,7 @@ func TestMergeMixed(t *testing.T) {
 
 	// Collision field 3.
 	field3 := merged.Fields[3]
-	assertions.Equal(3, field3.Tokens.Len(), "shared, aside, bside")
+	assertions.Equal(3, len(field3.Tokens), "shared, aside, bside")
 
 	shared := getToken(t, merged, 3, "shared")
 	assertions.Equal(uint64(2), shared.FrequencyCount)

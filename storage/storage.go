@@ -51,7 +51,7 @@ func (s *Tokens) GetBytesOrNear(b []byte) (token *Token, found bool) {
 }
 
 func (s *Tokens) IterBytes(lo, hi []byte) (seq iter.Seq[*Token]) {
-	if len(*s) == 0 {
+	if s == nil || len(*s) == 0 {
 		return
 	}
 
@@ -62,7 +62,7 @@ func (s *Tokens) IterBytes(lo, hi []byte) (seq iter.Seq[*Token]) {
 			return bytes.Compare(e.Value.Bytes(), t)
 		})
 		if !found && startIndex >= len(*s) {
-			return
+			return func(yield func(*Token) bool) {}
 		}
 	}
 
@@ -74,7 +74,7 @@ func (s *Tokens) IterBytes(lo, hi []byte) (seq iter.Seq[*Token]) {
 			return bytes.Compare(e.Value.Bytes(), t)
 		})
 		if !found && endIndex >= len(*s) {
-			return
+			return func(yield func(*Token) bool) {}
 		}
 	}
 

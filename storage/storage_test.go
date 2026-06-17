@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/RogueTeam/textiplex/storage"
 	"github.com/RogueTeam/textiplex/testsuite"
 	"github.com/stretchr/testify/assert"
@@ -224,6 +225,8 @@ func TestPostingLists(t *testing.T) {
 		},
 	}
 
+	var bitmapForPostingListRetrieval roaring64.Bitmap
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			assertions := assert.New(t)
@@ -243,15 +246,8 @@ func TestPostingLists(t *testing.T) {
 
 			assertions.Equal(tc.wantDocFreq, tok.FrequencyCount)
 
-			pl, put := s.PostingLists[tok.PostingListIndex].Bitmap()
-			defer put()
-
-			var gotIndices []uint64
-			it := pl.Iterator()
-			for it.HasNext() {
-				gotIndices = append(gotIndices, it.Next())
-			}
-			assertions.Equal(tc.wantDocIndices, gotIndices)
+			s.PostingLists[tok.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
+			assertions.Equal(tc.wantDocIndices, bitmapForPostingListRetrieval.ToArray())
 		})
 	}
 }
@@ -408,6 +404,8 @@ func TestRoundTrip(t *testing.T) {
 
 			assertions.Len(loaded.Fields, len(original.Fields))
 
+			var origBitmapForPostingListRetrieval, loadedBitmapForPostingListRetrieval roaring64.Bitmap
+
 			for hash, origField := range original.Fields {
 				t.Run("field", func(t *testing.T) {
 					assertions := assert.New(t)
@@ -435,12 +433,10 @@ func TestRoundTrip(t *testing.T) {
 							assertions.Equal(origTok.FrequencyCount, loadedTok.FrequencyCount)
 							assertions.Equal(origTok.Value, loadedTok.Value)
 
-							origPL, putOrig := original.PostingLists[origTok.PostingListIndex].Bitmap()
-							defer putOrig()
-							loadedPL, putLoaded := loaded.PostingLists[loadedTok.PostingListIndex].Bitmap()
-							defer putLoaded()
+							original.PostingLists[origTok.PostingListIndex].Bitmap(&origBitmapForPostingListRetrieval)
+							loaded.PostingLists[loadedTok.PostingListIndex].Bitmap(&loadedBitmapForPostingListRetrieval)
 
-							assertions.Equal(origPL.GetCardinality(), loadedPL.GetCardinality())
+							assertions.Equal(origBitmapForPostingListRetrieval.GetCardinality(), loadedBitmapForPostingListRetrieval.GetCardinality())
 
 							origFreqs := original.TokenFrequencies[origTok.FrequenciesIndex : origTok.FrequenciesIndex+origTok.FrequencyCount]
 							loadedFreqs := loaded.TokenFrequencies[loadedTok.FrequenciesIndex : loadedTok.FrequenciesIndex+loadedTok.FrequencyCount]

@@ -3,6 +3,7 @@ package storage_test
 import (
 	"testing"
 
+	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/RogueTeam/textiplex/storage"
 	"github.com/RogueTeam/textiplex/testsuite"
 	"github.com/stretchr/testify/assert"
@@ -35,10 +36,10 @@ func mergeAndLoad(t *testing.T, a, b *storage.Storage) *storage.Storage {
 
 // postingDocIDs returns the doc indices contained in a token's posting list.
 func postingDocIDs(s *storage.Storage, tok *storage.Token) []uint64 {
-	pl, put := s.PostingLists[tok.PostingListIndex].Bitmap()
-	defer put()
+	var bitmapForPostingListRetrieval roaring64.Bitmap
+	s.PostingLists[tok.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
 
-	return pl.ToArray()
+	return bitmapForPostingListRetrieval.ToArray()
 }
 
 // tokenFreqs returns the contiguous TF slice for a token.

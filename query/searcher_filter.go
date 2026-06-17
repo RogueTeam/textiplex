@@ -1,5 +1,7 @@
 package query
 
+import "github.com/RoaringBitmap/roaring/roaring64"
+
 // Filter the documents id index into the destination bitmap
 // the idea is to filter first the score results based on conditions
 // is caller's responsability to clear dst bitmap
@@ -8,6 +10,7 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 	shouldsCount := q.Shoulds.Count()
 	mustNotsCount := q.MustNots.Count()
 
+	var bitmapForPostingListRetrieval roaring64.Bitmap
 	if mustsCount > 0 {
 		// Musts define the candidate set: intersection of all Must posting lists.
 		var firstMust bool
@@ -17,13 +20,12 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 				return
 			}
 
-			pl, put := s.Storage.PostingLists[state.Token.PostingListIndex].Bitmap()
-			put()
+			s.Storage.PostingLists[state.Token.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
 			if !firstMust {
-				ctx.Bitmap.Or(pl)
+				ctx.Bitmap.Or(&bitmapForPostingListRetrieval)
 				firstMust = true
 			} else {
-				ctx.Bitmap.And(pl)
+				ctx.Bitmap.And(&bitmapForPostingListRetrieval)
 			}
 		})
 	} else if shouldsCount > 0 {
@@ -33,9 +35,8 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 				return
 			}
 
-			pl, put := s.Storage.PostingLists[state.Token.PostingListIndex].Bitmap()
-			defer put()
-			ctx.Bitmap.Or(pl)
+			s.Storage.PostingLists[state.Token.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
+			ctx.Bitmap.Or(&bitmapForPostingListRetrieval)
 		})
 	}
 
@@ -46,9 +47,8 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 				return
 			}
 
-			pl, put := s.Storage.PostingLists[state.Token.PostingListIndex].Bitmap()
-			defer put()
-			ctx.Bitmap.AndNot(pl)
+			s.Storage.PostingLists[state.Token.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
+			ctx.Bitmap.AndNot(&bitmapForPostingListRetrieval)
 		})
 	}
 }

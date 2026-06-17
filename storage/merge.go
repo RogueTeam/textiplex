@@ -216,7 +216,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 	}
 
-	var reusableBitmap = roaring64.New()
+	var bitmapForPostingListRetrieval roaring64.Bitmap
+	var reusableBitmap roaring64.Bitmap
 
 	// Phase 3, write B's only fields
 	for fieldHash, field := range b.Fields {
@@ -282,11 +283,11 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 			// Write directly to the posting lists temporary file
 			reusableBitmap.Clear()
-			pl, putPl := b.PostingLists[token.PostingListIndex].Bitmap()
-			for it := pl.Iterator(); it.HasNext(); {
+			b.PostingLists[token.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
+			for it := bitmapForPostingListRetrieval.Iterator(); it.HasNext(); {
 				reusableBitmap.Add(docOffset + it.Next())
 			}
-			putPl()
+
 			size := reusableBitmap.GetSerializedSizeInBytes()
 
 			plBuffer.Reset()
@@ -358,15 +359,13 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			freqsCursor += finalToken.FrequencyCount
 
 			reusableBitmap.Clear()
-			bitmapA, putA := a.PostingLists[tokenA.PostingListIndex].Bitmap()
-			reusableBitmap.Or(bitmapA)
-			putA()
+			a.PostingLists[tokenA.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
+			reusableBitmap.Or(&bitmapForPostingListRetrieval)
 
-			bitmapB, putB := b.PostingLists[tokenB.PostingListIndex].Bitmap()
-			for it := bitmapB.Iterator(); it.HasNext(); {
+			b.PostingLists[tokenB.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
+			for it := bitmapForPostingListRetrieval.Iterator(); it.HasNext(); {
 				reusableBitmap.Add(docOffset + it.Next())
 			}
-			putB()
 
 			// Write the posting list
 			size := reusableBitmap.GetSerializedSizeInBytes()
@@ -461,11 +460,10 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 			// Write the posting list
 			reusableBitmap.Clear()
-			pl, put := b.PostingLists[tokenB.PostingListIndex].Bitmap()
-			for it := pl.Iterator(); it.HasNext(); {
+			b.PostingLists[tokenB.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
+			for it := bitmapForPostingListRetrieval.Iterator(); it.HasNext(); {
 				reusableBitmap.Add(docOffset + it.Next())
 			}
-			put()
 
 			size := reusableBitmap.GetSerializedSizeInBytes()
 

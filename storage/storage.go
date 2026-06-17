@@ -100,16 +100,28 @@ type Field struct {
 	DocumentLengths []DocumentLengthEntry
 }
 
-type PostingList struct {
-	Data []byte
+type BitmapPool struct {
+	Once sync.Once
+	sync.Pool
 }
 
-var bitmapPool = sync.Pool{
-	New: func() any { return roaring64.New() },
+func (p *BitmapPool) Get() any {
+	p.Once.Do(func() {
+		p.Pool = sync.Pool{
+			New: func() any { return roaring64.New() },
+		}
+	})
+
+	return p.Pool.Get()
+}
+
+type PostingList struct {
+	BitmapPool *BitmapPool
+	Data       []byte
 }
 
 func (l *PostingList) Bitmap() (bitmap *roaring64.Bitmap, put func()) {
-	bitmap = bitmapPool.Get().(*roaring64.Bitmap)
+	bitmap = l.BitmapPool.Get().(*roaring64.Bitmap)
 	bitmap.Clear()
 	if len(l.Data) > 0 {
 		_, err := bitmap.FromUnsafeBytes(l.Data)
@@ -117,7 +129,7 @@ func (l *PostingList) Bitmap() (bitmap *roaring64.Bitmap, put func()) {
 			bitmap.Clear()
 		}
 	}
-	put = func() { bitmapPool.Put(bitmap) }
+	put = func() { l.BitmapPool.Put(bitmap) }
 	return bitmap, put
 }
 
@@ -142,6 +154,7 @@ type Storage struct {
 	TokenFrequencies []TokenFrequencyEntry
 	// Used to determine if the storage was already initialized or not
 	Initialized bool
+	BitmapPool  BitmapPool
 }
 
 func (s *Storage) ColdInitialize() {
@@ -279,7 +292,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 			s.Size += uint64(size)
 
 			plIndex := uint64(len(s.PostingLists))
-			s.PostingLists = append(s.PostingLists, PostingList{Data: pdBytes})
+			s.PostingLists = append(s.PostingLists, PostingList{BitmapPool: &s.BitmapPool, Data: pdBytes})
 
 			freqIndex := uint64(len(s.TokenFrequencies))
 			s.TokenFrequencies = append(s.TokenFrequencies, pd.Freqs...)
@@ -591,6 +604,7 @@ func (s *Storage) Load(name string) (err error) {
 		}
 
 		// Zero copy loading of posting list
+		s.PostingLists[index].BitmapPool = &s.BitmapPool
 		s.PostingLists[index].Data = inUseBuffer[:pHeader.Size]
 		inUseBuffer = inUseBuffer[pHeader.Size:]
 	}

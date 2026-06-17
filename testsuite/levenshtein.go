@@ -1,8 +1,11 @@
-package levenshteinsuite
+package testsuite
 
 import (
+	"bytes"
 	"slices"
+	"strings"
 
+	"github.com/RogueTeam/textiplex/levenshtein"
 	"github.com/RogueTeam/textiplex/storage"
 	"github.com/tidwall/btree"
 )
@@ -10,15 +13,14 @@ import (
 // MakeTokenTree builds a byte-sorted token BTree like the one Storage produces,
 // using the same TokenLessFunc and NoLocks options as production. Duplicate
 // terms collapse into a single key.
-func MakeTokenTree(terms ...string) *btree.BTreeG[*storage.Token] {
-	panic("implement me!")
-	// tree := btree.NewBTreeGOptions(storage.TokenLessFunc, btree.Options{NoLocks: true})
-	//
-	//	for _, term := range terms {
-	//		tree.Set(&storage.Token{Value: []byte(term)})
-	//	}
-	//
-	// return tree
+func MakeTokenTree(terms ...string) storage.Tokens {
+	tree := btree.NewBTreeGOptions(func(a, b storage.Token) bool { return bytes.Compare(a.Value.Bytes(), b.Value.Bytes()) == -1 }, btree.Options{NoLocks: true})
+
+	for _, term := range terms {
+		tree.Set(storage.Token{Value: storage.TokenValueFrom(term)})
+	}
+
+	return tree.Items()
 }
 
 // CollectLevenshteinMatches builds a token tree from terms, runs the automaton
@@ -26,17 +28,16 @@ func MakeTokenTree(terms ...string) *btree.BTreeG[*storage.Token] {
 // automaton yielded them. Values are copied out since Matches aliases tree keys.
 // It returns nil when levenshtein.New rejects the parameters.
 func CollectLevenshteinMatches(k, m int, keyword string, terms ...string) []string {
-	panic("implement me!")
-	// automata := levenshtein.New(k, m, []byte(keyword), MakeTokenTree(terms...))
-	// if automata == nil {
-	// 	return nil
-	// }
-	//
-	// out := make([]string, 0)
-	// for token := range automata.Matches() {
-	// 	out = append(out, string(token.Value))
-	// }
-	// return out
+	automata := levenshtein.New(k, m, []byte(keyword), MakeTokenTree(terms...))
+	if automata == nil {
+		return nil
+	}
+
+	out := make([]string, 0)
+	for token := range automata.Matches() {
+		out = append(out, strings.Clone(token.Value.UnsafeString()))
+	}
+	return out
 }
 
 // LevenshteinDistance is a reference byte-level edit distance (insert, delete,

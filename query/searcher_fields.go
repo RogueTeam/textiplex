@@ -9,9 +9,8 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 	cardinality := ctx.Bitmap.GetCardinality()
 	ctx.Scores = make(map[uint64]float64, cardinality)
 
-	it := field.Tokens.Iter()
-	for valid := it.First(); valid; valid = it.Next() {
-		token := it.Item()
+	for tokenIdx := range field.Tokens {
+		token := &field.Tokens[tokenIdx]
 
 		pl := s.Storage.PostingLists[token.PostingListIndex].Bitmap
 		for plIt := pl.Iterator(); plIt.HasNext(); {
@@ -29,5 +28,4 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 
 		}
 	}
-	it.Release()
 }

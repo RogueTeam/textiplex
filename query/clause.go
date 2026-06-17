@@ -92,14 +92,12 @@ type HandleClauseFunc func(state *ClauseState)
 func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 	var state ClauseState
 
-	var tokensKey storage.Token
 	for _, kw := range c.Keywords {
 		state.Boost = kw.Boost
-		tokensKey.Value = kw.Value
 
 		var found bool
 		for state.FieldHash, state.Field = range s.Storage.Fields {
-			state.Token, state.Found = state.Field.Tokens.Get(&tokensKey)
+			state.Token, state.Found = state.Field.Tokens.GetBytes(kw.Value)
 			if state.Found {
 				handle(&state)
 				if !found {
@@ -143,8 +141,7 @@ fieldKwLoop:
 
 		state.Field, state.Found = s.Storage.Fields[entry.FieldHash]
 		if state.Found {
-			tokensKey.Value = entry.Value.Value
-			state.Token, state.Found = state.Field.Tokens.Get(&tokensKey)
+			state.Token, state.Found = state.Field.Tokens.GetBytes(entry.Value.Value)
 
 			handle(&state)
 			continue
@@ -172,7 +169,6 @@ fieldKwLoop:
 		handle(&state)
 	}
 
-	var tokenKey storage.Token
 	for _, entry := range c.FieldRanges {
 		state.FieldHash = entry.FieldHash
 		state.Boost = entry.Value.Boost
@@ -183,7 +179,7 @@ fieldKwLoop:
 			continue
 		}
 
-		if state.Field.Tokens.Len() == 0 {
+		if len(state.Field.Tokens) == 0 {
 			state.Found = false
 			handle(&state)
 			continue
@@ -194,43 +190,39 @@ fieldKwLoop:
 			hi = entry.Value.High
 		)
 		if len(lo) == 0 {
-			tok, _ := state.Field.Tokens.GetAt(0)
-			lo = tok.Value
+			tok := state.Field.Tokens[0]
+			lo = tok.Value.Bytes()
 		}
 		if len(hi) == 0 {
-			tok, _ := state.Field.Tokens.GetAt(state.Field.Tokens.Len() - 1)
-			hi = tok.Value
-		}
-		it := state.Field.Tokens.Iter()
-
-		var found bool
-		tokenKey.Value = lo
-
-		valid := it.Seek(&tokenKey)
-		if valid &&
-			(entry.Value.CaptureMode == RangeCaptureModeRight || entry.Value.CaptureMode == RangeCaptureModeNone) {
-			valid = it.Next()
+			tok := state.Field.Tokens[len(state.Field.Tokens)-1]
+			hi = tok.Value.Bytes()
 		}
 
-		for ; valid; valid = it.Next() {
-			state.Token = it.Item()
+		var found, first bool
+		for state.Token = range state.Field.Tokens.IterBytes(lo, hi) {
+			if !first {
+				first = true
 
-			tokenCmp := bytes.Compare(state.Token.Value, hi)
+				if entry.Value.CaptureMode == RangeCaptureModeRight || entry.Value.CaptureMode == RangeCaptureModeNone {
+					continue
+				}
+			}
+
+			tokenCmp := bytes.Compare(state.Token.Value.Bytes(), hi)
 			if tokenCmp > 0 {
 				break
 			}
 
-			if tokenCmp == 0 &&
-				(entry.Value.CaptureMode == RangeCaptureModeLeft || entry.Value.CaptureMode == RangeCaptureModeNone) {
+			if tokenCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeLeft || entry.Value.CaptureMode == RangeCaptureModeNone) {
 				break
 			}
 
+			state.Found = true
 			handle(&state)
 			if !found {
 				found = true
 			}
 		}
-		it.Release()
 
 		if !found {
 			state.Found = false

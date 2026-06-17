@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"iter"
 	"os"
 	"slices"
 	"unsafe"
@@ -25,6 +26,65 @@ func (s *Tokens) GetString(ss string) (token *Token, found bool) {
 		return nil, false
 	}
 	return &(*s)[idx], true
+}
+
+func (s *Tokens) GetBytes(b []byte) (token *Token, found bool) {
+	idx, found := slices.BinarySearchFunc(*s, b, func(e Token, t []byte) int {
+		return bytes.Compare(e.Value.Bytes(), b)
+	})
+
+	if !found {
+		return nil, false
+	}
+	return &(*s)[idx], true
+}
+
+func (s *Tokens) GetBytesOrNear(b []byte) (token *Token, found bool) {
+	idx, found := slices.BinarySearchFunc(*s, b, func(e Token, t []byte) int {
+		return bytes.Compare(e.Value.Bytes(), b)
+	})
+
+	if !found && idx >= len(*s) {
+		return nil, false
+	}
+	return &(*s)[idx], true
+}
+
+func (s *Tokens) IterBytes(lo, hi []byte) (seq iter.Seq[*Token]) {
+	if len(*s) == 0 {
+		return
+	}
+
+	var startIndex, endIndex int
+	if lo != nil {
+		var found bool
+		startIndex, found = slices.BinarySearchFunc(*s, lo, func(e Token, t []byte) int {
+			return bytes.Compare(e.Value.Bytes(), t)
+		})
+		if !found && startIndex >= len(*s) {
+			return
+		}
+	}
+
+	if hi == nil {
+		endIndex = len(*s) - 1
+	} else {
+		var found bool
+		endIndex, found = slices.BinarySearchFunc(*s, hi, func(e Token, t []byte) int {
+			return bytes.Compare(e.Value.Bytes(), t)
+		})
+		if !found && endIndex >= len(*s) {
+			return
+		}
+	}
+
+	return func(yield func(*Token) bool) {
+		for i := startIndex; i <= endIndex; i++ {
+			if !yield(&(*s)[i]) {
+				return
+			}
+		}
+	}
 }
 
 type Field struct {

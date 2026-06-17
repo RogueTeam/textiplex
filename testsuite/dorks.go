@@ -1,4 +1,4 @@
-package querysuite
+package testsuite
 
 import (
 	"iter"

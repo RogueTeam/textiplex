@@ -4,7 +4,6 @@ import (
 	"iter"
 
 	"github.com/RogueTeam/textiplex/storage"
-	"github.com/tidwall/btree"
 )
 
 const (
@@ -22,14 +21,14 @@ type Levenshtein struct {
 	k       int
 	m       int // max results; <=0 means unlimited
 	keyword []byte
-	tree    *btree.BTreeG[*storage.Token]
+	tokens  storage.Tokens
 }
 
-func New(k, m int, keyword []byte, tree *btree.BTreeG[*storage.Token]) *Levenshtein {
+func New(k, m int, keyword []byte, tokens storage.Tokens) *Levenshtein {
 	if k < 0 || k > 3 || len(keyword) >= MaxLevenshteinLength {
 		return nil
 	}
-	return &Levenshtein{k: k, m: m, keyword: keyword, tree: tree}
+	return &Levenshtein{k: k, m: m, keyword: keyword, tokens: tokens}
 }
 
 // State is the edit-distance DP row used as the automaton State:
@@ -145,24 +144,19 @@ func (a *Levenshtein) NextSeek(stack []State, key []byte, matched int) []byte {
 func (a *Levenshtein) Matches() iter.Seq[*storage.Token] {
 	return func(yield func(*storage.Token) bool) {
 		count := 0
-		var seek storage.Token // empty pivot => first key
+		var seek []byte // empty pivot => first key
 
 		for {
-			var key *storage.Token
-			found := false
-			a.tree.Ascend(&seek, func(item *storage.Token) bool {
-				key, found = item, true
-				return false // take only the first key >= seek
-			})
+			key, found := a.tokens.GetBytesOrNear(seek)
 			if !found {
 				return
 			}
 
-			stack := make([]State, 1, len(key.Value)+1)
+			stack := make([]State, 1, key.Value.Size+1)
 			stack[0] = a.Start()
 			matched := 0
-			for matched < len(key.Value) {
-				ns := a.Step(stack[matched], key.Value[matched])
+			for matched < int(key.Value.Size) {
+				ns := a.Step(stack[matched], key.Value.Data[matched])
 				if a.Dead(ns) {
 					break
 				}
@@ -170,7 +164,7 @@ func (a *Levenshtein) Matches() iter.Seq[*storage.Token] {
 				matched++
 			}
 
-			if matched == len(key.Value) && a.Accept(stack[matched]) {
+			if matched == int(key.Value.Size) && a.Accept(stack[matched]) {
 				if !yield(key) {
 					return
 				}
@@ -179,11 +173,11 @@ func (a *Levenshtein) Matches() iter.Seq[*storage.Token] {
 				}
 			}
 
-			next := a.NextSeek(stack, key.Value, matched)
+			next := a.NextSeek(stack, key.Value.Bytes(), matched)
 			if next == nil {
 				return
 			}
-			seek.Value = next
+			seek = next
 		}
 	}
 }

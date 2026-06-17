@@ -7,6 +7,7 @@ import (
 	"iter"
 	"os"
 	"slices"
+	"sync"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
@@ -100,10 +101,24 @@ type Field struct {
 }
 
 type PostingList struct {
-	roaring64.Bitmap
-	// When is true the underlying slice of the bitmap is considered read-only
-	// new insertions rewrite calling bitmap.Clone and reassign
-	Unsafe bool
+	Data []byte
+}
+
+var bitmapPool = sync.Pool{
+	New: func() any { return roaring64.New() },
+}
+
+func (l *PostingList) Bitmap() (bitmap *roaring64.Bitmap, put func()) {
+	bitmap = bitmapPool.Get().(*roaring64.Bitmap)
+	bitmap.Clear()
+	if len(l.Data) > 0 {
+		_, err := bitmap.FromUnsafeBytes(l.Data)
+		if err != nil {
+			bitmap.Clear()
+		}
+	}
+	put = func() { bitmapPool.Put(bitmap) }
+	return bitmap, put
 }
 
 type Storage struct {
@@ -256,8 +271,15 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 		for valid := it.First(); valid; valid = it.Next() {
 			pd := it.Item()
 
+			size := int(pd.Bitmap.GetSerializedSizeInBytes())
+
+			pdBytes, _ := pd.Bitmap.MarshalBinary()
+
+			s.Size += uint64(PostingListHeaderSize)
+			s.Size += uint64(size)
+
 			plIndex := uint64(len(s.PostingLists))
-			s.PostingLists = append(s.PostingLists, PostingList{Bitmap: *pd.Bitmap})
+			s.PostingLists = append(s.PostingLists, PostingList{Data: pdBytes})
 
 			freqIndex := uint64(len(s.TokenFrequencies))
 			s.TokenFrequencies = append(s.TokenFrequencies, pd.Freqs...)
@@ -277,13 +299,6 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 	}
 
 	clear(fieldsAccumulators)
-
-	// posting list sizes only known after all docs are processed
-	// roaring serialized size depends on final bitmap content
-	for index := range s.PostingLists {
-		s.Size += uint64(PostingListHeaderSize)
-		s.Size += uint64(s.PostingLists[index].GetSerializedSizeInBytes())
-	}
 }
 
 // This function will allocate a new batch and sort documents in the batch by their ID
@@ -414,17 +429,11 @@ func (s *Storage) SaveTo(name string) (err error) {
 		}
 	}
 	// Write posting lists
-	var plBuffer bytes.Buffer
 	for index := range postingListCluster {
-		plBuffer.Reset()
-
 		pl := &postingListCluster[index]
-		size := pl.GetSerializedSizeInBytes()
-		plBuffer.Grow(int(size))
-		pl.WriteTo(&plBuffer)
 
-		out = binary.NativeEndian.AppendUint64(out, size)
-		out = append(out, plBuffer.Bytes()...)
+		out = binary.NativeEndian.AppendUint64(out, uint64(len(pl.Data)))
+		out = append(out, pl.Data...)
 	}
 	// Write token frequencies
 	for index := range tokenFrequenciesCluster {
@@ -581,12 +590,9 @@ func (s *Storage) Load(name string) (err error) {
 			return fmt.Errorf("not enough space for loading posting list %d from buffer", index)
 		}
 
-		contents := inUseBuffer[:pHeader.Size]
-		inUseBuffer = inUseBuffer[pHeader.Size:]
-
 		// Zero copy loading of posting list
-		s.PostingLists[index].FromUnsafeBytes(contents)
-		s.PostingLists[index].Unsafe = true
+		s.PostingLists[index].Data = inUseBuffer[:pHeader.Size]
+		inUseBuffer = inUseBuffer[pHeader.Size:]
 	}
 
 	tokenFreqsSize := TokenFrequencyEntrySize * uintptr(header.TotalTokenFrequencies)

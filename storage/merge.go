@@ -161,24 +161,20 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			postingListsCursor++
 			_, err = fieldsW.Write(data)
 			if err != nil {
-				return fmt.Errorf("failed to write B's field token posting list index: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
+				return fmt.Errorf("failed to write A's field token posting list index: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
 			}
 
 			// Write directly to the posting lists temporary file
-			plBuffer.Reset()
 			postingList := &a.PostingLists[token.PostingListIndex]
-			size := postingList.GetSerializedSizeInBytes()
-			plBuffer.Grow(int(size))
-			postingList.WriteTo(&plBuffer)
 
-			data = binary.NativeEndian.AppendUint64(buffer, size)
+			data = binary.NativeEndian.AppendUint64(buffer, uint64(len(postingList.Data)))
 			_, err = postingsW.Write(data)
 			if err != nil {
-				return fmt.Errorf("failed to write B's field token posting list size: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
+				return fmt.Errorf("failed to write A's field token posting list size: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
 			}
-			_, err = postingsW.Write(plBuffer.Bytes())
+			_, err = postingsW.Write(postingList.Data)
 			if err != nil {
-				return fmt.Errorf("failed to write B's field token posting list contents: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
+				return fmt.Errorf("failed to write A's field token posting list contents: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
 			}
 
 			// Add token frequency
@@ -285,12 +281,15 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 
 			// Write directly to the posting lists temporary file
-			plBuffer.Reset()
 			reusableBitmap.Clear()
-			for it := b.PostingLists[token.PostingListIndex].Iterator(); it.HasNext(); {
+			pl, putPl := b.PostingLists[token.PostingListIndex].Bitmap()
+			for it := pl.Iterator(); it.HasNext(); {
 				reusableBitmap.Add(docOffset + it.Next())
 			}
+			putPl()
 			size := reusableBitmap.GetSerializedSizeInBytes()
+
+			plBuffer.Reset()
 			plBuffer.Grow(int(size))
 			reusableBitmap.WriteTo(&plBuffer)
 
@@ -358,18 +357,21 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			finalToken.FrequenciesIndex = freqsCursor
 			freqsCursor += finalToken.FrequencyCount
 
-			bitmapA := a.PostingLists[tokenA.PostingListIndex]
-			bitmapB := b.PostingLists[tokenB.PostingListIndex]
-
 			reusableBitmap.Clear()
-			reusableBitmap.Or(&bitmapA.Bitmap)
+			bitmapA, putA := a.PostingLists[tokenA.PostingListIndex].Bitmap()
+			reusableBitmap.Or(bitmapA)
+			putA()
+
+			bitmapB, putB := b.PostingLists[tokenB.PostingListIndex].Bitmap()
 			for it := bitmapB.Iterator(); it.HasNext(); {
 				reusableBitmap.Add(docOffset + it.Next())
 			}
+			putB()
 
 			// Write the posting list
-			plBuffer.Reset()
 			size := reusableBitmap.GetSerializedSizeInBytes()
+
+			plBuffer.Reset()
 			plBuffer.Grow(int(size))
 			reusableBitmap.WriteTo(&plBuffer)
 
@@ -421,18 +423,14 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			freqsCursor += finalToken.FrequencyCount
 
 			// Write the posting list
-			plBuffer.Reset()
 			postingList := &a.PostingLists[tokenA.PostingListIndex]
-			size := postingList.GetSerializedSizeInBytes()
-			plBuffer.Grow(int(size))
-			postingList.WriteTo(&plBuffer)
 
-			data := binary.NativeEndian.AppendUint64(buffer, size)
+			data := binary.NativeEndian.AppendUint64(buffer, uint64(len(postingList.Data)))
 			_, err = postingsW.Write(data)
 			if err != nil {
 				return fmt.Errorf("failed to write A's field token posting list size: %w: %d:%s", err, fieldHash, tokenA.Value.UnsafeString())
 			}
-			_, err = postingsW.Write(plBuffer.Bytes())
+			_, err = postingsW.Write(postingList.Data)
 			if err != nil {
 				return fmt.Errorf("failed to write A's field token posting list contents: %w: %d:%s", err, fieldHash, tokenA.Value.UnsafeString())
 			}
@@ -462,13 +460,16 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			freqsCursor += finalToken.FrequencyCount
 
 			// Write the posting list
-			plBuffer.Reset()
 			reusableBitmap.Clear()
-			for it := b.PostingLists[tokenB.PostingListIndex].Iterator(); it.HasNext(); {
-				bDocId := docOffset + it.Next()
-				reusableBitmap.Add(bDocId)
+			pl, put := b.PostingLists[tokenB.PostingListIndex].Bitmap()
+			for it := pl.Iterator(); it.HasNext(); {
+				reusableBitmap.Add(docOffset + it.Next())
 			}
+			put()
+
 			size := reusableBitmap.GetSerializedSizeInBytes()
+
+			plBuffer.Reset()
 			plBuffer.Grow(int(size))
 			reusableBitmap.WriteTo(&plBuffer)
 

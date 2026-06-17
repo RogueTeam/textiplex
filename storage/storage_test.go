@@ -243,7 +243,9 @@ func TestPostingLists(t *testing.T) {
 
 			assertions.Equal(tc.wantDocFreq, tok.FrequencyCount)
 
-			pl := &s.PostingLists[tok.PostingListIndex]
+			pl, put := s.PostingLists[tok.PostingListIndex].Bitmap()
+			defer put()
+
 			var gotIndices []uint64
 			it := pl.Iterator()
 			for it.HasNext() {
@@ -433,8 +435,11 @@ func TestRoundTrip(t *testing.T) {
 							assertions.Equal(origTok.FrequencyCount, loadedTok.FrequencyCount)
 							assertions.Equal(origTok.Value, loadedTok.Value)
 
-							origPL := &original.PostingLists[origTok.PostingListIndex]
-							loadedPL := &loaded.PostingLists[loadedTok.PostingListIndex]
+							origPL, putOrig := original.PostingLists[origTok.PostingListIndex].Bitmap()
+							defer putOrig()
+							loadedPL, putLoaded := loaded.PostingLists[loadedTok.PostingListIndex].Bitmap()
+							defer putLoaded()
+
 							assertions.Equal(origPL.GetCardinality(), loadedPL.GetCardinality())
 
 							origFreqs := original.TokenFrequencies[origTok.FrequenciesIndex : origTok.FrequenciesIndex+origTok.FrequencyCount]
@@ -447,10 +452,6 @@ func TestRoundTrip(t *testing.T) {
 
 			assertions.Len(loaded.PostingLists, len(original.PostingLists))
 			assertions.Len(loaded.TokenFrequencies, len(original.TokenFrequencies))
-
-			for i := range loaded.PostingLists {
-				assertions.True(loaded.PostingLists[i].Unsafe, "loaded posting list %d must be Unsafe", i)
-			}
 		})
 	}
 }

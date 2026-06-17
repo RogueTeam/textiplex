@@ -12,7 +12,7 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 	for tokenIdx := range field.Tokens {
 		token := &field.Tokens[tokenIdx]
 
-		pl := s.Storage.PostingLists[token.PostingListIndex].Bitmap
+		pl, put := s.Storage.PostingLists[token.PostingListIndex].Bitmap()
 		for plIt := pl.Iterator(); plIt.HasNext(); {
 			docIdx := plIt.Next()
 
@@ -25,7 +25,7 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 				continue
 			}
 			ctx.Scores[docIdx] = float64(cardinality - uint64(len(ctx.Scores)))
-
 		}
+		put()
 	}
 }

@@ -436,7 +436,8 @@ func TestMergeTFDocIDsMatchPosting(t *testing.T) {
 		for i := range field.Tokens {
 			tok := &field.Tokens[i]
 			assertions.Equal(
-				postingDocIDs(merged, tok), tfDocIDs(merged, tok),
+				postingDocIDs(merged, tok),
+				tfDocIDs(merged, tok),
 				"field %d token %q: TF docs must equal posting docs", fieldHash, tok.Value.Bytes(),
 			)
 		}
@@ -625,9 +626,6 @@ func TestMergePostingListsUnsafeWithCollision(t *testing.T) {
 	merged := buildMixedMerged(t)
 
 	assertions.NotEmpty(merged.PostingLists)
-	for i := range merged.PostingLists {
-		assertions.True(merged.PostingLists[i].Unsafe, "posting list %d must be Unsafe", i)
-	}
 }
 
 // 27. Collision field doc-length contents across multiple docs on both sides.

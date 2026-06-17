@@ -35,13 +35,10 @@ func mergeAndLoad(t *testing.T, a, b *storage.Storage) *storage.Storage {
 
 // postingDocIDs returns the doc indices contained in a token's posting list.
 func postingDocIDs(s *storage.Storage, tok *storage.Token) []uint64 {
-	pl := &s.PostingLists[tok.PostingListIndex]
-	var out []uint64
-	it := pl.Iterator()
-	for it.HasNext() {
-		out = append(out, it.Next())
-	}
-	return out
+	pl, put := s.PostingLists[tok.PostingListIndex].Bitmap()
+	defer put()
+
+	return pl.ToArray()
 }
 
 // tokenFreqs returns the contiguous TF slice for a token.
@@ -323,10 +320,6 @@ func TestMergeHeaderCounts(t *testing.T) {
 	// Token frequencies: x(1) + y(1) + shared merged(2) == 4.
 	assertions.Len(merged.TokenFrequencies, 4)
 
-	// Loaded posting lists are mmap-backed.
-	for i := range merged.PostingLists {
-		assertions.True(merged.PostingLists[i].Unsafe, "posting list %d must be Unsafe", i)
-	}
 }
 
 // ── Empty operand merges ──────────────────────────────────────────────────────

@@ -2,6 +2,8 @@
 
 A high-performance, low-memory full-text search engine written in Go. Built from first principles with zero OOP overhead, immutable mmap'd index files, and a streaming merge pipeline that outperforms every Go FTS engine benchmarked to date.
 
+**textiplex is the only Go full-text search engine able to fully index English Wikipedia.** On a single desktop CPU it indexed the complete 120 GB export — 25.65M documents — into a 70 GB index inside a bounded memory envelope (27 GB peak during indexing, 12 GB during merge). Bluge (both upstream and a heavily optimized fork) and Bleve all ran out of memory and crashed during the merge, well before finishing. See [Benchmarks](#benchmarks).
+
 ---
 
 ## Design philosophy
@@ -12,55 +14,71 @@ Most search engines in Go are ports or wrappers of JVM-era architectures — Luc
 
 **Immutable files.** An index segment is a single mmap'd file. Once written it is never modified in place. Queries read directly from OS-managed pages with zero deserialization cost. The page cache is your cache.
 
-**Streaming merge.** Two segments are merged by streaming through temp files, rewriting doc ID offsets as bytes flow through. The merge pipeline never holds both input segments plus the output in memory simultaneously. A 1M-doc merge costs 732MB of heap — 8.7× less than the best available alternative.
+**Streaming merge.** Two segments are merged by streaming through temp files, rewriting doc ID offsets as bytes flow through. The merge pipeline never holds both input segments plus the output in memory simultaneously, so peak memory tracks the working set, not the corpus size. This is what lets textiplex merge a 70 GB index inside 12 GB of RAM.
 
-**Ownership-aware bitmaps.** Posting lists loaded from mmap carry an `Unsafe` flag indicating their bytes are owned by the kernel page cache, not the heap. Code paths that would mutate them clone first. Code paths that only read skip the clone entirely.
+**Fixed-size records.** Doc IDs and token entries are fixed-stride records (a `RawValue` is an 8-byte length plus a 48-byte inline buffer). Because every record has the same size, the doc ID table and each field's token table are mapped directly over the mmap'd file as native Go slices with zero allocation and zero deserialization — no per-record length prefixes to walk, no btree to rebuild at load time. Sorted token tables are binary-searched in place. This single decision is what moved Wikipedia from "OOM at 5%" to "fully indexed".
+
+**Ownership-aware bitmaps.** A posting list loaded from disk is just a `[]byte` slice pointing into the kernel page cache. Decoding it into a roaring bitmap (`PostingList.Bitmap`) is zero-copy via `FromUnsafeBytes`; any code path that needs to mutate clones first, while read-only paths skip the clone entirely.
 
 ---
 
 ## Benchmarks
 
-All benchmarks run on an Intel Core i9-10900K @ 3.70GHz, 1M documents, 3 fields per document, 1 unique token per field. This corpus is the direct equivalent of Bluge's `BenchmarkOfflineWriter`.
+All benchmarks run on an **Intel Core i9-10900K @ 3.70 GHz** (10 cores / 20 threads), Linux, amd64.
 
-### Index construction
+### Full English Wikipedia — the headline result
 
-| Engine | Time | Heap | Allocs |
-|---|---|---|---|
-| **textiplex** `BuildFromSorted` | **3.45s** | **2.04 GB** | **33.7M** |
-| **textiplex** `Merge` 2×500K→1M | **2.20s** | **732 MB** | **16.7M** |
-| **textiplex** `LoadBytes` | **1.21s** | **1.00 GB** | **27.2M** |
-| Bluge fork | 5.20s | 6.34 GB | 104.9M |
-| Bluge upstream | 15.75s | 10.95 GB | 216.5M |
-| Bleve | 24.01s | 10.07 GB | 146.5M |
+textiplex indexed the **complete English Wikipedia export end to end**. No other Go FTS engine tested could do this: Bluge upstream, the optimized Bluge fork, and Bleve all exhausted memory and crashed during the merge phase, never reaching completion.
 
-### Document construction pipeline (i7-1280P)
+The corpus is prepared as a single newline-delimited JSON file where each record carries a document id, a `title` field, and a `content` field. Parsing is done with `encoding/json/v2` (jsonv2), which is fast enough that decoding is effectively free — the measured time is almost entirely the indexing work itself, not I/O or parsing.
 
-Measured on the fields package, which handles field hashing, token encoding, and pool allocation. These numbers represent the full cost from raw bytes to storage-ready documents.
+| | Value |
+|---|---|
+| Documents indexed | **25,653,263** |
+| Source JSON | **120 GB** (jsonv2, streamed in ~1 GB batches) |
+| Output index | **70 GB** (single immutable file) |
+| Segment creation (indexing) | **35.1 min** — peak **27 GB** RAM |
+| Merge | **113.2 min** — peak **12 GB** RAM |
+| **Total wall time** | **2 h 28 min** |
+| Indexing throughput | **~205 GB/hour** (segment creation) |
+| End-to-end throughput | **~48.5 GB/hour** (including the full merge) |
+| Sustained rate | ~12,200 docs/s indexing · ~2,900 docs/s end-to-end |
 
-| Operation | Time | Heap | Allocs |
-|---|---|---|---|
-| **textiplex** construction only (1M docs) | **320ms** | **373 MB** | **8.6M** |
-| **textiplex** construction + build (1M docs) | **609ms** | **1.17 GB** | **11.6M** |
-| testsuite helpers (naive, no pooling) | 627ms | 472 MB | 23.0M |
+The entire run stayed inside a bounded memory envelope on a consumer desktop CPU — segment creation never exceeded 27 GB and the merge never exceeded 12 GB, with no swap. This is the property the fixed-size record layout and zero-copy mmap merge were built for: memory use is a function of the working set, not the corpus size.
 
-### Improvement ratios vs construction + build (609ms)
+> **Bluge and Bleve cannot index Wikipedia.** Both Bluge variants and Bleve OOM during segment combination far short of completion. Their memory use grows with the corpus, so the 120 GB dataset is simply out of reach on this hardware regardless of how long you are willing to wait.
+
+### 1M-document construction
+
+1M documents, 3 fields per document, 1 unique token per field — the direct equivalent of Bluge's `BenchmarkOfflineWriter`.
+
+| Engine | Time | Throughput | Heap | Allocs |
+|---|---|---|---|---|
+| **textiplex** `BuildFrom` | **2.84s** | — | **2.12 GB** | **33.5M** |
+| **textiplex** `Merge` 2×500K→1M | **1.35s** | **375 MB/s** | **0.71 GB** | **19.5M** |
+| **textiplex** `LoadBytes` | **0.63s** | **804 MB/s** | **0.78 GB** | **27.0M** |
+| Bluge fork (offline) | 5.47s | — | 6.34 GB | 104.9M |
+| Bluge upstream (offline) | 12.28s | — | 8.20 GB | 131.0M |
+| Bleve (offline) | 24.28s | — | 10.07 GB | 146.5M |
+
+### Improvement ratios — `BuildFrom` (2.84s) vs full offline build
 
 | Comparison | Time | Heap | Allocs |
 |---|---|---|---|
-| vs Bluge fork | 8.5× faster | 5.4× less | 9.0× fewer |
-| vs Bluge upstream | 25.9× faster | 9.4× less | 18.7× fewer |
-| vs Bleve | 39.4× faster | 8.6× less | 12.6× fewer |
+| vs Bluge fork | 1.9× faster | 3.0× less | 3.1× fewer |
+| vs Bluge upstream | 4.3× faster | 3.9× less | 3.9× fewer |
+| vs Bleve | 8.5× faster | 4.7× less | 4.4× fewer |
 
-### 30M document projection
+### Query latency
 
-On a 32GB machine with 1M-doc segments built in parallel:
+Boolean query benchmarks, same 1M-doc corpus (lower is better):
 
-| Engine | Real-world 30M indexing time |
-|---|---|
-| **textiplex** (fully parallel, 32GB) | **~30–45 seconds** |
-| **textiplex** (same worker count as Bluge fork) | **~14 minutes** |
-| Bluge fork (production setup) | ~2 hours |
-| Bluge upstream | ~4–6 hours |
+| Query | textiplex | Bluge fork | Bluge upstream |
+|---|---|---|---|
+| Combined (Must + Should + MustNot) | **3.4 µs / 33 allocs** | 130 µs / 97 | 140 µs / 102 |
+| Selective | **1.1 µs / 22 allocs** | 4.7 µs / 41 | 3.7 µs / 42 |
+| Should | **308 µs / 34 allocs** | 353 µs / 2063 | 369 µs / 2065 |
+| Must | **304 µs / 34 allocs** | 384 µs / 2074 | 419 µs / 2075 |
 
 ---
 
@@ -75,8 +93,9 @@ On a 32GB machine with 1M-doc segments built in parallel:
 │  total_token_frequencies (8B)                       │
 ├─────────────────────────────────────────────────────┤
 │                  DOC ID TABLE                       │
-│  [doc_id_length (2B) | doc_id_bytes] × total_docs   │
-│  (sorted alphabetically, position = internal ID)    │
+│  [size (8B) | data (48B)] × total_docs              │
+│  (fixed 56B stride; sorted alphabetically;          │
+│   position = internal doc ID; loaded zero-copy)     │
 ├─────────────────────────────────────────────────────┤
 │                 FIELD BLOCKS                        │
 │  ┌───────────────────────────────────────────────┐  │
@@ -88,11 +107,13 @@ On a 32GB machine with 1M-doc segments built in parallel:
 │  │  × doc_length_count                           │  │
 │  ├───────────────────────────────────────────────┤  │
 │  │             TOKEN ENTRIES                     │  │
-│  │  [doc_freq_count (8B) |                       │  │
+│  │  [frequency_count (8B) |                      │  │
 │  │   posting_list_index (8B) |                   │  │
 │  │   frequencies_index (8B) |                    │  │
-│  │   token_size (2B) | padding (6B) |            │  │
-│  │   token_bytes] × token_count                  │  │
+│  │   value_size (8B) | value_data (48B)]         │  │
+│  │  × token_count                                │  │
+│  │  (fixed 80B stride; sorted alphabetically;    │  │
+│  │   binary-searchable in place, no btree)       │  │
 │  └───────────────────────────────────────────────┘  │
 ├─────────────────────────────────────────────────────┤
 │              POSTING LISTS REGION                   │
@@ -110,7 +131,7 @@ On a 32GB machine with 1M-doc segments built in parallel:
 - Doc IDs sorted alphabetically. Position in the table is the internal doc ID used in posting lists and TF entries.
 - Doc length entries within each field sorted by `doc_index` ascending, enabling merge-scan during BM25 scoring.
 - Token entries within each field sorted alphabetically, enabling binary search and range iteration.
-- TF entries for a token are contiguous: `TokenFrequencies[FrequenciesIndex : FrequenciesIndex+DocumentFrequencyCount]`.
+- TF entries for a token are contiguous: `TokenFrequencies[FrequenciesIndex : FrequenciesIndex+FrequencyCount]`.
 
 ---
 
@@ -120,10 +141,12 @@ On a 32GB machine with 1M-doc segments built in parallel:
 
 ```go
 var s storage.Storage
-s.BuildFromSorted(docs...)   // computes exact output size
+s.BuildFrom(docs...)         // computes exact output size (s.Size)
 
 err := s.SaveTo("segment.bin") // Truncate + mmap + msync
 ```
+
+`BuildFrom` expects doc IDs already sorted; `SortAndBuildFrom` sorts first if the batch is unordered.
 
 ### Read path
 
@@ -169,19 +192,20 @@ idf(term) =
     log(1 + (totalDocs - docFreq + 0.5) / (docFreq + 0.5))
 ```
 
-All values are stored directly in the index — `docFreq` from `Token.DocumentFrequencyCount`, `tf` from `TokenFrequencies`, `docLen` from `DocumentLengths`, `avgdl` from `Field.AvgDocumentLength`, `totalDocs` from the header.
+All values are stored directly in the index — `docFreq` from `Token.FrequencyCount`, `tf` from `TokenFrequencies`, `docLen` from `DocumentLengths`, `avgdl` from `Field.AvgDocumentLength`, `totalDocs` from the header.
 
-### Posting list Unsafe flag
+### Posting list decoding
 
 ```go
-// Posting lists loaded from disk are mmap-backed and must not be mutated.
-// Clone before modifying:
-if pl.Unsafe {
-    cloned := pl.Bitmap.Clone()
-    pl.Bitmap = *cloned
-    pl.Unsafe = false
-}
-pl.Bitmap.Add(newDocID)
+// A posting list loaded from disk is a []byte view into the mmap'd file.
+// Decode it into a roaring64 bitmap (zero-copy) before querying:
+var bm roaring64.Bitmap
+pl.Bitmap(&bm)           // FromUnsafeBytes under the hood, no copy
+
+// The decoded bitmap aliases mmap memory and must not be mutated in place.
+// Clone first if you need to modify:
+owned := bm.Clone()
+owned.Add(newDocID)
 ```
 
 ---
@@ -227,7 +251,7 @@ All contributions remain covered by the AGPL-3.0 + Commons Clause license for al
 
 ## Status
 
-textiplex is under active development. The storage layer and merge pipeline are complete and benchmarked. The query engine, tokenizers, and index writer are in progress. See the roadmap for the full picture.
+textiplex is under active development. The storage layer, streaming merge pipeline, BM25 query engine, and tokenizers are complete and benchmarked — together they indexed the full English Wikipedia export end to end (see [Benchmarks](#benchmarks)). Ongoing work focuses on the public API surface and ergonomics.
 
 The storage format is not yet stable. Breaking changes between versions are possible until a 1.0 release is tagged.
 

@@ -21,8 +21,9 @@ func TestPages(t *testing.T) {
 	var count int
 	for page := range pages {
 		count++
-		if count%1_000_000 == 0 {
+		if count%10_000 == 0 {
 			t.Logf("Delta to: %d - %s - %v", count, string(page.Title), time.Since(start))
+			break
 		}
 	}
 

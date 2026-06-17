@@ -542,6 +542,17 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 	fieldTokensW := bufio.NewWriterSize(tmpFieldTokensFile, 2<<20)
 
+	tmpFieldTokenDocLengths, err := m.CreateTemp("field-tokens-doc-lengths-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary field tokens doc lengths file: %w", err)
+	}
+	defer func() {
+		tmpFieldTokenDocLengths.Close()
+		os.Remove(tmpFieldTokenDocLengths.Name())
+	}()
+
+	fieldTokenDocLengthsW := bufio.NewWriterSize(tmpFieldTokenDocLengths, 2<<20)
+
 	// Phase 4, add collision fields
 	for _, fieldHash := range fieldCollisions {
 		tmpFieldTokensFile.Seek(0, 0)
@@ -599,26 +610,58 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 			// Prepare documents lengths
 			var totalDocumentLengths uint64
-			var documentsLengths = make([]DocumentLengthEntry, 0, len(fieldA.DocumentLengths)+len(fieldB.DocumentLengths))
+
+			tmpFieldTokenDocLengths.Seek(0, 0)
+			err = tmpFieldTokenDocLengths.Truncate(0)
+			if err != nil {
+				return fmt.Errorf("failed to retruncate field tokens doc lengths file: %w", err)
+			}
+
+			fieldTokenDocLengthsW.Reset(tmpFieldTokenDocLengths)
 
 			for index := range fieldA.DocumentLengths {
-
 				dl := &fieldA.DocumentLengths[index]
 
 				totalDocumentLengths += dl.Length
-				documentsLengths = append(documentsLengths, *dl)
+
+				data := binary.NativeEndian.AppendUint64(buffer, dl.Index)
+				_, err = fieldTokenDocLengthsW.Write(data)
+				if err != nil {
+					return fmt.Errorf("failed to write Collision document length index: %w: %d:%d", err, fieldHash, dl.Index)
+				}
+				data = binary.NativeEndian.AppendUint64(buffer, dl.Length)
+				_, err = fieldTokenDocLengthsW.Write(data)
+				if err != nil {
+					return fmt.Errorf("failed to write Collision document length length: %w: %d:%d", err, fieldHash, dl.Index)
+				}
 			}
 			for index := range fieldB.DocumentLengths {
 				dl := &fieldB.DocumentLengths[index]
 
 				totalDocumentLengths += dl.Length
-				documentsLengths = append(documentsLengths, DocumentLengthEntry{
-					Index:  docOffset + dl.Index,
-					Length: dl.Length,
-				})
+				data := binary.NativeEndian.AppendUint64(buffer, docOffset+dl.Index)
+				_, err = fieldTokenDocLengthsW.Write(data)
+				if err != nil {
+					return fmt.Errorf("failed to write Collision document length index: %w: %d:%d", err, fieldHash, dl.Index)
+				}
+				data = binary.NativeEndian.AppendUint64(buffer, dl.Length)
+				_, err = fieldTokenDocLengthsW.Write(data)
+				if err != nil {
+					return fmt.Errorf("failed to write Collision document length length: %w: %d:%d", err, fieldHash, dl.Index)
+				}
 			}
 
-			var avgDocumentLength = float64(totalDocumentLengths) / float64(len(documentsLengths))
+			err = fieldTokenDocLengthsW.Flush()
+			if err != nil {
+				return fmt.Errorf("failed to flush field tokens doc lengths: %w", err)
+			}
+
+			_, err = tmpFieldTokenDocLengths.Seek(0, 0)
+			if err != nil {
+				return fmt.Errorf("failed to seek to the beginning field tokens doc lengths file: %w", err)
+			}
+
+			var avgDocumentLength = float64(totalDocumentLengths) / float64(len(fieldA.DocumentLengths)+len(fieldB.DocumentLengths))
 
 			// Write the field
 			// Write field header to temporary fields file
@@ -637,31 +680,21 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			if err != nil {
 				return fmt.Errorf("failed to write B's tokens length: %w: %d", err, fieldHash)
 			}
-			data = binary.NativeEndian.AppendUint64(buffer, uint64(len(documentsLengths)))
+			data = binary.NativeEndian.AppendUint64(buffer, uint64(len(fieldA.DocumentLengths)+len(fieldB.DocumentLengths)))
 			_, err = fieldsW.Write(data)
 			if err != nil {
 				return fmt.Errorf("failed to write B's documents lengths: %w: %d", err, fieldHash)
 			}
 
-			// Write documents lengths
-			for index := range documentsLengths {
-				docLength := &documentsLengths[index]
-
-				data := binary.NativeEndian.AppendUint64(buffer, docLength.Index)
-				_, err = fieldsW.Write(data)
-				if err != nil {
-					return fmt.Errorf("failed to write Collision document length index: %w: %d:%d", err, fieldHash, docLength.Index)
-				}
-				data = binary.NativeEndian.AppendUint64(buffer, docLength.Length)
-				_, err = fieldsW.Write(data)
-				if err != nil {
-					return fmt.Errorf("failed to write Collision document length length: %w: %d:%d", err, fieldHash, docLength.Index)
-				}
-			}
-
 			err = fieldsW.Flush()
 			if err != nil {
 				return fmt.Errorf("failed to flush remaining field data: %w", err)
+			}
+
+			// Write documents lengths
+			_, err = tmpFieldFile.ReadFrom(tmpFieldTokenDocLengths)
+			if err != nil {
+				return fmt.Errorf("failed to merge field tokens doc lengths into field writer: %w", err)
 			}
 
 			_, err = tmpFieldFile.ReadFrom(tmpFieldTokensFile)

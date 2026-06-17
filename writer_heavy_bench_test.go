@@ -72,7 +72,7 @@ func BenchmarkHeavyWriter(b *testing.B) {
 				totalFieldSize := fields.TextField(titleField, tokenPool, "title", page.Title, en.Tokenizer)
 				totalFieldSize += fields.TextField(content, tokenPool, "content", page.Content, en.Tokenizer)
 
-				batch.Insert(strconv.AppendInt(nil, page.Id, 10), totalFieldSize, titleField, content)
+				batch.Insert(storage.DocumentId{Value: storage.RawValueFrom(strconv.AppendInt(nil, page.Id, 10))}, totalFieldSize, titleField, content)
 				batchCount++
 				totalCount++
 

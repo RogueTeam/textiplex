@@ -38,7 +38,7 @@ func BenchmarkWriter(b *testing.B) {
 		totalFieldSize += fields.KeywordField(fieldDef1, tokPool, "name", name)
 		totalFieldSize += fields.KeywordField(fieldDef2, tokPool, "index", name[len("hello-"):])
 		totalFieldSize += fields.KeywordField(fieldDef3, tokPool, "reversed-name", []byte("olleh-"+idxS))
-		batch.Insert(fmt.Appendf(nil, "%d", index), totalFieldSize, fieldDef1, fieldDef2, fieldDef3)
+		batch.Insert(storage.DocumentId{Value: storage.RawValueFrom(fmt.Appendf(nil, "%d", index))}, totalFieldSize, fieldDef1, fieldDef2, fieldDef3)
 	}
 	b.ResetTimer()
 	b.ReportAllocs()

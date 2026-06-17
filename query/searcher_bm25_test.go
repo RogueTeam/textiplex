@@ -420,7 +420,7 @@ func TestShouldMultiTermAdditive(t *testing.T) {
 
 	idxs, ctx := testsuite.RunQuery(q, s)
 
-	assertions.Equal("doc-both", string(s.DocumentsIds[idxs[0]]), "two-term match must rank first")
+	assertions.Equal("doc-both", s.DocumentsIds[idxs[0]].Value.UnsafeString(), "two-term match must rank first")
 	assertions.Greater(scoreByID(s, ctx, "doc-both"), scoreByID(s, ctx, "doc-alpha"),
 		"matching both terms must score strictly higher than matching one")
 }
@@ -1113,7 +1113,7 @@ const fieldNotes = uint64(3)
 func resolvedIDSet(s *storage.Storage, idxs []uint64) map[string]bool {
 	out := make(map[string]bool, len(idxs))
 	for _, idx := range idxs {
-		out[string(s.DocumentsIds[idx])] = true
+		out[s.DocumentsIds[idx].Value.UnsafeString()] = true
 	}
 	return out
 }
@@ -1502,7 +1502,7 @@ func TestClauseCombinationsExtended(t *testing.T) {
 		q.Musts.Keyword([]byte("contrato"), 1.0, 0)
 		q.Shoulds.Keyword([]byte("destacado"), 1.0, 0)
 		idxs, _ := testsuite.RunQuery(q, s)
-		assertions.Equal("doc-y", string(s.DocumentsIds[idxs[0]]),
+		assertions.Equal("doc-y", s.DocumentsIds[idxs[0]].Value.UnsafeString(),
 			"the only must-match carrying the should term must rank first")
 		assertions.Len(idxs, 3)
 	})
@@ -1676,7 +1676,7 @@ func TestRankingSubtleties(t *testing.T) {
 		q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertSortedDescByScore(assertions, ctx, idxs)
-		assertions.Equal("doc-hi", string(s.DocumentsIds[idxs[0]]))
+		assertions.Equal("doc-hi", s.DocumentsIds[idxs[0]].Value.UnsafeString())
 	})
 
 	t.Run("one saturated tf still ranks first", func(t *testing.T) {
@@ -1746,7 +1746,7 @@ func TestCorpusLevelIDF(t *testing.T) {
 		q.Shoulds.Keyword([]byte("comun"), 1.0, 0)
 		q.Shoulds.Keyword([]byte("raro"), 1.0, 0)
 		idxs, _ := testsuite.RunQuery(q, s)
-		assertions.Equal("doc-rare", string(s.DocumentsIds[idxs[0]]),
+		assertions.Equal("doc-rare", s.DocumentsIds[idxs[0]].Value.UnsafeString(),
 			"the doc carrying the rare term must rank first")
 	})
 
@@ -2276,7 +2276,7 @@ func TestPropertyInvariantsExtended(t *testing.T) {
 
 		assertions.Equal(testsuite.ResolveDocumentIndexes(sForward, idxF), testsuite.ResolveDocumentIndexes(sReverse, idxR))
 		for i := range idxF {
-			idF, idR := string(sForward.DocumentsIds[idxF[i]]), string(sReverse.DocumentsIds[idxR[i]])
+			idF, idR := sForward.DocumentsIds[idxF[i]].Value.UnsafeString(), sReverse.DocumentsIds[idxR[i]].Value.UnsafeString()
 			assertions.Equal(idF, idR)
 			assertions.InDelta(ctxF.Scores[idxF[i]], ctxR.Scores[idxR[i]], 1e-12)
 		}

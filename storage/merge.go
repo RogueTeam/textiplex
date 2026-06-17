@@ -44,29 +44,31 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	docIdsW := bufio.NewWriterSize(tmpDocIdsFile, 2<<20)
 
 	// Phase 1, write document ids to temporary file
-	for _, docId := range a.DocumentsIds {
-		data := binary.NativeEndian.AppendUint16(buffer, uint16(len(docId)))
+	for docIdIdx := range a.DocumentsIds {
+		docId := &a.DocumentsIds[docIdIdx]
+		data := binary.NativeEndian.AppendUint64(buffer, docId.Value.Size)
 		_, err = docIdsW.Write(data)
 		if err != nil {
-			return fmt.Errorf("failed to write B's document id length: %w: %s", err, docId)
+			return fmt.Errorf("failed to write A's document id length: %w: %s", err, docId.Value.UnsafeString())
 		}
 
-		_, err = docIdsW.Write(docId)
+		_, err = docIdsW.Write(docId.Value.Data[:])
 		if err != nil {
-			return fmt.Errorf("failed to write B's document id: %w: %s", err, docId)
+			return fmt.Errorf("failed to write A's document id: %w: %s", err, docId.Value.UnsafeString())
 		}
 	}
 
-	for _, docId := range b.DocumentsIds {
-		data := binary.NativeEndian.AppendUint16(buffer, uint16(len(docId)))
+	for docIdIdx := range b.DocumentsIds {
+		docId := &b.DocumentsIds[docIdIdx]
+		data := binary.NativeEndian.AppendUint64(buffer, docId.Value.Size)
 		_, err = docIdsW.Write(data)
 		if err != nil {
-			return fmt.Errorf("failed to write B's document id length: %w: %s", err, docId)
+			return fmt.Errorf("failed to write B's document id length: %w: %s", err, docId.Value.UnsafeString())
 		}
 
-		_, err = docIdsW.Write(docId)
+		_, err = docIdsW.Write(docId.Value.Data[:])
 		if err != nil {
-			return fmt.Errorf("failed to write B's document id: %w: %s", err, docId)
+			return fmt.Errorf("failed to write B's document id: %w: %s", err, docId.Value.UnsafeString())
 		}
 	}
 

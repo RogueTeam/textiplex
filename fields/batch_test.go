@@ -50,7 +50,7 @@ func TestBatchConstruction(t *testing.T) {
 			totalFieldsSize += fields.KeywordField(genderField, tokenPool, "gender", []byte("Male"))
 		}
 
-		batch.Insert(fmt.Appendf(nil, "id-%d", i), totalFieldsSize, fieldsPtrs...)
+		batch.Insert(storage.DocumentId{Value: storage.RawValueFrom(fmt.Appendf(nil, "id-%d", i))}, totalFieldsSize, fieldsPtrs...)
 	}
 
 	runtime.ReadMemStats(&after)

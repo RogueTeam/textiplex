@@ -613,7 +613,7 @@ func TestMergeDocIDsOrderManyDocs(t *testing.T) {
 		return
 	}
 	for i, id := range want {
-		assertions.Equal(storage.DocumentId(id), merged.DocumentsIds[i], "doc id at %d", i)
+		assertions.Equal(id, merged.DocumentsIds[i].Value.UnsafeString(), "doc id at %d", i)
 	}
 }
 

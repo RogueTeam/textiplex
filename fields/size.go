@@ -21,7 +21,7 @@ func BaseFieldDefinitionSize(f *storage.FieldDefinition) (size uint64) {
 
 func BaseDocumentSize(d *storage.Document) (size uint64) {
 	size += uint64(unsafe.Sizeof(storage.Document{}))
-	size += uint64(len(d.Id))
+	size += d.Id.Value.Size
 
 	// Fields: pointer array + struct bodies
 	size += uint64(unsafe.Sizeof((*storage.FieldDefinition)(nil))) * uint64(len(d.Fields))

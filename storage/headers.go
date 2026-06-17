@@ -39,12 +39,6 @@ type FieldHeader struct {
 	DocumentLengthCount uint64
 }
 
-const DocumentIdHeaderSize = unsafe.Sizeof(DocumentIdHeader{})
-
-type DocumentIdHeader struct {
-	Length uint16
-}
-
 const PostingListHeaderSize = unsafe.Sizeof(PostingListHeader{})
 
 type PostingListHeader struct {
@@ -65,32 +59,32 @@ type TokenFrequencyEntry struct {
 
 const TokenSize = unsafe.Sizeof(Token{})
 
-const MaxTokenSize = 48
+const MaxRawValueSize = 48
 
-type TokenValue struct {
+type RawValue struct {
 	Size uint64
-	Data [MaxTokenSize]byte
+	Data [MaxRawValueSize]byte
 }
 
 func CompareTokens(a, b Token) (cmp int) {
 	return bytes.Compare(a.Value.Bytes(), b.Value.Bytes())
 }
 
-func TokenValueFrom[T ~string | ~[]byte](b T) (v TokenValue) {
+func RawValueFrom[T ~string | ~[]byte](b T) (v RawValue) {
 	v.Size = uint64(copy(v.Data[:], b))
 	return v
 }
 
-func (v *TokenValue) Bytes() (b []byte) {
-	return v.Data[:min(MaxTokenSize, v.Size)]
+func (v *RawValue) Bytes() (b []byte) {
+	return v.Data[:min(MaxRawValueSize, v.Size)]
 }
 
-func (v *TokenValue) Hash() (hash uint64) {
-	return xxh3.Hash(v.Data[:min(MaxTokenSize, v.Size)])
+func (v *RawValue) Hash() (hash uint64) {
+	return xxh3.Hash(v.Data[:min(MaxRawValueSize, v.Size)])
 }
 
-func (v *TokenValue) UnsafeString() (s string) {
-	return unsafe.String(&v.Data[0], min(MaxTokenSize, v.Size))
+func (v *RawValue) UnsafeString() (s string) {
+	return unsafe.String(&v.Data[0], min(MaxRawValueSize, v.Size))
 }
 
 type Token struct {
@@ -101,7 +95,7 @@ type Token struct {
 	// Token frequencies per document
 	FrequenciesIndex uint64
 	// Actual content of the token
-	Value TokenValue
+	Value RawValue
 }
 
 const DocumentLengthEntrySize = unsafe.Sizeof(DocumentLengthEntry{})
@@ -115,3 +109,9 @@ type DocumentLengthEntry struct {
 	// Actual length of the document in number of tokens
 	Length uint64
 }
+
+type DocumentId struct {
+	Value RawValue
+}
+
+const DocumentIdSize = unsafe.Sizeof(DocumentId{})

@@ -2,6 +2,7 @@ package testsuite
 
 import (
 	"bytes"
+	"strings"
 
 	"github.com/RogueTeam/textiplex/levenshtein"
 	"github.com/RogueTeam/textiplex/query"
@@ -26,8 +27,9 @@ func RunQuery(q *query.SimpleQuery, s *storage.Storage) (idxs []uint64, ctx *que
 // the alphabetical sort performed by SortAndBuildFrom.
 func IndexOfDocument(s *storage.Storage, id string) (uint64, bool) {
 	asBytes := []byte(id)
-	for i, d := range s.DocumentsIds {
-		if bytes.Equal(asBytes, d) {
+	for i := range s.DocumentsIds {
+		d := &s.DocumentsIds[i]
+		if bytes.Equal(asBytes, d.Value.Bytes()) {
 			return uint64(i), true
 		}
 	}
@@ -38,7 +40,7 @@ func IndexOfDocument(s *storage.Storage, id string) (uint64, bool) {
 func ResolveDocumentIndexes(s *storage.Storage, idxs []uint64) []string {
 	out := make([]string, len(idxs))
 	for i, idx := range idxs {
-		out[i] = string(s.DocumentsIds[idx])
+		out[i] = strings.Clone(s.DocumentsIds[idx].Value.UnsafeString())
 	}
 	return out
 }

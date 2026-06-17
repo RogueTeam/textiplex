@@ -106,8 +106,6 @@ type PostingList struct {
 	Unsafe bool
 }
 
-type DocumentId []byte
-
 type Storage struct {
 	// Read-only intended field
 	Version uint16
@@ -182,7 +180,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 		internalID := uint64(docIndex)
 
 		// doc id header + doc id bytes
-		s.Size += uint64(DocumentIdHeaderSize) + uint64(len(doc.Id))
+		s.Size += uint64(DocumentIdSize)
 
 		for _, fieldDef := range doc.Fields {
 			fieldAccumulator, found := fieldsAccumulators[fieldDef.Hash]
@@ -270,7 +268,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 				FrequencyCount:   pd.Bitmap.GetCardinality(),
 				PostingListIndex: plIndex,
 				FrequenciesIndex: freqIndex,
-				Value:            TokenValueFrom(pd.Value),
+				Value:            RawValueFrom(pd.Value),
 			}
 		}
 		it.Release()
@@ -293,7 +291,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 func (s *Storage) SortAndBuildFrom(docs ...*Document) {
 	docs = slices.Clone(docs)
 	slices.SortFunc(docs, func(a, b *Document) int {
-		return bytes.Compare(a.Id, b.Id)
+		return bytes.Compare(a.Id.Value.Bytes(), b.Id.Value.Bytes())
 	})
 
 	s.BuildFrom(docs...)
@@ -346,9 +344,10 @@ func (s *Storage) SaveTo(name string) (err error) {
 	out = binary.NativeEndian.AppendUint64(out, uint64(len(s.TokenFrequencies)))
 
 	// Document Ids table
-	for _, docId := range s.DocumentsIds {
-		out = binary.NativeEndian.AppendUint16(out, uint16(len(docId)))
-		out = append(out, docId...)
+	for docIdIdx := range s.DocumentsIds {
+		docId := &s.DocumentsIds[docIdIdx]
+		out = binary.NativeEndian.AppendUint64(out, docId.Value.Size)
+		out = append(out, docId.Value.Data[:]...)
 	}
 
 	// Field pre-insertion
@@ -523,23 +522,16 @@ func (s *Storage) Load(name string) (err error) {
 	// TODO: In the future add magic number and version
 	s.Version = header.Version
 
-	s.DocumentsIds = make([]DocumentId, header.TotalDocuments)
-	for index := range header.TotalDocuments {
-		if uintptr(len(inUseBuffer)) < DocumentIdHeaderSize {
-			return fmt.Errorf("not enough space for loading document: %d", index)
-		}
-
-		docIdHeader := (*DocumentIdHeader)(unsafe.Pointer(&inUseBuffer[0]))
-		inUseBuffer = inUseBuffer[DocumentIdHeaderSize:]
-
-		if len(inUseBuffer) < int(docIdHeader.Length) {
-			return fmt.Errorf("not enough space for loading document id contents: %d: expecting at least: %d", index, docIdHeader.Length)
-		}
-
-		// Insert the reference into the table
-		s.DocumentsIds[index] = inUseBuffer[:docIdHeader.Length]
-		inUseBuffer = inUseBuffer[docIdHeader.Length:]
+	docIdsSize := DocumentIdSize * uintptr(header.TotalDocuments)
+	if uintptr(len(inUseBuffer)) < docIdsSize {
+		return fmt.Errorf("not enough space for document ids")
 	}
+
+	if len(inUseBuffer) == 0 {
+		return nil
+	}
+	s.DocumentsIds = unsafe.Slice((*DocumentId)(unsafe.Pointer(&inUseBuffer[0])), header.TotalDocuments)
+	inUseBuffer = inUseBuffer[docIdsSize:]
 
 	s.Fields = make(map[uint64]*Field, header.FieldCount)
 	var fieldsPool = pool.New[Field](20)

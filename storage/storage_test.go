@@ -75,14 +75,14 @@ func TestBuildFrom(t *testing.T) {
 			for i, wantID := range tc.wantDocIDs {
 				t.Run(wantID, func(t *testing.T) {
 					assertions := assert.New(t)
-					assertions.Equal(storage.DocumentId(wantID), s.DocumentsIds[i], "document id doesn't match")
+					assertions.Equal(wantID, s.DocumentsIds[i].Value.UnsafeString(), "document id doesn't match")
 				})
 			}
 
 			sorted := slices.IsSortedFunc(
 				s.DocumentsIds,
 				func(a, b storage.DocumentId) int {
-					return bytes.Compare(a, b)
+					return bytes.Compare(a.Value.Bytes(), b.Value.Bytes())
 				},
 			)
 			assertions.True(sorted, "DocumentsIds must be sorted alphabetically")

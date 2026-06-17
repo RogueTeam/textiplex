@@ -17,7 +17,7 @@ func MakeTokenTree(terms ...string) storage.Tokens {
 	tree := btree.NewBTreeGOptions(func(a, b storage.Token) bool { return bytes.Compare(a.Value.Bytes(), b.Value.Bytes()) == -1 }, btree.Options{NoLocks: true})
 
 	for _, term := range terms {
-		tree.Set(storage.Token{Value: storage.TokenValueFrom(term)})
+		tree.Set(storage.Token{Value: storage.RawValueFrom(term)})
 	}
 
 	return tree.Items()

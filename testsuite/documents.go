@@ -23,7 +23,7 @@ func MakeField(hash uint64, length uint64, tokens ...*storage.TokenDefinition) *
 // The ID must be unique across the index and will be sorted alphabetically
 // during SortAndBuildFrom / BuildFrom.
 func MakeDoc[T ~string | ~[]byte](id T, fields ...*storage.FieldDefinition) *storage.Document {
-	return &storage.Document{Id: storage.DocumentId(id), Fields: fields}
+	return &storage.Document{Id: storage.DocumentId{Value: storage.RawValueFrom(id)}, Fields: fields}
 }
 
 // RoundTrip saves the storage to a buffer and loads it back into a fresh Storage.

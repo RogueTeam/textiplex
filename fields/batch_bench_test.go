@@ -54,7 +54,7 @@ func BenchmarkDocumentConstruction(b *testing.B) {
 			fieldsPtrs = append(fieldsPtrs, reversedField)
 
 			idBuf = fmt.Appendf(idBuf[:0], "%d", i)
-			batch.Insert(idBuf, totalSize, fieldsPtrs...)
+			batch.Insert(storage.DocumentId{Value: storage.RawValueFrom(idBuf)}, totalSize, fieldsPtrs...)
 		}
 	}
 }
@@ -94,7 +94,7 @@ func BenchmarkDocumentConstructionAndBuild(b *testing.B) {
 			fieldsPtrs = append(fieldsPtrs, reversedField)
 
 			idBuf = fmt.Appendf(idBuf[:0], "%d", i)
-			batch.Insert(idBuf, totalSize, fieldsPtrs...)
+			batch.Insert(storage.DocumentId{Value: storage.RawValueFrom(idBuf)}, totalSize, fieldsPtrs...)
 		}
 
 		var s storage.Storage
@@ -139,7 +139,7 @@ func BenchmarkDocumentConstructionOnly(b *testing.B) {
 			fieldsPtrs = append(fieldsPtrs, reversedField)
 
 			idBuf = fmt.Appendf(idBuf[:0], "%d", i)
-			batch.Insert(idBuf, totalSize, fieldsPtrs...)
+			batch.Insert(storage.DocumentId{Value: storage.RawValueFrom(idBuf)}, totalSize, fieldsPtrs...)
 		}
 
 		_ = batch
@@ -180,7 +180,7 @@ func prepareBlugeEquivalentFromFields(b *testing.B) []*storage.Document {
 		fieldsPtrs = append(fieldsPtrs, reversedField)
 
 		idBuf = fmt.Appendf(idBuf[:0], "%d", i)
-		batch.Insert(idBuf, totalSize, fieldsPtrs...)
+		batch.Insert(storage.DocumentId{Value: storage.RawValueFrom(idBuf)}, totalSize, fieldsPtrs...)
 	}
 
 	return batch.Documents
@@ -239,7 +239,7 @@ func BenchmarkFieldsVsTestsuite(b *testing.B) {
 				fieldsPtrs = append(fieldsPtrs, reversedField)
 
 				idBuf = fmt.Appendf(idBuf[:0], "%d", i)
-				batch.Insert(idBuf, totalSize, fieldsPtrs...)
+				batch.Insert(storage.DocumentId{Value: storage.RawValueFrom(idBuf)}, totalSize, fieldsPtrs...)
 			}
 		}
 	})

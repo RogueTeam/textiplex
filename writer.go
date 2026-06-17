@@ -40,7 +40,7 @@ func (w *Writer) Batch(batch *fields.Batch) (err error) {
 // Or when no insertions are happening in the background
 func (w *Writer) Merge() (err error) {
 	var allErrors []error
-	numWorkers := min(4, runtime.NumCPU())
+	numWorkers := min(8, runtime.NumCPU())
 	var workers = make(chan struct{}, numWorkers)
 	for range numWorkers {
 		workers <- struct{}{}
@@ -101,8 +101,6 @@ func (w *Writer) Merge() (err error) {
 
 				os.Remove(storageAFilename)
 				os.Remove(storageBFilename)
-
-				runtime.GC()
 			})
 		}
 		go func() {

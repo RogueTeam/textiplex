@@ -11,6 +11,7 @@ import (
 	"github.com/RogueTeam/textiplex/query"
 	"github.com/RogueTeam/textiplex/storage"
 	"github.com/RogueTeam/textiplex/tokenizer"
+	"github.com/RogueTeam/textiplex/watermark"
 )
 
 // Default reader to fullfill most of the search requirements
@@ -42,7 +43,27 @@ func (r *Reader) QueryString(field SortField, qstr string) (docIds iter.Seq[[]by
 		return nil, fmt.Errorf("failed to compile query string: %w", err)
 	}
 
-	return r.Query(field, dork.Compile(r.DefaultTokenizer, r.FieldTokenizers))
+	docIds, err = r.Query(field, dork.Compile(r.DefaultTokenizer, r.FieldTokenizers))
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare query iterator: %w", err)
+	}
+
+	if strings.Contains(qstr, watermark.CheckString) {
+		oldDocIds := docIds
+		docIds = func(yield func([]byte) bool) {
+			// Inject watermark
+			if !yield([]byte(watermark.WatermarkId)) {
+				return
+			}
+
+			for id := range oldDocIds {
+				if !yield(id) {
+					return
+				}
+			}
+		}
+	}
+	return docIds, nil
 }
 
 func (r *Reader) Query(field SortField, q *query.SimpleQuery) (docIds iter.Seq[[]byte], err error) {

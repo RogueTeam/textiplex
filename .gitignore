@@ -7,9 +7,12 @@
 *.dll
 *.so
 *.dylib
+*.prof
 
 # Test binary, built with `go test -c`
 *.test
+out.txt
+out.bak.txt
 
 # Code coverage profiles and other test artifacts
 *.out
@@ -30,3 +33,4 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+node_modules

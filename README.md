@@ -4,8 +4,6 @@ A high-performance, low-memory full-text search engine written in Go. Built from
 
 **textiplex is the only Go full-text search engine able to fully index English Wikipedia.** On a single desktop CPU it indexed the complete 120 GB export — 25.65M documents — into a 70 GB index inside a bounded memory envelope (27 GB peak during indexing, 12 GB during merge). Bluge (both upstream and a heavily optimized fork) and Bleve all ran out of memory and crashed during the merge, well before finishing. See [Benchmarks](#benchmarks).
 
----
-
 ## Design philosophy
 
 Most search engines in Go are ports or wrappers of JVM-era architectures — Lucene's segment model translated into Go, with all the object allocation patterns that implies. textiplex is built differently.
@@ -19,8 +17,6 @@ Most search engines in Go are ports or wrappers of JVM-era architectures — Luc
 **Fixed-size records.** Doc IDs and token entries are fixed-stride records (a `RawValue` is an 8-byte length plus a 48-byte inline buffer). Because every record has the same size, the doc ID table and each field's token table are mapped directly over the mmap'd file as native Go slices with zero allocation and zero deserialization — no per-record length prefixes to walk, no btree to rebuild at load time. Sorted token tables are binary-searched in place. This single decision is what moved Wikipedia from "OOM at 5%" to "fully indexed".
 
 **Ownership-aware bitmaps.** A posting list loaded from disk is just a `[]byte` slice pointing into the kernel page cache. Decoding it into a roaring bitmap (`PostingList.Bitmap`) is zero-copy via `FromUnsafeBytes`; any code path that needs to mutate clones first, while read-only paths skip the clone entirely.
-
----
 
 ## Benchmarks
 
@@ -64,7 +60,7 @@ The entire run stayed inside a bounded memory envelope on a consumer desktop CPU
 ### Improvement ratios — `BuildFrom` (2.84s) vs full offline build
 
 | Comparison | Time | Heap | Allocs |
-|---|---|---|---|
+|---|---|---|---|---|
 | vs Bluge fork | 1.9× faster | 3.0× less | 3.1× fewer |
 | vs Bluge upstream | 4.3× faster | 3.9× less | 3.9× fewer |
 | vs Bleve | 8.5× faster | 4.7× less | 4.4× fewer |
@@ -74,13 +70,11 @@ The entire run stayed inside a bounded memory envelope on a consumer desktop CPU
 Boolean query benchmarks, same 1M-doc corpus (lower is better):
 
 | Query | textiplex | Bluge fork | Bluge upstream |
-|---|---|---|---|
+|---|---|---|---|---|
 | Combined (Must + Should + MustNot) | **3.4 µs / 33 allocs** | 130 µs / 97 | 140 µs / 102 |
 | Selective | **1.1 µs / 22 allocs** | 4.7 µs / 41 | 3.7 µs / 42 |
 | Should | **308 µs / 34 allocs** | 353 µs / 2063 | 369 µs / 2065 |
 | Must | **304 µs / 34 allocs** | 384 µs / 2074 | 419 µs / 2075 |
-
----
 
 ## File format
 
@@ -132,8 +126,6 @@ Boolean query benchmarks, same 1M-doc corpus (lower is better):
 - Doc length entries within each field sorted by `doc_index` ascending, enabling merge-scan during BM25 scoring.
 - Token entries within each field sorted alphabetically, enabling binary search and range iteration.
 - TF entries for a token are contiguous: `TokenFrequencies[FrequenciesIndex : FrequenciesIndex+FrequencyCount]`.
-
----
 
 ## Usage
 
@@ -208,8 +200,6 @@ owned := bm.Clone()
 owned.Add(newDocID)
 ```
 
----
-
 ## License
 
 textiplex is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)** with the **Commons Clause** addendum.
@@ -217,12 +207,14 @@ textiplex is licensed under the **GNU Affero General Public License v3.0 (AGPL-3
 ### What this means
 
 **You can freely:**
+
 - Use textiplex for personal projects, research, and non-commercial applications
 - Study, modify, and distribute the source code under the same license
 - Self-host textiplex for internal non-commercial use
 - Contribute improvements — all contributions are welcome
 
 **You cannot:**
+
 - Sell textiplex or a product or hosted service whose value derives primarily from textiplex without a commercial license
 - Use textiplex in a commercial product or internal commercial tooling without a commercial license
 
@@ -247,15 +239,11 @@ By submitting a contribution you grant Antonio Donis / ZED a perpetual, worldwid
 
 All contributions remain covered by the AGPL-3.0 + Commons Clause license for all other users.
 
----
-
 ## Status
 
 textiplex is under active development. The storage layer, streaming merge pipeline, BM25 query engine, and tokenizers are complete and benchmarked — together they indexed the full English Wikipedia export end to end (see [Benchmarks](#benchmarks)). Ongoing work focuses on the public API surface and ergonomics.
 
 The storage format is not yet stable. Breaking changes between versions are possible until a 1.0 release is tagged.
-
----
 
 ## Author
 

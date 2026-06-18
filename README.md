@@ -60,7 +60,7 @@ The entire run stayed inside a bounded memory envelope on a consumer desktop CPU
 ### Improvement ratios — `BuildFrom` (2.84s) vs full offline build
 
 | Comparison | Time | Heap | Allocs |
-|---|---|---|---|---|
+|---|---|---|---|
 | vs Bluge fork | 1.9× faster | 3.0× less | 3.1× fewer |
 | vs Bluge upstream | 4.3× faster | 3.9× less | 3.9× fewer |
 | vs Bleve | 8.5× faster | 4.7× less | 4.4× fewer |
@@ -70,7 +70,7 @@ The entire run stayed inside a bounded memory envelope on a consumer desktop CPU
 Boolean query benchmarks, same 1M-doc corpus (lower is better):
 
 | Query | textiplex | Bluge fork | Bluge upstream |
-|---|---|---|---|---|
+|---|---|---|---|
 | Combined (Must + Should + MustNot) | **3.4 µs / 33 allocs** | 130 µs / 97 | 140 µs / 102 |
 | Selective | **1.1 µs / 22 allocs** | 4.7 µs / 41 | 3.7 µs / 42 |
 | Should | **308 µs / 34 allocs** | 353 µs / 2063 | 369 µs / 2065 |

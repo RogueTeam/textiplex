@@ -18,9 +18,7 @@ func TextField(dst *storage.FieldDefinition, tokPool *pool.Pool[storage.TokenDef
 	tokensMap := make(map[uint64]*storage.TokenDefinition)
 	var tokensSize uint64
 	for rawToken := range tokenizer(text) {
-		if !rawToken.IsStem {
-			dst.Length++
-		}
+		dst.Length++
 
 		tokenHash := xxh3.Hash(rawToken.Value)
 

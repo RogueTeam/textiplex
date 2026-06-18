@@ -27,6 +27,7 @@ func TestSplitting(t *testing.T) {
 		{name: "hyphen between letters splits", in: "well-known", want: []testsuite.Term{{Value: "well", Owned: false}, {Value: "known", Owned: false}}},
 		{name: "acronym dots split into letters", in: "U.S.A", want: []testsuite.Term{{Value: "u", Owned: true}, {Value: "s", Owned: true}, {Value: "a", Owned: true}}},
 		{name: "letter digit run stays joined", in: "covid19", want: []testsuite.Term{{Value: "covid19", Owned: false}}},
+		{name: "person name", in: "Jon Snow", want: []testsuite.Term{{Value: "jon", Owned: true}, {Value: "snow", Owned: true}}},
 	}
 
 	for _, tc := range tests {

@@ -1,0 +1,27 @@
+{
+  "name": "textiplex",
+  "version": "1.0.0",
+  "description": "A high-performance, low-memory full-text search engine written in Go",
+  "keywords": [
+    "FTS",
+    "GO"
+  ],
+  "homepage": "https://github.com/RogueTeam/textiplex#readme",
+  "bugs": {
+    "url": "https://github.com/RogueTeam/textiplex/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RogueTeam/textiplex.git"
+  },
+  "license": "AGPL-3.0",
+  "author": "Antonio Donis",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "standard-version": "^9.5.0"
+  }
+}

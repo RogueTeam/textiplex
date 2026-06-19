@@ -403,6 +403,8 @@ All contributions remain covered by the AGPL-3.0 + Commons Clause license for al
 
 textiplex makes deliberate trade-offs you should know before building on it.
 
+**Linux only.** textiplex is heavily optimized for Linux and is not supported on other operating systems. The mmap strategy, file descriptor handling, and memory accounting all target Linux semantics specifically. FreeBSD, macOS, and Windows are not tested and not goals.
+
 **No stored fields.** textiplex does not store document content. The index returns document IDs only; your application is responsible for retrieving the full document from an external store (a key-value database, Pebble, Postgres, etc.). This is intentional: storing fields would roughly double index size and increase memory pressure during queries. Use the returned document ID as the lookup key.
 
 **No delete or update.** Once a document is indexed it cannot be removed or modified in place. To reflect changes, re-index the affected segment and merge. For most batch-oriented workloads (ETL pipelines, crawlers, periodic sync jobs) the re-index cost is low enough that this is not a practical constraint. If your workload requires per-document mutation at query time, textiplex is not the right fit.
@@ -410,6 +412,8 @@ textiplex makes deliberate trade-offs you should know before building on it.
 **Single segment required at query time.** `Reader` expects exactly one segment in the directory. Before opening a reader, merge all outstanding segments with `Writer.Merge()`. This is enforced at runtime: `Reset` returns an error if the directory contains more than one entry.
 
 **AGPL-3.0.** textiplex is free to use under the terms of the GNU Affero General Public License v3. If you run textiplex as part of a networked service, the AGPL requires you to make the complete corresponding source of that service available to users. Commercial licensing is available; contact antoniodonis.job.contact@gmail.com.
+
+**No built-in compression.** textiplex does not compress index data. Even so, the raw index is compact: with a stop-word-filtering tokenizer the output is typically 40–50% of the source corpus size; with stop words included, 50–70%. Compression is delegated to the filesystem — deploy textiplex on ZFS (`lz4`/`zstd`) or btrfs (`zstd`) and you get it for free with no overhead inside the hot path. textiplex does one thing and does it well; filesystem compression is a solved problem.
 
 ## Status
 

@@ -129,75 +129,235 @@ Boolean query benchmarks, same 1M-doc corpus (lower is better):
 
 ## Usage
 
-### Write path
+### Indexing: Writer
+
+`Writer` manages a multi-segment index. Batches are written concurrently as individual segments; `Merge` reduces them to a single segment required by `Reader`.
 
 ```go
-var s storage.Storage
-s.BuildFrom(docs...)         // computes exact output size (s.Size)
-
-err := s.SaveTo("segment.bin") // Truncate + mmap + msync
-```
-
-`BuildFrom` expects doc IDs already sorted; `SortAndBuildFrom` sorts first if the batch is unordered.
-
-### Read path
-
-```go
-var s storage.Storage
-err := s.Load("segment.bin") // mmap, zero-copy, zero deserialization
-defer s.Close()
-```
-
-### Merge two segments
-
-```go
-m := storage.Merger{TempDir: "/tmp"}
-err := m.Merge("merged.bin", &a, &b)
-
-var merged storage.Storage
-err = merged.Load("merged.bin")
-defer merged.Close()
-```
-
-Merge precondition: every doc ID in `b` must sort after every doc ID in `a`. Guaranteed when the corpus is partitioned by sorted doc ID range before building each segment.
-
-### Large corpus ingestion
-
-```go
-// Build segments in parallel, each worker owns a disjoint sorted doc ID range
-segments := buildSegmentsParallel(batches) // []string file paths
-
-// Pairwise merge until one file remains
-for len(segments) > 1 {
-    segments = mergePass(segments, merger)
+writer := textiplex.Writer{
+    // Temporary directory for intermediate merge files
+    TemporaryDirectory: "/tmp/textiplex-tmp",
+    // Directory where segments are written and merged
+    Directory: "/var/lib/myapp/index",
 }
-// segments[0] is the final index
 ```
 
-### BM25 scoring
+Both directories must exist before use. `Writer` does not create them.
 
-```
-score(doc, term) =
-    idf(term) × (tf × (k1+1)) / (tf + k1 × (1 - b + b × docLen/avgdl))
+#### Building a batch
 
-idf(term) =
-    log(1 + (totalDocs - docFreq + 0.5) / (docFreq + 0.5))
-```
-
-All values are stored directly in the index — `docFreq` from `Token.FrequencyCount`, `tf` from `TokenFrequencies`, `docLen` from `DocumentLengths`, `avgdl` from `Field.AvgDocumentLength`, `totalDocs` from the header.
-
-### Posting list decoding
+A `Batch` accumulates documents before being flushed to disk. Allocate field and token pools outside the batch loop to reuse memory across insertions.
 
 ```go
-// A posting list loaded from disk is a []byte view into the mmap'd file.
-// Decode it into a roaring64 bitmap (zero-copy) before querying:
-var bm roaring64.Bitmap
-pl.Bitmap(&bm)           // FromUnsafeBytes under the hood, no copy
+import (
+    "github.com/RogueTeam/textiplex/fields"
+    "github.com/RogueTeam/textiplex/pool"
+    "github.com/RogueTeam/textiplex/storage"
+    "github.com/RogueTeam/textiplex/tokenizer/en"
+    "github.com/RogueTeam/textiplex/tokenizer/keyword"
+)
 
-// The decoded bitmap aliases mmap memory and must not be mutated in place.
-// Clone first if you need to modify:
-owned := bm.Clone()
-owned.Add(newDocID)
+tokenPool  := pool.New[storage.TokenDefinition](20)
+fieldPool  := pool.New[storage.FieldDefinition](20)
+batch      := fields.NewBatch(50) // initial capacity hint
+
+for _, doc := range documents {
+    nameField := fieldPool.Get()
+    totalSize := fields.TextField(nameField, tokenPool, "name", []byte(doc.Name), en.Tokenizer)
+
+    idField := fieldPool.Get()
+    totalSize += fields.TextField(idField, tokenPool, "id", []byte(doc.ID), keyword.Tokenizer)
+
+    ageField := fieldPool.Get()
+    totalSize += fields.IntegerField(ageField, tokenPool, "age", doc.Age)
+
+    batch.Insert(
+        storage.DocumentId{Value: storage.RawValueFrom(doc.ID)},
+        totalSize,
+        nameField, idField, ageField,
+    )
+}
+```
+
+The document ID passed to `batch.Insert` is what `Reader` returns at query time. Use a value that lets you look up the full document in your external store.
+
+#### Field types
+
+| Constructor | Tokenizer | Use for |
+|---|---|---|
+| `fields.TextField` | caller-supplied | natural language: names, addresses, descriptions |
+| `fields.KeywordField` | exact match, no stemming | IDs, codes, enum values, tags |
+| `fields.IntegerField` | numeric | ages, dates, rankings (enables field-sort) |
+
+#### Flushing a batch
+
+```go
+if err := writer.Batch(batch); err != nil {
+    log.Fatal(err)
+}
+```
+
+`Batch` is safe to call from multiple goroutines. Each call writes an independent segment to `Directory`. You can call it as many times as needed before merging.
+
+#### Merging segments
+
+```go
+if err := writer.Merge(); err != nil {
+    log.Fatal(err)
+}
+```
+
+`Merge` performs a parallel bottom-up pairwise merge, using up to 8 workers or `runtime.NumCPU()` (whichever is smaller), until exactly one segment remains. Intermediate files are written to `TemporaryDirectory` and moved into `Directory` on completion.
+
+Call `Merge` after all `Batch` calls are done. Do not call it while background batching goroutines are still running.
+
+---
+
+### Reading: querying the index
+
+`Reader` is the query entry point. It wraps the merged segment and exposes Lucene-compatible query string parsing via the Dorks DSL.
+
+#### Setup
+
+```go
+import (
+    "github.com/RogueTeam/textiplex"
+    "github.com/RogueTeam/textiplex/tokenizer/en"
+    "github.com/RogueTeam/textiplex/tokenizer/keyword"
+    "github.com/zeebo/xxh3"
+)
+
+reader := textiplex.Reader{
+    // Tokenizer used for any field not listed in FieldTokenizers
+    DefaultTokenizer: en.Tokenizer,
+    // Per-field tokenizer overrides, keyed by xxh3.HashString("field-name")
+    FieldTokenizers: map[uint64]tokenizer.Tokenizer{
+        xxh3.HashString("id"): keyword.Tokenizer,
+    },
+}
+
+if err := reader.Reset("/var/lib/myapp/index"); err != nil {
+    log.Fatal(err)
+}
+defer reader.Close()
+```
+
+`Reset` memory-maps the single segment in `Directory` and initialises the searcher. It returns an error if the directory is empty or contains more than one segment -- always merge before opening a reader. `Close` releases the mmap.
+
+#### Querying
+
+```go
+// BM25-ranked results
+seq, err := reader.QueryString(textiplex.SortFieldBM25, "+Alice +USA")
+if err != nil {
+    log.Fatal(err)
+}
+
+for docId := range seq {
+    fmt.Println(string(docId)) // look up full document in your external store
+}
+```
+
+`QueryString` returns an `iter.Seq[[]byte]` of raw document IDs in score order. The sequence is lazy: documents are scored on iteration, so breaking early is cheap.
+
+#### Query syntax (Dorks DSL)
+
+The query language maps 1:1 to Lucene and Bluge query string syntax.
+
+| Syntax | Meaning |
+|---|---|
+| `+term` | Must contain term (AND) |
+| `-term` | Must not contain term (NOT) |
+| `term` | Should contain term (contributes to BM25 score) |
+| `field:term` | Restrict match to a specific field |
+| `+field:term -other:val` | Field-scoped AND/NOT |
+
+Examples:
+
+```
++Jon +Snow                    // must match both terms anywhere
++country:USA                  // must match USA in the country field
++Grace +country:USA           // AND across field and default fields
++David -country:UK            // David anywhere, but not if country is UK
+```
+
+#### Sort modes
+
+| Value | Behaviour |
+|---|---|
+| `textiplex.SortFieldBM25` | Rank by BM25 relevance (default) |
+| `SortField(xxh3.HashString("age"))` | Rank by the numeric value of a field |
+
+Field sort is useful for dates, numeric rankings, or any case where you want a deterministic order independent of term frequency.
+
+```go
+byAge := textiplex.SortField(xxh3.HashString("age"))
+seq, err := reader.QueryString(byAge, "+country:Canada")
+```
+
+#### Tokenizer consistency
+
+textiplex applies the same tokenizer at both index and query time. Fields not listed in `FieldTokenizers` fall back to `DefaultTokenizer`. The map key is `xxh3.HashString("field-name")`.
+
+> **Important:** if you index a field with `keyword.Tokenizer` and query it with `en.Tokenizer` (or vice versa), terms will not match. Keep the tokenizer assignment in `Reader.FieldTokenizers` identical to what was used in the corresponding `fields.TextField` or `fields.KeywordField` calls at index time.
+
+---
+
+### End-to-end example
+
+```go
+// --- Index time ---
+
+writer := textiplex.Writer{
+    TemporaryDirectory: "/tmp/textiplex-tmp",
+    Directory:          "/var/lib/myapp/index",
+}
+
+tokenPool := pool.New[storage.TokenDefinition](20)
+fieldPool := pool.New[storage.FieldDefinition](20)
+batch     := fields.NewBatch(50)
+
+for _, p := range people {
+    nameField := fieldPool.Get()
+    sz := fields.TextField(nameField, tokenPool, "name", []byte(p.Name), en.Tokenizer)
+    idField := fieldPool.Get()
+    sz += fields.TextField(idField, tokenPool, "id", []byte(p.ID), keyword.Tokenizer)
+    countryField := fieldPool.Get()
+    sz += fields.TextField(countryField, tokenPool, "country", []byte(p.Country), en.Tokenizer)
+    ageField := fieldPool.Get()
+    sz += fields.IntegerField(ageField, tokenPool, "age", p.Age)
+
+    batch.Insert(storage.DocumentId{Value: storage.RawValueFrom(p.ID)}, sz,
+        nameField, idField, countryField, ageField)
+}
+
+if err := writer.Batch(batch); err != nil {
+    log.Fatal(err)
+}
+if err := writer.Merge(); err != nil {
+    log.Fatal(err)
+}
+
+// --- Query time ---
+
+reader := textiplex.Reader{
+    DefaultTokenizer: en.Tokenizer,
+    FieldTokenizers: map[uint64]tokenizer.Tokenizer{
+        xxh3.HashString("id"): keyword.Tokenizer,
+    },
+}
+if err := reader.Reset("/var/lib/myapp/index"); err != nil {
+    log.Fatal(err)
+}
+defer reader.Close()
+
+seq, err := reader.QueryString(textiplex.SortFieldBM25, "+Grace +country:USA")
+if err != nil {
+    log.Fatal(err)
+}
+for docId := range seq {
+    fmt.Println(string(docId))
+}
 ```
 
 ## License
@@ -231,13 +391,25 @@ textiplex is licensed under the **GNU Affero General Public License v3.0 (AGPL-3
 
 ### Commercial licensing
 
-If you want to use textiplex in a commercial product, a closed internal tool, or a hosted service without open-sourcing your modifications, a commercial license is available. Contact **antoniojosedonishung@gmail.com** for pricing and terms.
+If you want to use textiplex in a commercial product, a closed internal tool, or a hosted service without open-sourcing your modifications, a commercial license is available. Contact **antoniodonis.job.contact@gmail.com** for pricing and terms.
 
 ### Contributions
 
 By submitting a contribution you grant Antonio Donis / ZED a perpetual, worldwide, non-exclusive, royalty-free license to use, reproduce, modify, and sublicense your contribution under any terms, including commercial licenses. This allows textiplex to offer commercial licensing that includes community contributions without requiring individual contributor approval.
 
 All contributions remain covered by the AGPL-3.0 + Commons Clause license for all other users.
+
+## Limitations
+
+textiplex makes deliberate trade-offs you should know before building on it.
+
+**No stored fields.** textiplex does not store document content. The index returns document IDs only; your application is responsible for retrieving the full document from an external store (a key-value database, Pebble, Postgres, etc.). This is intentional: storing fields would roughly double index size and increase memory pressure during queries. Use the returned document ID as the lookup key.
+
+**No delete or update.** Once a document is indexed it cannot be removed or modified in place. To reflect changes, re-index the affected segment and merge. For most batch-oriented workloads (ETL pipelines, crawlers, periodic sync jobs) the re-index cost is low enough that this is not a practical constraint. If your workload requires per-document mutation at query time, textiplex is not the right fit.
+
+**Single segment required at query time.** `Reader` expects exactly one segment in the directory. Before opening a reader, merge all outstanding segments with `Writer.Merge()`. This is enforced at runtime: `Reset` returns an error if the directory contains more than one entry.
+
+**AGPL-3.0.** textiplex is free to use under the terms of the GNU Affero General Public License v3. If you run textiplex as part of a networked service, the AGPL requires you to make the complete corresponding source of that service available to users. Commercial licensing is available; contact antoniodonis.job.contact@gmail.com.
 
 ## Status
 
@@ -247,4 +419,4 @@ The storage format is not yet stable. Breaking changes between versions are poss
 
 ## Author
 
-Built by [Antonio Donis](https://github.com/Shoriwe) / [ZED](mailto:antoniojosedonishung@gmail.com).
+Built by [Antonio Donis](https://github.com/Shoriwe) - [email](mailto:antoniodonis.job.contact@gmail.com).

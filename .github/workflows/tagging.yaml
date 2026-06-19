@@ -20,7 +20,7 @@ jobs:
         run: |
           git checkout dev
           git fetch --all --tags
-          git config --global user.email "antoniojosedonishung@gmail.com"
+          git config --global user.email "antoniodonis.job.contact@gmail.com"
           git config --global user.name "Antonio Donis"
       - name: Changelog
         run: 'npx standard-version --message "[ci skip] chore(release): %s"'

@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.1.2](https://github.com/RogueTeam/textiplex/compare/v1.1.1...v1.1.2) (2026-06-19)
+
+
+### Bug Fixes
+
+* do not shadow variable ([29e91cc](https://github.com/RogueTeam/textiplex/commit/29e91cc7aed2dfbc085d74cedd0aa1d207a74105))
+
 ### 1.1.1 (2026-06-18)
 
 ## 1.1.0 (2026-06-18)

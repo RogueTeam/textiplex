@@ -415,8 +415,6 @@ textiplex makes deliberate trade-offs you should know before building on it.
 
 textiplex is under active development. The storage layer, streaming merge pipeline, BM25 query engine, and tokenizers are complete and benchmarked — together they indexed the full English Wikipedia export end to end (see [Benchmarks](#benchmarks)). Ongoing work focuses on the public API surface and ergonomics.
 
-The storage format is not yet stable. Breaking changes between versions are possible until a 1.0 release is tagged.
-
 ## Author
 
 Built by [Antonio Donis](https://github.com/Shoriwe) - [email](mailto:antoniodonis.job.contact@gmail.com).

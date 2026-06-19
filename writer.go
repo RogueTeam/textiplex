@@ -74,7 +74,7 @@ func (w *Writer) Merge() (err error) {
 
 				var storageA, storageB storage.Storage
 
-				err = storageA.Load(storageAFilename)
+				err := storageA.Load(storageAFilename)
 				if err != nil {
 					errorsCh <- fmt.Errorf("failed to load storage A: %s: %w", storageAFilename, err)
 					return

@@ -37,6 +37,9 @@ type SortField uint64
 
 const SortFieldBM25 SortField = 0
 
+// Same syntax from LUCENE and Bluge's query_str. Check dorks package for more details
+// Sort field is 0 (SortFieldBM25) when the sorting should be made by the bm25 engine
+// otherwise, caller should compute xxh3.Hash("FIELD_NAME") in order to sort by a specific field.
 func (r *Reader) QueryString(field SortField, qstr string) (docIds iter.Seq[[]byte], err error) {
 	dork, err := dorks.Parse(strings.NewReader(qstr))
 	if err != nil {

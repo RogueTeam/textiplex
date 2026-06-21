@@ -59,7 +59,7 @@ type TokenFrequencyEntry struct {
 
 const TokenSize = unsafe.Sizeof(Token{})
 
-const MaxRawValueSize = 48
+const MaxRawValueSize = 128
 
 type RawValue struct {
 	Size uint64

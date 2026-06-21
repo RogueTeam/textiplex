@@ -47,7 +47,7 @@
 
 ## Invariants
 
-- Doc IDs and token values are stored as `RawValue`: an 8-byte length plus a fixed `MaxRawValueSize`-byte (currently **48**) inline buffer. Values longer than the cap are truncated to it. The fixed stride is what allows the doc ID table and each field's token table to be mapped directly over the file as native Go slices (`unsafe.Slice`) with zero allocation and zero deserialization.
+- Doc IDs and token values are stored as `RawValue`: an 8-byte length plus a fixed `MaxRawValueSize`-byte (currently **128**) inline buffer. Values longer than the cap are truncated to it. The fixed stride is what allows the doc ID table and each field's token table to be mapped directly over the file as native Go slices (`unsafe.Slice`) with zero allocation and zero deserialization.
 - Doc IDs are sorted alphabetically. A document's position in the table is its internal sequential ID used in posting lists and TF entries.
 - Doc length entries within each field block are sorted by doc_index ascending. This enables a merge scan during BM25 scoring instead of binary search.
 - Token entries within each field block are sorted alphabetically by token bytes, so they are binary-searched in place at query time — no btree is built at load. (A btree is used only as a transient accumulator during `BuildFrom`.)

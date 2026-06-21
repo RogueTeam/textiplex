@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### 1.1.6 (2026-06-21)
+
+
+### Bug Fixes
+
+* do not shadow variable ([29e91cc](https://github.com/RogueTeam/textiplex/commit/29e91cc7aed2dfbc085d74cedd0aa1d207a74105))
+* increased size of raw-value to support up to 128 bytes of tokens ([b306308](https://github.com/RogueTeam/textiplex/commit/b306308551cb8686cf118c9e1084fda485d67fb0))
+
 ### [1.1.5](https://github.com/RogueTeam/textiplex/compare/v1.1.4...v1.1.5) (2026-06-19)
 
 ### [1.1.4](https://github.com/RogueTeam/textiplex/compare/v1.1.3...v1.1.4) (2026-06-19)

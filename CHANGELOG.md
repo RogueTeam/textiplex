@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.2.0](https://github.com/RogueTeam/textiplex/compare/v1.1.6...v1.2.0) (2026-06-21)
+
+
+### Features
+
+* support caller setting number of max-workers ([514ed2f](https://github.com/RogueTeam/textiplex/commit/514ed2f8f33602ca7fa30d1fc548bfdcf0da533f))
+
 ### 1.1.6 (2026-06-21)
 
 

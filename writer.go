@@ -14,9 +14,12 @@ import (
 	"github.com/RogueTeam/textiplex/storage"
 )
 
+var DefaultMaxWorkers = runtime.NumCPU()
+
 // Writer abstract the entire logic needed to write
 // a multi-segment index to then merge into a single unit segment
 type Writer struct {
+	MaxWorkers         int
 	TemporaryDirectory string
 	Directory          string
 	SegmentCounter     atomic.Int64
@@ -40,7 +43,7 @@ func (w *Writer) Batch(batch *fields.Batch) (err error) {
 // Or when no insertions are happening in the background
 func (w *Writer) Merge() (err error) {
 	var allErrors []error
-	numWorkers := min(8, runtime.NumCPU())
+	numWorkers := min(max(1, w.MaxWorkers, DefaultMaxWorkers), runtime.NumCPU())
 	var workers = make(chan struct{}, numWorkers)
 	for range numWorkers {
 		workers <- struct{}{}

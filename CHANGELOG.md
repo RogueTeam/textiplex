@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.2.1](https://github.com/RogueTeam/textiplex/compare/v1.2.0...v1.2.1) (2026-06-21)
+
+
+### Bug Fixes
+
+* release using v prefix ([6438150](https://github.com/RogueTeam/textiplex/commit/6438150e22df56f5ea9bcc656f9c5910449e71cd))
+
 ## [1.2.0](https://github.com/RogueTeam/textiplex/compare/v1.1.6...v1.2.0) (2026-06-21)
 
 

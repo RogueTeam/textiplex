@@ -4,6 +4,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/RogueTeam/textiplex"
@@ -16,9 +17,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const MaxBatchSize = 512 * 1024 * 1024 // 100MB
+var DefaultTokenizer = en.TokenizerWithoutStopwords
+
+const MaxBatchSize = 1024 * 1024 * 1024 // 1GB
 
 func BenchmarkHeavyWriter(b *testing.B) {
+
 	b.StopTimer()
 
 	var writer = textiplex.Writer{
@@ -65,42 +69,44 @@ func BenchmarkHeavyWriter(b *testing.B) {
 		go func() {
 			defer close(batchsCh)
 
+			fieldsPool := pool.New[storage.FieldDefinition](200)
+			tokenPool := pool.New[storage.TokenDefinition](200)
+
+			batch := batchPool.Get().(*fields.Batch)
+			batch.Reset()
+			var batchCount uint64
+
+			var totalCount atomic.Int64
 			var wg sync.WaitGroup
-			for range maxWorkers {
-				wg.Go(func() {
-					fieldsPool := pool.New[storage.FieldDefinition](200)
-					tokenPool := pool.New[storage.TokenDefinition](200)
+			for page := range pagesCh {
+				titleField := fieldsPool.Get()
+				contentField := fieldsPool.Get()
 
-					var totalCount, batchCount uint64
-					batch := batchPool.Get().(*fields.Batch)
+				totalFieldSize := fields.TextField(titleField, tokenPool, "title", page.Title, DefaultTokenizer)
+				totalFieldSize += fields.TextField(contentField, tokenPool, "content", page.Content, DefaultTokenizer)
+
+				batch.Insert(
+					storage.DocumentId{Value: storage.RawValueFrom(strconv.AppendInt(nil, page.Id, 10))},
+					totalFieldSize,
+					titleField,
+					contentField,
+				)
+				batchCount++
+				oldTotalCount := totalCount.Add(1)
+
+				if batch.Size >= MaxBatchSize {
+					b.Logf("Prepared batch - document count: %d - total: %d", batchCount, oldTotalCount)
+					batchsCh <- batch
+					batch = batchPool.Get().(*fields.Batch)
 					batch.Reset()
+					batchCount = 0
+				}
 
-					titleField := fieldsPool.Get()
-					content := fieldsPool.Get()
+			}
 
-					for page := range pagesCh {
-
-						totalFieldSize := fields.TextField(titleField, tokenPool, "title", page.Title, en.TokenizerWithoutStopwords)
-						totalFieldSize += fields.TextField(content, tokenPool, "content", page.Content, en.TokenizerWithoutStopwords)
-
-						batch.Insert(storage.DocumentId{Value: storage.RawValueFrom(strconv.AppendInt(nil, page.Id, 10))}, totalFieldSize, titleField, content)
-						batchCount++
-						totalCount++
-
-						if batch.Size >= MaxBatchSize {
-							b.Logf("Prepared batch - document count: %d - total: %d", batchCount, totalCount)
-							batchsCh <- batch
-							batch = batchPool.Get().(*fields.Batch)
-							batch.Reset()
-							batchCount = 0
-						}
-					}
-
-					if batch.Size > 0 {
-						b.Logf("Prepared final batch - document count: %d - total: %d", batchCount, totalCount)
-						batchsCh <- batch
-					}
-				})
+			if batch.Size > 0 {
+				b.Logf("Prepared final batch - document count: %d - total: %d", batchCount, totalCount.Load())
+				batchsCh <- batch
 			}
 
 			wg.Wait()

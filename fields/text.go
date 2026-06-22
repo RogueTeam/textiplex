@@ -18,6 +18,10 @@ func TextField(dst *storage.FieldDefinition, tokPool *pool.Pool[storage.TokenDef
 	tokensMap := make(map[uint64]*storage.TokenDefinition)
 	var tokensSize uint64
 	for rawToken := range tokenizer(text) {
+		if rawToken == nil || len(rawToken.Value) == 0 {
+			continue
+		}
+
 		dst.Length++
 
 		tokenHash := xxh3.Hash(rawToken.Value)
@@ -25,20 +29,21 @@ func TextField(dst *storage.FieldDefinition, tokPool *pool.Pool[storage.TokenDef
 		token, found := tokensMap[tokenHash]
 		if !found {
 			token = tokPool.Get()
+			wideTokens = append(wideTokens, token)
+
 			*token = storage.TokenDefinition{
 				Value:     rawToken.Value,
 				Frequency: 0,
 			}
 			tokensMap[tokenHash] = token
 			tokensSize += TokenSize(token)
-			wideTokens = append(wideTokens, token)
 		}
 
 		token.Frequency++
 	}
 
-	dst.Tokens = make([]*storage.TokenDefinition, len(wideTokens))
-	copy(dst.Tokens, wideTokens)
+	dst.Tokens = make([]*storage.TokenDefinition, 0, len(wideTokens))
+	dst.Tokens = append(dst.Tokens, wideTokens...)
 	slices.SortFunc(dst.Tokens, func(a, b *storage.TokenDefinition) int { return bytes.Compare(a.Value, b.Value) })
 
 	return BaseFieldDefinitionSize(dst) + tokensSize

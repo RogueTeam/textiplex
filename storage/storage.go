@@ -222,6 +222,9 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 
 			var queryPd PostingData
 			for _, tokenDef := range fieldDef.Tokens {
+				if tokenDef == nil {
+					continue
+				}
 				queryPd.Value = tokenDef.Value
 				pd, found := fieldAccumulator.Tokens.Get(&queryPd)
 				if !found {

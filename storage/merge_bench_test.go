@@ -2,6 +2,7 @@ package storage_test
 
 import (
 	"fmt"
+	"runtime"
 	"testing"
 
 	"github.com/RogueTeam/textiplex/storage"
@@ -103,6 +104,10 @@ func BenchmarkMerge(b *testing.B) {
 		if !assertions.NoError(err, "merge failed") {
 			return
 		}
+
+		b.StopTimer()
+		runtime.GC()
+		b.StartTimer()
 	}
 	b.StopTimer()
 

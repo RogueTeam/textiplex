@@ -103,6 +103,7 @@ type PostingList struct {
 	Data []byte
 }
 
+// Clears the destination and loads the bitmap into it
 func (l *PostingList) Bitmap(dst *roaring64.Bitmap) {
 	dst.Clear()
 	if len(l.Data) > 0 {

@@ -116,16 +116,11 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 
 		if len(field.DocumentLengths) > 0 {
-			err := fieldsW.Flush()
-			if err != nil {
-				return fmt.Errorf("failed to flush remaining data: %w", err)
-			}
 			fieldDocLengths := unsafe.Slice((*byte)(unsafe.Pointer(&field.DocumentLengths[0])), DocumentLengthEntrySize*uintptr(len(field.DocumentLengths)))
-			_, err = tmpFieldFile.Write(fieldDocLengths)
+			_, err = fieldsW.Write(fieldDocLengths)
 			if err != nil {
 				return fmt.Errorf("failed to write storage Field Document length ids: %w", err)
 			}
-			fieldsW.Reset(tmpFieldFile)
 		}
 
 		// Write posting lists
@@ -173,16 +168,11 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			// Write directly to frequencies temporary file
 			freqs := a.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
 			if len(freqs) > 0 {
-				err = tokenFreqsW.Flush()
-				if err != nil {
-					return fmt.Errorf("failed to flush token frequencies file: %w", err)
-				}
 				freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqs[0])), TokenFrequencyEntrySize*uintptr(len(freqs)))
-				_, err = tmpTokenFreqsFile.Write(freqsBytes)
+				_, err = tokenFreqsW.Write(freqsBytes)
 				if err != nil {
 					return fmt.Errorf("failed to write storage frequencies: %w", err)
 				}
-				tokenFreqsW.Reset(tmpTokenFreqsFile)
 			}
 		}
 	}
@@ -338,17 +328,11 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			freqsB := b.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
 
 			if len(freqsA) > 0 {
-				err = tokenFreqsW.Flush()
-				if err != nil {
-					return fmt.Errorf("failed to flush token frequencies: %w", err)
-				}
-
 				freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqsA[0])), TokenFrequencyEntrySize*uintptr(len(freqsA)))
-				_, err = tmpTokenFreqsFile.Write(freqsBytes)
+				_, err = tokenFreqsW.Write(freqsBytes)
 				if err != nil {
 					return fmt.Errorf("failed to write A' storage frequencies: %w", err)
 				}
-				tokenFreqsW.Reset(tmpTokenFreqsFile)
 			}
 
 			var freqB TokenFrequencyEntry
@@ -387,16 +371,11 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			// Write the frequencies
 			freqs := a.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
 			if len(freqs) > 0 {
-				err = tokenFreqsW.Flush()
-				if err != nil {
-					return fmt.Errorf("failed to flush token frequencies: %w", err)
-				}
 				freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqs[0])), TokenFrequencyEntrySize*uintptr(len(freqs)))
-				_, err = tmpTokenFreqsFile.Write(freqsBytes)
+				_, err = tokenFreqsW.Write(freqsBytes)
 				if err != nil {
 					return fmt.Errorf("failed to write A' storage frequencies: %w", err)
 				}
-				tokenFreqsW.Reset(tmpTokenFreqsFile)
 			}
 		case tokenB != nil:
 			finalToken = *tokenB

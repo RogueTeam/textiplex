@@ -177,10 +177,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 	}
 
-	var cachedBitmapChunk, bitmapVector [8]uint32
-	for i := range bitmapVector {
-		bitmapVector[i] = docOffset
-	}
+	var cachedBitmapChunk [OffsetBitmapCachedSize]uint32
 	var bitmapForPostingListRetrieval roaring.Bitmap
 	var reusableBitmap roaring.Bitmap
 
@@ -248,7 +245,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 			reusableBitmap.Clear()
 
-			addOffsetFrom(&reusableBitmap, &bitmapForPostingListRetrieval, &cachedBitmapChunk, &bitmapVector)
+			addOffsetFrom(&reusableBitmap, &bitmapForPostingListRetrieval, &cachedBitmapChunk, docOffset)
 
 			size := reusableBitmap.GetSerializedSizeInBytes()
 
@@ -317,7 +314,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 			b.PostingLists[tokenB.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
 
-			addOffsetFrom(&reusableBitmap, &bitmapForPostingListRetrieval, &cachedBitmapChunk, &bitmapVector)
+			addOffsetFrom(&reusableBitmap, &bitmapForPostingListRetrieval, &cachedBitmapChunk, docOffset)
 
 			// Write the posting list
 			size := reusableBitmap.GetSerializedSizeInBytes()
@@ -400,7 +397,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 			reusableBitmap.Clear()
 
-			addOffsetFrom(&reusableBitmap, &bitmapForPostingListRetrieval, &cachedBitmapChunk, &bitmapVector)
+			addOffsetFrom(&reusableBitmap, &bitmapForPostingListRetrieval, &cachedBitmapChunk, docOffset)
 
 			size := reusableBitmap.GetSerializedSizeInBytes()
 

@@ -44,31 +44,19 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	docIdsW := bufio.NewWriterSize(tmpDocIdsFile, 2<<20)
 
 	// Phase 1, write document ids to temporary file
-	for docIdIdx := range a.DocumentsIds {
-		docId := &a.DocumentsIds[docIdIdx]
-		data := binary.NativeEndian.AppendUint64(buffer, docId.Value.Size)
-		_, err = docIdsW.Write(data)
+	if len(a.DocumentsIds) > 0 {
+		aDocsSlice := unsafe.Slice((*byte)(unsafe.Pointer(&a.DocumentsIds[0])), DocumentIdSize*uintptr(len(a.DocumentsIds)))
+		_, err = docIdsW.Write(aDocsSlice)
 		if err != nil {
-			return fmt.Errorf("failed to write A's document id length: %w: %s", err, docId.Value.UnsafeString())
-		}
-
-		_, err = docIdsW.Write(docId.Value.Data[:])
-		if err != nil {
-			return fmt.Errorf("failed to write A's document id: %w: %s", err, docId.Value.UnsafeString())
+			return fmt.Errorf("failed to write storage A's document ids: %w", err)
 		}
 	}
 
-	for docIdIdx := range b.DocumentsIds {
-		docId := &b.DocumentsIds[docIdIdx]
-		data := binary.NativeEndian.AppendUint64(buffer, docId.Value.Size)
-		_, err = docIdsW.Write(data)
+	if len(b.DocumentsIds) > 0 {
+		bDocsSlice := unsafe.Slice((*byte)(unsafe.Pointer(&b.DocumentsIds[0])), DocumentIdSize*uintptr(len(b.DocumentsIds)))
+		_, err = docIdsW.Write(bDocsSlice)
 		if err != nil {
-			return fmt.Errorf("failed to write B's document id length: %w: %s", err, docId.Value.UnsafeString())
-		}
-
-		_, err = docIdsW.Write(docId.Value.Data[:])
-		if err != nil {
-			return fmt.Errorf("failed to write B's document id: %w: %s", err, docId.Value.UnsafeString())
+			return fmt.Errorf("failed to write storage B's document ids: %w", err)
 		}
 	}
 

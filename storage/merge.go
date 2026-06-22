@@ -93,8 +93,9 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 	tokenFreqsW := bufio.NewWriterSize(tmpTokenFreqsFile, 4<<20)
 
-	var fieldCollisions = make([]uint64, 0, len(a.Fields))
+	var fieldCollisionsCount uint64
 	wg.Go(func() {
+		var fieldCollisions = make([]uint64, 0, len(a.Fields))
 
 		// Phase 2, write A's only fields
 		for fieldHash, field := range a.Fields {
@@ -102,6 +103,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			if found {
 				// Do not process collision fields yet
 				fieldCollisions = append(fieldCollisions, fieldHash)
+				fieldCollisionsCount++
 				continue
 			}
 
@@ -693,7 +695,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to write header docs ids count: %w ", err)
 	}
-	data = binary.NativeEndian.AppendUint64(buffer[:0], uint64(len(a.Fields))+uint64(len(b.Fields))-uint64(len(fieldCollisions)))
+	data = binary.NativeEndian.AppendUint64(buffer[:0], uint64(len(a.Fields))+uint64(len(b.Fields))-fieldCollisionsCount)
 	_, err = file.Write(data)
 	if err != nil {
 		return fmt.Errorf("failed to write header fields count: %w ", err)

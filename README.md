@@ -111,7 +111,7 @@ Boolean query benchmarks, same 1M-doc corpus (lower is better):
 │  └───────────────────────────────────────────────┘  │
 ├─────────────────────────────────────────────────────┤
 │              POSTING LISTS REGION                   │
-│  [bitmap_size (8B) | roaring64 bitmap bytes]        │
+│  [bitmap_size (8B) | roaring   bitmap bytes]        │
 │  × total_posting_lists                              │
 ├─────────────────────────────────────────────────────┤
 │           TOKEN FREQUENCIES REGION                  │

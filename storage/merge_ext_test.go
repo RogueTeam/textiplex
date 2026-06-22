@@ -48,9 +48,9 @@ func assertTokensSorted(t *testing.T, s *storage.Storage, fieldHash uint64) {
 }
 
 // tfDocIDs returns the document indices referenced by a token's TF slice.
-func tfDocIDs(s *storage.Storage, tok *storage.Token) []uint64 {
+func tfDocIDs(s *storage.Storage, tok *storage.Token) []uint32 {
 	freqs := tokenFreqs(s, tok)
-	out := make([]uint64, len(freqs))
+	out := make([]uint32, len(freqs))
 	for i := range freqs {
 		out[i] = freqs[i].DocumentIndex
 	}
@@ -110,9 +110,9 @@ func TestMergeCollisionTokensInterleaved(t *testing.T) {
 
 	cat := getToken(t, merged, 1, "cat")
 	assertions.Equal(uint64(2), cat.FrequencyCount, "cat appears in both sides")
-	assertions.Equal([]uint64{0, 1}, postingDocIDs(merged, cat))
-	assertions.Equal([]uint64{1}, postingDocIDs(merged, getToken(t, merged, 1, "ant")))
-	assertions.Equal([]uint64{0}, postingDocIDs(merged, getToken(t, merged, 1, "apple")))
+	assertions.Equal([]uint32{0, 1}, postingDocIDs(merged, cat))
+	assertions.Equal([]uint32{1}, postingDocIDs(merged, getToken(t, merged, 1, "ant")))
+	assertions.Equal([]uint32{0}, postingDocIDs(merged, getToken(t, merged, 1, "apple")))
 }
 
 // 2. Every A token sorts after every B token.
@@ -132,8 +132,8 @@ func TestMergeCollisionAllATokensAfterB(t *testing.T) {
 
 	assertions.Equal([]string{"a", "b", "c", "x", "y", "z"}, tokenValues(t, merged, 1))
 	assertTokensSorted(t, merged, 1)
-	assertions.Equal([]uint64{1}, postingDocIDs(merged, getToken(t, merged, 1, "a")))
-	assertions.Equal([]uint64{0}, postingDocIDs(merged, getToken(t, merged, 1, "z")))
+	assertions.Equal([]uint32{1}, postingDocIDs(merged, getToken(t, merged, 1, "a")))
+	assertions.Equal([]uint32{0}, postingDocIDs(merged, getToken(t, merged, 1, "z")))
 }
 
 // 3. Every A token sorts before every B token.
@@ -153,8 +153,8 @@ func TestMergeCollisionAllBTokensAfterA(t *testing.T) {
 
 	assertions.Equal([]string{"a", "b", "c", "x", "y", "z"}, tokenValues(t, merged, 1))
 	assertTokensSorted(t, merged, 1)
-	assertions.Equal([]uint64{0}, postingDocIDs(merged, getToken(t, merged, 1, "a")))
-	assertions.Equal([]uint64{1}, postingDocIDs(merged, getToken(t, merged, 1, "z")))
+	assertions.Equal([]uint32{0}, postingDocIDs(merged, getToken(t, merged, 1, "a")))
+	assertions.Equal([]uint32{1}, postingDocIDs(merged, getToken(t, merged, 1, "z")))
 }
 
 // 4. Every token collides; all must merge and stay sorted.
@@ -176,7 +176,7 @@ func TestMergeCollisionFullyShared(t *testing.T) {
 
 	alpha := getToken(t, merged, 1, "alpha")
 	assertions.Equal(uint64(2), alpha.FrequencyCount)
-	assertions.Equal([]uint64{0, 1}, postingDocIDs(merged, alpha))
+	assertions.Equal([]uint32{0, 1}, postingDocIDs(merged, alpha))
 	assertions.Equal(
 		[]storage.TokenFrequencyEntry{{DocumentIndex: 0, Frequency: 2}, {DocumentIndex: 1, Frequency: 5}},
 		tokenFreqs(merged, alpha),
@@ -239,8 +239,8 @@ func TestMergeCollisionASubsetOfB(t *testing.T) {
 
 	assertions.Equal([]string{"a", "b", "c", "d", "e"}, tokenValues(t, merged, 1))
 	assertions.Equal(uint64(2), getToken(t, merged, 1, "b").FrequencyCount)
-	assertions.Equal([]uint64{0, 1}, postingDocIDs(merged, getToken(t, merged, 1, "d")))
-	assertions.Equal([]uint64{1}, postingDocIDs(merged, getToken(t, merged, 1, "a")))
+	assertions.Equal([]uint32{0, 1}, postingDocIDs(merged, getToken(t, merged, 1, "d")))
+	assertions.Equal([]uint32{1}, postingDocIDs(merged, getToken(t, merged, 1, "a")))
 }
 
 // ── Document-index offsetting ─────────────────────────────────────────────────
@@ -262,8 +262,8 @@ func TestMergeBOnlyFieldMultiDocOffset(t *testing.T) {
 
 	merged := mergeAndLoad(t, &a, &b)
 
-	assertions.Equal([]uint64{0, 1}, postingDocIDs(merged, getToken(t, merged, 1, "x")))
-	assertions.Equal([]uint64{2, 3}, postingDocIDs(merged, getToken(t, merged, 2, "y")), "b docs offset by 2")
+	assertions.Equal([]uint32{0, 1}, postingDocIDs(merged, getToken(t, merged, 1, "x")))
+	assertions.Equal([]uint32{2, 3}, postingDocIDs(merged, getToken(t, merged, 2, "y")), "b docs offset by 2")
 }
 
 // 9. Collision token's B-side posting entries are offset before the union.
@@ -284,7 +284,7 @@ func TestMergeCollisionBPostingOffset(t *testing.T) {
 
 	tok := getToken(t, merged, 1, "shared")
 	assertions.Equal(uint64(3), tok.FrequencyCount)
-	assertions.Equal([]uint64{0, 1, 2}, postingDocIDs(merged, tok))
+	assertions.Equal([]uint32{0, 1, 2}, postingDocIDs(merged, tok))
 }
 
 // 10. A large A-side doc count produces a correspondingly large offset.
@@ -306,8 +306,8 @@ func TestMergeLargeDocOffset(t *testing.T) {
 	merged := mergeAndLoad(t, &a, &b)
 
 	assertions.Len(merged.DocumentsIds, 5)
-	assertions.Equal([]uint64{0, 1, 2, 3}, postingDocIDs(merged, getToken(t, merged, 1, "x")))
-	assertions.Equal([]uint64{4}, postingDocIDs(merged, getToken(t, merged, 2, "y")))
+	assertions.Equal([]uint32{0, 1, 2, 3}, postingDocIDs(merged, getToken(t, merged, 1, "x")))
+	assertions.Equal([]uint32{4}, postingDocIDs(merged, getToken(t, merged, 2, "y")))
 }
 
 // 11. Collision field doc-length indices: A verbatim, B offset.
@@ -376,7 +376,7 @@ func TestMergeSharedTokenSumsDocFrequency(t *testing.T) {
 
 	tok := getToken(t, merged, 1, "k")
 	assertions.Equal(uint64(5), tok.FrequencyCount)
-	assertions.Equal([]uint64{0, 1, 2, 3, 4}, postingDocIDs(merged, tok))
+	assertions.Equal([]uint32{0, 1, 2, 3, 4}, postingDocIDs(merged, tok))
 }
 
 // 14. Per-document term frequencies survive the merge unchanged.
@@ -541,9 +541,9 @@ func TestMergeCollisionAvgdlMixedTokens(t *testing.T) {
 	assertions.InDelta(2.0, merged.Fields[1].AvgDocumentLength, 1e-9) // (3+1+2)/3
 	assertions.Equal([]string{"aside", "bside", "shared"}, tokenValues(t, merged, 1))
 	assertions.Equal(uint64(3), getToken(t, merged, 1, "shared").FrequencyCount)
-	assertions.Equal([]uint64{0, 1, 2}, postingDocIDs(merged, getToken(t, merged, 1, "shared")))
-	assertions.Equal([]uint64{0}, postingDocIDs(merged, getToken(t, merged, 1, "aside")))
-	assertions.Equal([]uint64{2}, postingDocIDs(merged, getToken(t, merged, 1, "bside")))
+	assertions.Equal([]uint32{0, 1, 2}, postingDocIDs(merged, getToken(t, merged, 1, "shared")))
+	assertions.Equal([]uint32{0}, postingDocIDs(merged, getToken(t, merged, 1, "aside")))
+	assertions.Equal([]uint32{2}, postingDocIDs(merged, getToken(t, merged, 1, "bside")))
 }
 
 // ── Header counts ─────────────────────────────────────────────────────────────
@@ -677,8 +677,8 @@ func TestMergeSameTokenValueDifferentFields(t *testing.T) {
 	f2 := getToken(t, merged, 2, "dup")
 	assertions.Equal(uint64(1), f1.FrequencyCount)
 	assertions.Equal(uint64(1), f2.FrequencyCount)
-	assertions.Equal([]uint64{0}, postingDocIDs(merged, f1))
-	assertions.Equal([]uint64{1}, postingDocIDs(merged, f2), "field 2 dup is the b doc")
+	assertions.Equal([]uint32{0}, postingDocIDs(merged, f1))
+	assertions.Equal([]uint32{1}, postingDocIDs(merged, f2), "field 2 dup is the b doc")
 }
 
 // 29. A value that collides in two separate collision fields merges only within
@@ -703,8 +703,8 @@ func TestMergeTokenValueCollidesAcrossFieldsNotMerged(t *testing.T) {
 	f4 := getToken(t, merged, 4, "x")
 	assertions.Equal(uint64(2), f3.FrequencyCount)
 	assertions.Equal(uint64(2), f4.FrequencyCount)
-	assertions.Equal([]uint64{0, 1}, postingDocIDs(merged, f3))
-	assertions.Equal([]uint64{0, 1}, postingDocIDs(merged, f4))
+	assertions.Equal([]uint32{0, 1}, postingDocIDs(merged, f3))
+	assertions.Equal([]uint32{0, 1}, postingDocIDs(merged, f4))
 }
 
 // ── Degenerate ────────────────────────────────────────────────────────────────

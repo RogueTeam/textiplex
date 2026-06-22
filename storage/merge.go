@@ -9,7 +9,7 @@ import (
 	"os"
 	"unsafe"
 
-	"github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/RoaringBitmap/roaring"
 	"github.com/RogueTeam/textiplex/pointers"
 )
 
@@ -31,7 +31,7 @@ func CloseAndRemove(file *os.File) {
 // Document ids should not collide in both storage
 // otherwise undefined behavior will ocurr
 func (m *Merger) Merge(name string, a, b *Storage) (err error) {
-	docOffset := uint64(len(a.DocumentsIds))
+	docOffset := uint32(len(a.DocumentsIds))
 	var postingListsCursor, freqsCursor uint64
 	// Buffer to be used for binary encoding data
 	var buffer [8]byte
@@ -177,12 +177,12 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 	}
 
-	var cachedBitmapChunk, bitmapVector [8]uint64
+	var cachedBitmapChunk, bitmapVector [8]uint32
 	for i := range bitmapVector {
 		bitmapVector[i] = docOffset
 	}
-	var bitmapForPostingListRetrieval roaring64.Bitmap
-	var reusableBitmap roaring64.Bitmap
+	var bitmapForPostingListRetrieval roaring.Bitmap
+	var reusableBitmap roaring.Bitmap
 
 	// Phase 3, write B's only fields
 	for fieldHash, field := range b.Fields {
@@ -214,7 +214,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		for index := range field.DocumentLengths {
 			dl := &field.DocumentLengths[index]
 
-			data := binary.NativeEndian.AppendUint64(buffer[:0], docOffset+dl.Index)
+			data := binary.NativeEndian.AppendUint32(buffer[:0], docOffset+dl.Index)
+			data = append(data, 0, 0, 0, 0)
 			_, err = fieldsW.Write(data)
 			if err != nil {
 				return fmt.Errorf("failed to write B's document length index: %w: %d:%d", err, fieldHash, dl.Index)
@@ -273,7 +274,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			for index := range freqs {
 				freq := &freqs[index]
 
-				data = binary.NativeEndian.AppendUint64(buffer[:0], docOffset+freq.DocumentIndex)
+				data = binary.NativeEndian.AppendUint32(buffer[:0], docOffset+freq.DocumentIndex)
+				data = append(data, 0, 0, 0, 0)
 				_, err = tokenFreqsW.Write(data)
 				if err != nil {
 					return fmt.Errorf("failed to write B's field token frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
@@ -345,7 +347,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			for index := range freqsB {
 				freq := &freqsB[index]
 
-				data := binary.NativeEndian.AppendUint64(buffer[:0], docOffset+freq.DocumentIndex)
+				data := binary.NativeEndian.AppendUint32(buffer[:0], docOffset+freq.DocumentIndex)
+				data = append(data, 0, 0, 0, 0)
 				_, err = tokenFreqsW.Write(data)
 				if err != nil {
 					return fmt.Errorf("failed to write B's field token frequency: %w: %d", err, fieldHash)
@@ -416,7 +419,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			for index := range freqs {
 				freq := &freqs[index]
 
-				data := binary.NativeEndian.AppendUint64(buffer[:0], docOffset+freq.DocumentIndex)
+				data := binary.NativeEndian.AppendUint32(buffer[:0], docOffset+freq.DocumentIndex)
+				data = append(data, 0, 0, 0, 0)
 				_, err = tokenFreqsW.Write(data)
 				if err != nil {
 					return fmt.Errorf("failed to write B's field token frequency: %w: %d:%s", err, fieldHash, tokenB.Value.UnsafeString())
@@ -540,7 +544,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 				totalDocumentLengths += dl.Length
 
-				data := binary.NativeEndian.AppendUint64(buffer[:0], docOffset+dl.Index)
+				data := binary.NativeEndian.AppendUint32(buffer[:0], docOffset+dl.Index)
+				data = append(data, 0, 0, 0, 0)
 				_, err = fieldTokenDocLengthsW.Write(data)
 				if err != nil {
 					return fmt.Errorf("failed to write Collision document length: %w: %d:%d", err, fieldHash, dl.Index)
@@ -630,7 +635,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to write header padding: %w ", err)
 	}
-	data = binary.NativeEndian.AppendUint64(buffer[:0], uint64(len(a.DocumentsIds))+uint64(len(b.DocumentsIds)))
+	data = binary.NativeEndian.AppendUint32(buffer[:0], uint32(len(a.DocumentsIds))+uint32(len(b.DocumentsIds)))
+	data = append(data, 0, 0, 0, 0)
 	_, err = file.Write(data)
 	if err != nil {
 		return fmt.Errorf("failed to write header docs ids count: %w ", err)

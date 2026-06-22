@@ -388,7 +388,7 @@ func scoreByID(s *storage.Storage, ctx *query.QueryContext, id string) float64 {
 }
 
 // assertSortedDescByScore verifies ResolveBM25 returned best-first.
-func assertSortedDescByScore(a *assert.Assertions, ctx *query.QueryContext, idxs []uint64) {
+func assertSortedDescByScore(a *assert.Assertions, ctx *query.QueryContext, idxs []uint32) {
 	for i := 1; i < len(idxs); i++ {
 		a.GreaterOrEqual(ctx.Scores[idxs[i-1]], ctx.Scores[idxs[i]],
 			"results must be ordered by descending score (pos %d vs %d)", i-1, i)
@@ -856,7 +856,7 @@ func TestResultsConsistentWithBitmap(t *testing.T) {
 	assertions.Equal(uint64(len(idxs)), ctx.Bitmap.GetCardinality(),
 		"every bitmap member must be returned and vice versa")
 
-	seen := map[uint64]bool{}
+	seen := map[uint32]bool{}
 	for _, idx := range idxs {
 		assertions.False(seen[idx], "duplicate index %d in results", idx)
 		seen[idx] = true
@@ -1059,7 +1059,7 @@ func TestPropertyResultsSortedByScore(t *testing.T) {
 	assertions.NotEmpty(idxs)
 	assertSortedDescByScore(assertions, ctx, idxs)
 
-	seen := map[uint64]bool{}
+	seen := map[uint32]bool{}
 	for _, idx := range idxs {
 		assertions.False(seen[idx], "duplicate index %d", idx)
 		seen[idx] = true
@@ -1110,7 +1110,7 @@ const fieldNotes = uint64(3)
 
 // resolvedIDSet maps a ranked slice of internal indices to a set of external
 // ids, handy for subset / membership assertions where order is irrelevant.
-func resolvedIDSet(s *storage.Storage, idxs []uint64) map[string]bool {
+func resolvedIDSet(s *storage.Storage, idxs []uint32) map[string]bool {
 	out := make(map[string]bool, len(idxs))
 	for _, idx := range idxs {
 		out[s.DocumentsIds[idx].Value.UnsafeString()] = true
@@ -2112,7 +2112,7 @@ func TestStructuralInvariantsExtended(t *testing.T) {
 		q := &query.SimpleQuery{}
 		q.Shoulds.Keyword([]byte("contrato"), 3.7, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
-		seen := map[uint64]bool{}
+		seen := map[uint32]bool{}
 		for _, idx := range idxs {
 			assertions.False(seen[idx], "duplicate index %d", idx)
 			seen[idx] = true

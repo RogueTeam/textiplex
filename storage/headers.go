@@ -51,7 +51,8 @@ type TokenFrequencyEntry struct {
 	// The index of the document
 	// Mapping this to a human readable key consist in
 	// indexing the document id on the document id table
-	DocumentIndex uint64
+	DocumentIndex uint32
+	_/*Padding */ [4]byte
 	// Token frequency on this document
 	// this value is used by BM25
 	Frequency uint64
@@ -105,7 +106,8 @@ const DocumentLengthEntrySize = unsafe.Sizeof(DocumentLengthEntry{})
 // Writer must ensure they are sorted based on index
 type DocumentLengthEntry struct {
 	// Index of the document referenced
-	Index uint64
+	Index uint32
+	_/*Padding */ [4]byte
 	// Actual length of the document in number of tokens
 	Length uint64
 }

@@ -1,6 +1,6 @@
 package query
 
-import "github.com/RoaringBitmap/roaring/roaring64"
+import "github.com/RoaringBitmap/roaring"
 
 func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 	field, found := s.Storage.Fields[fieldHash]
@@ -9,9 +9,9 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 	}
 
 	cardinality := ctx.Bitmap.GetCardinality()
-	ctx.Scores = make(map[uint64]float64, cardinality)
+	ctx.Scores = make(map[uint32]float64, cardinality)
 
-	var bitmapForPostingListRetrieval roaring64.Bitmap
+	var bitmapForPostingListRetrieval roaring.Bitmap
 	for tokenIdx := range field.Tokens {
 		token := &field.Tokens[tokenIdx]
 

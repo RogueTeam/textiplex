@@ -3,7 +3,7 @@ package storage_test
 import (
 	"testing"
 
-	"github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/RoaringBitmap/roaring"
 	"github.com/RogueTeam/textiplex/storage"
 	"github.com/RogueTeam/textiplex/testsuite"
 	"github.com/stretchr/testify/assert"
@@ -35,8 +35,8 @@ func mergeAndLoad(t *testing.T, a, b *storage.Storage) *storage.Storage {
 }
 
 // postingDocIDs returns the doc indices contained in a token's posting list.
-func postingDocIDs(s *storage.Storage, tok *storage.Token) []uint64 {
-	var bitmapForPostingListRetrieval roaring64.Bitmap
+func postingDocIDs(s *storage.Storage, tok *storage.Token) []uint32 {
+	var bitmapForPostingListRetrieval roaring.Bitmap
 	s.PostingLists[tok.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
 
 	return bitmapForPostingListRetrieval.ToArray()
@@ -121,7 +121,7 @@ func TestMergeDisjointFields(t *testing.T) {
 	// Field 1 token unchanged, doc index 0 (from a).
 	tokA := getToken(t, merged, 1, "contrato")
 	assertions.Equal(uint64(1), tokA.FrequencyCount)
-	assertions.Equal([]uint64{0}, postingDocIDs(merged, tokA))
+	assertions.Equal([]uint32{0}, postingDocIDs(merged, tokA))
 	assertions.Equal(
 		[]storage.TokenFrequencyEntry{{DocumentIndex: 0, Frequency: 2}},
 		tokenFreqs(merged, tokA),
@@ -130,7 +130,7 @@ func TestMergeDisjointFields(t *testing.T) {
 	// Field 2 token from b, doc index offset by len(a.DocumentsIds) == 1.
 	tokB := getToken(t, merged, 2, "interventoria")
 	assertions.Equal(uint64(1), tokB.FrequencyCount)
-	assertions.Equal([]uint64{1}, postingDocIDs(merged, tokB), "b doc id must be offset")
+	assertions.Equal([]uint32{1}, postingDocIDs(merged, tokB), "b doc id must be offset")
 	assertions.Equal(
 		[]storage.TokenFrequencyEntry{{DocumentIndex: 1, Frequency: 3}},
 		tokenFreqs(merged, tokB),
@@ -169,11 +169,11 @@ func TestMergeCollisionFieldDisjointTokens(t *testing.T) {
 
 	// a token keeps doc 0.
 	tokA := getToken(t, merged, 1, "bogota")
-	assertions.Equal([]uint64{0}, postingDocIDs(merged, tokA))
+	assertions.Equal([]uint32{0}, postingDocIDs(merged, tokA))
 
 	// b token offset to doc 1.
 	tokB := getToken(t, merged, 1, "medellin")
-	assertions.Equal([]uint64{1}, postingDocIDs(merged, tokB))
+	assertions.Equal([]uint32{1}, postingDocIDs(merged, tokB))
 
 	// Doc lengths: a's verbatim, b's offset.
 	assertions.Equal(
@@ -220,7 +220,7 @@ func TestMergeCollisionFieldSharedToken(t *testing.T) {
 
 	// Posting list is the union with b's doc shifted by docOffset (2).
 	// a docs: 0, 1.  b doc 0 -> 0 + 2 == 2.
-	assertions.Equal([]uint64{0, 1, 2}, postingDocIDs(merged, tok))
+	assertions.Equal([]uint32{0, 1, 2}, postingDocIDs(merged, tok))
 
 	// TF entries: a's verbatim then b's offset, ascending by doc index.
 	assertions.Equal(
@@ -265,11 +265,11 @@ func TestMergeMixed(t *testing.T) {
 
 	// A-only field 1, doc 0.
 	tok1 := getToken(t, merged, 1, "aonly")
-	assertions.Equal([]uint64{0}, postingDocIDs(merged, tok1))
+	assertions.Equal([]uint32{0}, postingDocIDs(merged, tok1))
 
 	// B-only field 2, doc offset to 1.
 	tok2 := getToken(t, merged, 2, "bonly")
-	assertions.Equal([]uint64{1}, postingDocIDs(merged, tok2))
+	assertions.Equal([]uint32{1}, postingDocIDs(merged, tok2))
 
 	// Collision field 3.
 	field3 := merged.Fields[3]
@@ -277,13 +277,13 @@ func TestMergeMixed(t *testing.T) {
 
 	shared := getToken(t, merged, 3, "shared")
 	assertions.Equal(uint64(2), shared.FrequencyCount)
-	assertions.Equal([]uint64{0, 1}, postingDocIDs(merged, shared))
+	assertions.Equal([]uint32{0, 1}, postingDocIDs(merged, shared))
 
 	aside := getToken(t, merged, 3, "aside")
-	assertions.Equal([]uint64{0}, postingDocIDs(merged, aside))
+	assertions.Equal([]uint32{0}, postingDocIDs(merged, aside))
 
 	bside := getToken(t, merged, 3, "bside")
-	assertions.Equal([]uint64{1}, postingDocIDs(merged, bside))
+	assertions.Equal([]uint32{1}, postingDocIDs(merged, bside))
 }
 
 // ── Header counts ─────────────────────────────────────────────────────────────
@@ -341,7 +341,7 @@ func TestMergeWithEmpty(t *testing.T) {
 		assertions.Len(merged.DocumentsIds, 1)
 		assertions.Len(merged.Fields, 1)
 		tok := getToken(t, merged, 1, "only")
-		assertions.Equal([]uint64{0}, postingDocIDs(merged, tok))
+		assertions.Equal([]uint32{0}, postingDocIDs(merged, tok))
 	})
 
 	t.Run("a empty", func(t *testing.T) {
@@ -360,6 +360,6 @@ func TestMergeWithEmpty(t *testing.T) {
 		assertions.Len(merged.Fields, 1)
 		tok := getToken(t, merged, 1, "only")
 		// a is empty so docOffset == 0, b's doc stays at index 0.
-		assertions.Equal([]uint64{0}, postingDocIDs(merged, tok))
+		assertions.Equal([]uint32{0}, postingDocIDs(merged, tok))
 	})
 }

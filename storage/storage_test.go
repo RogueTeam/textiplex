@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/RoaringBitmap/roaring"
 	"github.com/RogueTeam/textiplex/storage"
 	"github.com/RogueTeam/textiplex/testsuite"
 	"github.com/stretchr/testify/assert"
@@ -184,7 +184,7 @@ func TestPostingLists(t *testing.T) {
 		docs           []*storage.Document
 		fieldHash      uint64
 		tokenValue     string
-		wantDocIndices []uint64
+		wantDocIndices []uint32
 		wantDocFreq    uint64
 	}
 
@@ -196,7 +196,7 @@ func TestPostingLists(t *testing.T) {
 			},
 			fieldHash:      1,
 			tokenValue:     "unique",
-			wantDocIndices: []uint64{0},
+			wantDocIndices: []uint32{0},
 			wantDocFreq:    1,
 		},
 		{
@@ -208,7 +208,7 @@ func TestPostingLists(t *testing.T) {
 			},
 			fieldHash:      1,
 			tokenValue:     "shared",
-			wantDocIndices: []uint64{0, 1},
+			wantDocIndices: []uint32{0, 1},
 			wantDocFreq:    2,
 		},
 		{
@@ -220,12 +220,12 @@ func TestPostingLists(t *testing.T) {
 			},
 			fieldHash:      1,
 			tokenValue:     "common",
-			wantDocIndices: []uint64{0, 1, 2},
+			wantDocIndices: []uint32{0, 1, 2},
 			wantDocFreq:    3,
 		},
 	}
 
-	var bitmapForPostingListRetrieval roaring64.Bitmap
+	var bitmapForPostingListRetrieval roaring.Bitmap
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -404,7 +404,7 @@ func TestRoundTrip(t *testing.T) {
 
 			assertions.Len(loaded.Fields, len(original.Fields))
 
-			var origBitmapForPostingListRetrieval, loadedBitmapForPostingListRetrieval roaring64.Bitmap
+			var origBitmapForPostingListRetrieval, loadedBitmapForPostingListRetrieval roaring.Bitmap
 
 			for hash, origField := range original.Fields {
 				t.Run("field", func(t *testing.T) {

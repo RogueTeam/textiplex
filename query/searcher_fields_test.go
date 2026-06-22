@@ -183,7 +183,7 @@ func TestFieldScoreHonorsCandidateBitmap(t *testing.T) {
 	i10, _ := testsuite.IndexOfDocument(s, "p10")
 	i30, _ := testsuite.IndexOfDocument(s, "p30")
 
-	idxs, ctx := testsuite.RunFieldScore(s, fieldAmount, []uint64{i10, i30})
+	idxs, ctx := testsuite.RunFieldScore(s, fieldAmount, []uint32{i10, i30})
 
 	got := testsuite.ResolveDocumentIndexes(s, idxs)
 	assertions.Equal([]string{"p10", "p30"}, got, "only candidate-set docs ranked, in ascending order")
@@ -313,7 +313,7 @@ func TestFieldScoreEmptyCandidateSet(t *testing.T) {
 
 	assertions.NotPanics(func() {
 		// Non-nil empty slice → empty candidate bitmap (cardinality 0).
-		idxs, ctx := testsuite.RunFieldScore(s, fieldAmount, []uint64{})
+		idxs, ctx := testsuite.RunFieldScore(s, fieldAmount, []uint32{})
 		assertions.Empty(idxs)
 		assertions.Empty(ctx.Scores)
 	})

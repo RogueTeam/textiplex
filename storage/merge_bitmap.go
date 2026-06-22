@@ -3,32 +3,27 @@ package storage
 import (
 	"simd/archsimd"
 
-	"github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/RoaringBitmap/roaring"
 )
 
-var addVector func(dst *[8]uint64, vec *[8]uint64)
+var addVector func(dst *[8]uint32, vec *[8]uint32)
 
 func init() {
 	switch {
-	case archsimd.X86.AVX512():
-		addVector = func(dst, vec *[8]uint64) {
-			archsimd.LoadUint64x8(dst).
-				Add(archsimd.LoadUint64x8(vec)).
+	// case archsimd.X86.AVX512():
+	// 	addVector = func(dst, vec *[8]uint32) {
+	// 		archsimd.LoadUint64x8(dst).
+	// 			Add(archsimd.LoadUint64x8(vec)).
+	// 			Store(dst)
+	// 	}
+	case archsimd.X86.AVX2():
+		addVector = func(dst, vec *[8]uint32) {
+			archsimd.LoadUint32x8(dst).
+				Add(archsimd.LoadUint32x8(vec)).
 				Store(dst)
 		}
-	case archsimd.X86.AVX2():
-		addVector = func(dst, vec *[8]uint64) {
-
-			archsimd.LoadUint64x4((*[4]uint64)(dst[0:])).
-				Add(archsimd.LoadUint64x4((*[4]uint64)(vec[0:]))).
-				Store((*[4]uint64)(dst[0:]))
-
-			archsimd.LoadUint64x4((*[4]uint64)(dst[4:])).
-				Add(archsimd.LoadUint64x4((*[4]uint64)(vec[4:]))).
-				Store((*[4]uint64)(dst[4:]))
-		}
 	default:
-		addVector = func(dst, vec *[8]uint64) {
+		addVector = func(dst, vec *[8]uint32) {
 			dst[0] += vec[0]
 			dst[1] += vec[1]
 			dst[2] += vec[2]
@@ -43,7 +38,7 @@ func init() {
 
 // Adds all the elements from src + offset
 // vector is the already prepared vector of [8]uint64{offset}
-func addOffsetFrom(dst *roaring64.Bitmap, src *roaring64.Bitmap, cached *[8]uint64, vector *[8]uint64) {
+func addOffsetFrom(dst *roaring.Bitmap, src *roaring.Bitmap, cached *[8]uint32, vector *[8]uint32) {
 	for it := src.ManyIterator(); ; {
 		n := it.NextMany(cached[:])
 

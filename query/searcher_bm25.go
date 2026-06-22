@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
-	ctx.Scores = make(map[uint64]float64, ctx.Bitmap.GetCardinality())
+	ctx.Scores = make(map[uint32]float64, ctx.Bitmap.GetCardinality())
 
 	if q.Musts.Count() > 0 {
 		s.Iter(&q.Musts, func(state *ClauseState) { s.UpdateScoresWithBM25(ctx, state) })
@@ -31,14 +31,14 @@ func (s *Searcher) UpdateScoresWithBM25(ctx *QueryContext, state *ClauseState) {
 	for it := ctx.Bitmap.Iterator(); it.HasNext(); {
 		docIdx := it.Next()
 
-		docLengthIdx, found := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint64) int { return cmp.Compare(e.Index, t) })
+		docLengthIdx, found := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
 		if !found {
 			continue
 		}
 		docLength := docLengths[docLengthIdx].Length
 		docLengths = docLengths[1+docLengthIdx:]
 
-		freqIdx, found := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint64) int { return cmp.Compare(e.DocumentIndex, t) })
+		freqIdx, found := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
 		if !found {
 			continue
 		}

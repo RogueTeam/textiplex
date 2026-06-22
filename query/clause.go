@@ -3,7 +3,7 @@ package query
 import (
 	"bytes"
 
-	"github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/RoaringBitmap/roaring"
 	"github.com/RogueTeam/textiplex/levenshtein"
 	"github.com/RogueTeam/textiplex/storage"
 )
@@ -233,6 +233,6 @@ fieldKwLoop:
 
 // Query context intended to be cached and reused by caller on each search
 type QueryContext struct {
-	Bitmap roaring64.Bitmap
-	Scores map[uint64]float64
+	Bitmap roaring.Bitmap
+	Scores map[uint32]float64
 }

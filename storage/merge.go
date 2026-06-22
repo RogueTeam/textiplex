@@ -207,14 +207,16 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			return fmt.Errorf("failed to write B's documents lengths: %w: %d", err, fieldHash)
 		}
 
-		var finalDocLength DocumentLengthEntry
 		for index := range field.DocumentLengths {
 			dl := &field.DocumentLengths[index]
 
-			finalDocLength.Index = docOffset + dl.Index
-			finalDocLength.Length = dl.Length
+			data := binary.NativeEndian.AppendUint64(buffer[:0], docOffset+dl.Index)
+			_, err = fieldsW.Write(data)
+			if err != nil {
+				return fmt.Errorf("failed to write B's document length index: %w: %d:%d", err, fieldHash, dl.Index)
+			}
 
-			_, err = fieldsW.Write(pointers.UnsafeSlice(&finalDocLength))
+			_, err = fieldsW.Write(pointers.UnsafeSlice(&dl.Length))
 			if err != nil {
 				return fmt.Errorf("failed to write B's document length length: %w: %d:%d", err, fieldHash, dl.Index)
 			}
@@ -264,15 +266,16 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			// Write directly to frequencies temporary file
 			freqs := b.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
 
-			var freqFinal TokenFrequencyEntry
 			for index := range freqs {
-
 				freq := &freqs[index]
 
-				freqFinal.DocumentIndex = docOffset + freq.DocumentIndex
-				freqFinal.Frequency = freq.Frequency
+				data = binary.NativeEndian.AppendUint64(buffer[:0], docOffset+freq.DocumentIndex)
+				_, err = tokenFreqsW.Write(data)
+				if err != nil {
+					return fmt.Errorf("failed to write B's field token frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
+				}
 
-				_, err = tokenFreqsW.Write(pointers.UnsafeSlice(&freqFinal))
+				_, err = tokenFreqsW.Write(pointers.UnsafeSlice(&freq.Frequency))
 				if err != nil {
 					return fmt.Errorf("failed to write B's field token frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
 				}
@@ -335,17 +338,18 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				}
 			}
 
-			var freqB TokenFrequencyEntry
 			for index := range freqsB {
 				freq := &freqsB[index]
 
-				freqB = TokenFrequencyEntry{
-					DocumentIndex: docOffset + freq.DocumentIndex,
-					Frequency:     freq.Frequency,
-				}
-				_, err = tokenFreqsW.Write(pointers.UnsafeSlice(&freqB))
+				data := binary.NativeEndian.AppendUint64(buffer[:0], docOffset+freq.DocumentIndex)
+				_, err = tokenFreqsW.Write(data)
 				if err != nil {
-					return fmt.Errorf("failed to write B's storage frequencies: %w", err)
+					return fmt.Errorf("failed to write B's field token frequency: %w: %d", err, fieldHash)
+				}
+
+				_, err = tokenFreqsW.Write(pointers.UnsafeSlice(&freq.Frequency))
+				if err != nil {
+					return fmt.Errorf("failed to write B's field token frequency: %w: %d", err, fieldHash)
 				}
 			}
 		case tokenA != nil:
@@ -405,14 +409,16 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			// Write the frequencies
 			freqs := b.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
 
-			var freqFinal TokenFrequencyEntry
 			for index := range freqs {
 				freq := &freqs[index]
 
-				freqFinal.DocumentIndex = docOffset + freq.DocumentIndex
-				freqFinal.Frequency = freq.Frequency
+				data := binary.NativeEndian.AppendUint64(buffer[:0], docOffset+freq.DocumentIndex)
+				_, err = tokenFreqsW.Write(data)
+				if err != nil {
+					return fmt.Errorf("failed to write B's field token frequency: %w: %d:%s", err, fieldHash, tokenB.Value.UnsafeString())
+				}
 
-				_, err = tokenFreqsW.Write(pointers.UnsafeSlice(&freqFinal))
+				_, err = tokenFreqsW.Write(pointers.UnsafeSlice(&freq.Frequency))
 				if err != nil {
 					return fmt.Errorf("failed to write B's field token frequency: %w: %d:%s", err, fieldHash, tokenB.Value.UnsafeString())
 				}
@@ -525,15 +531,18 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				}
 			}
 
-			var finalDocLength DocumentLengthEntry
 			for index := range fieldB.DocumentLengths {
 				dl := &fieldB.DocumentLengths[index]
 
 				totalDocumentLengths += dl.Length
 
-				finalDocLength.Index = docOffset + dl.Index
-				finalDocLength.Length = dl.Length
-				_, err = fieldTokenDocLengthsW.Write(pointers.UnsafeSlice(&finalDocLength))
+				data := binary.NativeEndian.AppendUint64(buffer[:0], docOffset+dl.Index)
+				_, err = fieldTokenDocLengthsW.Write(data)
+				if err != nil {
+					return fmt.Errorf("failed to write Collision document length: %w: %d:%d", err, fieldHash, dl.Index)
+				}
+
+				_, err = fieldTokenDocLengthsW.Write(pointers.UnsafeSlice(&dl.Length))
 				if err != nil {
 					return fmt.Errorf("failed to write Collision document length: %w: %d:%d", err, fieldHash, dl.Index)
 				}

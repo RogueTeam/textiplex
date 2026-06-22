@@ -674,7 +674,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		Magic:                 MagicNumber,
 		Version:               VersionV1,
 		TotalDocuments:        uint32(len(a.DocumentsIds)) + uint32(len(b.DocumentsIds)),
-		FieldCount:            uint64(len(a.Fields)) + uint64(len(b.Fields)) - fieldCollisionsCount,
+		FieldCount:            (uint64(len(a.Fields)) + uint64(len(b.Fields))) - fieldCollisionsCount,
 		TotalPostingLists:     postingListsCursor,
 		TotalTokenFrequencies: freqsCursor,
 	}

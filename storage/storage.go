@@ -505,7 +505,7 @@ func (s *Storage) Load(name string) (err error) {
 		}
 	}()
 
-	err = unix.Madvise(s.Buffer, unix.MADV_HUGEPAGE)
+	err = unix.Madvise(s.Buffer, unix.MADV_SEQUENTIAL|unix.MADV_HUGEPAGE)
 	if err != nil {
 		return fmt.Errorf("failed to madvise mmapped buffer: %w", err)
 	}

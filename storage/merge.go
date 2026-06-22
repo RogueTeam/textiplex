@@ -328,7 +328,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 		}
 
-		visitedTokens := make(map[uint64]struct{})
 		// Helper function that resolves merging both, token A and token B
 		var finalTokensCount uint64
 		writeToken := func(fieldTokensW io.Writer, fieldHash uint64, tokenA, tokenB *Token) (err error) {
@@ -508,9 +507,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 			finalTokensCount = 0
 			err := func() (err error) {
-
-				clear(visitedTokens)
-
 				fieldA := a.Fields[fieldHash]
 				fieldB := b.Fields[fieldHash]
 

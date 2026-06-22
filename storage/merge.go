@@ -119,18 +119,11 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			return fmt.Errorf("failed to write B's documents lengths: %w: %d", err, fieldHash)
 		}
 
-		for index := range field.DocumentLengths {
-			docLength := &field.DocumentLengths[index]
-
-			data := binary.NativeEndian.AppendUint64(buffer, docLength.Index)
-			_, err = fieldsW.Write(data)
+		if len(field.DocumentLengths) > 0 {
+			fieldDocLengths := unsafe.Slice((*byte)(unsafe.Pointer(&field.DocumentLengths[0])), DocumentLengthEntrySize*uintptr(len(field.DocumentLengths)))
+			_, err = fieldsW.Write(fieldDocLengths)
 			if err != nil {
-				return fmt.Errorf("failed to write B's document length index: %w: %d:%d", err, fieldHash, docLength.Index)
-			}
-			data = binary.NativeEndian.AppendUint64(buffer, docLength.Length)
-			_, err = fieldsW.Write(data)
-			if err != nil {
-				return fmt.Errorf("failed to write B's document length length: %w: %d:%d", err, fieldHash, docLength.Index)
+				return fmt.Errorf("failed to write storage Field Document length ids: %w", err)
 			}
 		}
 

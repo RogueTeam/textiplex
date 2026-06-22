@@ -19,7 +19,8 @@ type Header struct {
 	Magic   uint64
 	Version uint16
 	_/*Padding*/ [6]byte
-	TotalDocuments        uint64
+	TotalDocuments uint32
+	_/*Padding*/ [4]byte
 	FieldCount            uint64
 	TotalPostingLists     uint64
 	TotalTokenFrequencies uint64

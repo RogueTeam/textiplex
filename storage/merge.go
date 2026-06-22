@@ -658,42 +658,29 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	}
 
 	// Phase 5, Assembly everything
-	file, err := os.Create(name)
+	dstFile, err := os.Create(name)
 	if err != nil {
 		return fmt.Errorf("failed to create destination file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		dstFile.Close()
+		if err != nil {
+			os.Remove(name)
+		}
+	}()
 
 	// File Header
-	binary.NativeEndian.PutUint64(buffer[:], MagicNumber)
-	_, err = file.Write(buffer[:])
-	if err != nil {
-		return fmt.Errorf("failed to write header magic number: %w ", err)
+	header := Header{
+		Magic:                 MagicNumber,
+		Version:               VersionV1,
+		TotalDocuments:        uint32(len(a.DocumentsIds)) + uint32(len(b.DocumentsIds)),
+		FieldCount:            uint64(len(a.Fields)) + uint64(len(b.Fields)) - fieldCollisionsCount,
+		TotalPostingLists:     postingListsCursor,
+		TotalTokenFrequencies: freqsCursor,
 	}
-	binary.NativeEndian.PutUint16(buffer[:], VersionV1)
-	_, err = file.Write(buffer[:])
+	_, err = dstFile.Write(pointers.UnsafeSlice(&header))
 	if err != nil {
-		return fmt.Errorf("failed to write header version: %w ", err)
-	}
-	binary.NativeEndian.PutUint32(buffer[:], uint32(len(a.DocumentsIds))+uint32(len(b.DocumentsIds)))
-	_, err = file.Write(buffer[:])
-	if err != nil {
-		return fmt.Errorf("failed to write header docs ids count: %w ", err)
-	}
-	binary.NativeEndian.PutUint64(buffer[:], uint64(len(a.Fields))+uint64(len(b.Fields))-fieldCollisionsCount)
-	_, err = file.Write(buffer[:])
-	if err != nil {
-		return fmt.Errorf("failed to write header fields count: %w ", err)
-	}
-	binary.NativeEndian.PutUint64(buffer[:], postingListsCursor)
-	_, err = file.Write(buffer[:])
-	if err != nil {
-		return fmt.Errorf("failed to write header posting lists count: %w ", err)
-	}
-	binary.NativeEndian.PutUint64(buffer[:], freqsCursor)
-	_, err = file.Write(buffer[:])
-	if err != nil {
-		return fmt.Errorf("failed to write header freqs count: %w ", err)
+		return fmt.Errorf("failed to write header: %w ", err)
 	}
 
 	tmpDocIdsFile.Seek(0, 0)
@@ -708,19 +695,19 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	tmpTokenFreqsFile.Seek(0, 0)
 
 	// Hopefully all these calls will use send file or splice internally :)
-	_, err = file.ReadFrom(tmpDocIdsFile)
+	_, err = dstFile.ReadFrom(tmpDocIdsFile)
 	if err != nil {
 		return fmt.Errorf("failed to append doc ids: %w", err)
 	}
-	_, err = file.ReadFrom(tmpFieldFile)
+	_, err = dstFile.ReadFrom(tmpFieldFile)
 	if err != nil {
 		return fmt.Errorf("failed to append fields: %w", err)
 	}
-	_, err = file.ReadFrom(tmpPostingsFile)
+	_, err = dstFile.ReadFrom(tmpPostingsFile)
 	if err != nil {
 		return fmt.Errorf("failed to append posting lists: %w", err)
 	}
-	_, err = file.ReadFrom(tmpTokenFreqsFile)
+	_, err = dstFile.ReadFrom(tmpTokenFreqsFile)
 	if err != nil {
 		return fmt.Errorf("failed to append token freqs: %w", err)
 	}

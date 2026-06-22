@@ -116,11 +116,16 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 
 		if len(field.DocumentLengths) > 0 {
+			err := fieldsW.Flush()
+			if err != nil {
+				return fmt.Errorf("failed to flush remaining data: %w", err)
+			}
 			fieldDocLengths := unsafe.Slice((*byte)(unsafe.Pointer(&field.DocumentLengths[0])), DocumentLengthEntrySize*uintptr(len(field.DocumentLengths)))
-			_, err = fieldsW.Write(fieldDocLengths)
+			_, err = tmpFieldFile.Write(fieldDocLengths)
 			if err != nil {
 				return fmt.Errorf("failed to write storage Field Document length ids: %w", err)
 			}
+			fieldsW.Reset(tmpFieldFile)
 		}
 
 		// Write posting lists
@@ -168,11 +173,16 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			// Write directly to frequencies temporary file
 			freqs := a.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
 			if len(freqs) > 0 {
+				err = tokenFreqsW.Flush()
+				if err != nil {
+					return fmt.Errorf("failed to flush token frequencies file: %w", err)
+				}
 				freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqs[0])), TokenFrequencyEntrySize*uintptr(len(freqs)))
-				_, err = tokenFreqsW.Write(freqsBytes)
+				_, err = tmpTokenFreqsFile.Write(freqsBytes)
 				if err != nil {
 					return fmt.Errorf("failed to write storage frequencies: %w", err)
 				}
+				tokenFreqsW.Reset(tmpTokenFreqsFile)
 			}
 		}
 	}
@@ -207,17 +217,16 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			return fmt.Errorf("failed to write B's documents lengths: %w: %d", err, fieldHash)
 		}
 
+		var finalDocLength DocumentLengthEntry
 		for index := range field.DocumentLengths {
-			docLength := &field.DocumentLengths[index]
+			dl := &field.DocumentLengths[index]
 
-			data := binary.NativeEndian.AppendUint64(buffer, docOffset+docLength.Index)
-			_, err = fieldsW.Write(data)
+			finalDocLength.Index = docOffset + dl.Index
+			finalDocLength.Length = dl.Length
+
+			_, err = fieldsW.Write(pointers.UnsafeSlice(&finalDocLength))
 			if err != nil {
-				return fmt.Errorf("failed to write B's document length index: %w: %d:%d", err, fieldHash, docLength.Index)
-			}
-			_, err = fieldsW.Write(pointers.UnsafeSlice(&docLength.Length))
-			if err != nil {
-				return fmt.Errorf("failed to write B's document length length: %w: %d:%d", err, fieldHash, docLength.Index)
+				return fmt.Errorf("failed to write B's document length length: %w: %d:%d", err, fieldHash, dl.Index)
 			}
 		}
 
@@ -329,11 +338,17 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			freqsB := b.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
 
 			if len(freqsA) > 0 {
+				err = tokenFreqsW.Flush()
+				if err != nil {
+					return fmt.Errorf("failed to flush token frequencies: %w", err)
+				}
+
 				freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqsA[0])), TokenFrequencyEntrySize*uintptr(len(freqsA)))
-				_, err = tokenFreqsW.Write(freqsBytes)
+				_, err = tmpTokenFreqsFile.Write(freqsBytes)
 				if err != nil {
 					return fmt.Errorf("failed to write A' storage frequencies: %w", err)
 				}
+				tokenFreqsW.Reset(tmpTokenFreqsFile)
 			}
 
 			var freqB TokenFrequencyEntry
@@ -372,11 +387,16 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			// Write the frequencies
 			freqs := a.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
 			if len(freqs) > 0 {
+				err = tokenFreqsW.Flush()
+				if err != nil {
+					return fmt.Errorf("failed to flush token frequencies: %w", err)
+				}
 				freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqs[0])), TokenFrequencyEntrySize*uintptr(len(freqs)))
-				_, err = tokenFreqsW.Write(freqsBytes)
+				_, err = tmpTokenFreqsFile.Write(freqsBytes)
 				if err != nil {
 					return fmt.Errorf("failed to write A' storage frequencies: %w", err)
 				}
+				tokenFreqsW.Reset(tmpTokenFreqsFile)
 			}
 		case tokenB != nil:
 			finalToken = *tokenB
@@ -394,8 +414,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 			size := reusableBitmap.GetSerializedSizeInBytes()
 
-			data := binary.NativeEndian.AppendUint64(buffer, size)
-			_, err = postingsW.Write(data)
+			_, err = postingsW.Write(pointers.UnsafeSlice(&size))
 			if err != nil {
 				return fmt.Errorf("failed to write B's field token posting list size: %w: %d:%s", err, fieldHash, tokenB.Value.UnsafeString())
 			}

@@ -2,37 +2,30 @@ package storage
 
 import (
 	"simd/archsimd"
-	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
 )
 
-var addVector func(dst, vec *[8]uint64)
+var addVector func(dst *[8]uint64, vec *[8]uint64)
 
 func init() {
 	switch {
 	case archsimd.X86.AVX512():
 		addVector = func(dst, vec *[8]uint64) {
-			dstVec := archsimd.LoadUint64x8(dst)
-			vecVec := archsimd.LoadUint64x8(vec)
-
-			dstVec.Add(vecVec).Store(dst)
+			archsimd.LoadUint64x8(dst).
+				Add(archsimd.LoadUint64x8(vec)).
+				Store(dst)
 		}
 	case archsimd.X86.AVX2():
 		addVector = func(dst, vec *[8]uint64) {
-			dst1Ptr := (*[4]uint64)(unsafe.Pointer(&dst[0]))
-			dst2Ptr := (*[4]uint64)(unsafe.Pointer(&dst[4]))
-			vec1Ptr := (*[4]uint64)(unsafe.Pointer(&vec[0]))
-			vec2Ptr := (*[4]uint64)(unsafe.Pointer(&vec[4]))
 
-			dstVec1 := archsimd.LoadUint64x4(dst1Ptr)
-			vecVec1 := archsimd.LoadUint64x4(vec1Ptr)
+			archsimd.LoadUint64x4((*[4]uint64)(dst[0:])).
+				Add(archsimd.LoadUint64x4((*[4]uint64)(vec[0:]))).
+				Store((*[4]uint64)(dst[0:]))
 
-			dstVec2 := archsimd.LoadUint64x4(dst2Ptr)
-			vecVec2 := archsimd.LoadUint64x4(vec2Ptr)
-
-			dstVec1.Add(vecVec1).Store((*[4]uint64)(unsafe.Pointer(&dst[0])))
-			dstVec2.Add(vecVec2).Store((*[4]uint64)(unsafe.Pointer(&dst[4])))
+			archsimd.LoadUint64x4((*[4]uint64)(dst[4:])).
+				Add(archsimd.LoadUint64x4((*[4]uint64)(vec[4:]))).
+				Store((*[4]uint64)(dst[4:]))
 		}
 	default:
 		addVector = func(dst, vec *[8]uint64) {

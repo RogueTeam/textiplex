@@ -55,8 +55,6 @@ func prepareMergeHalf(start, count int) (docs []*storage.Document) {
 // streaming, temp-file-backed merge that produces the final 1M-doc file — is
 // measured per iteration.
 func BenchmarkMerge(b *testing.B) {
-	b.StopTimer()
-
 	assertions := assert.New(b)
 
 	// Build both halves on disjoint ordered ranges.
@@ -96,18 +94,13 @@ func BenchmarkMerge(b *testing.B) {
 
 	totalDocs := int64(len(aStorage.DocumentsIds) + len(bStorage.DocumentsIds))
 
-	b.ResetTimer()
-	b.ReportAllocs()
-	b.SetBytes(int64(aStorage.Size + bStorage.Size))
-	b.StartTimer()
-
 	for b.Loop() {
 		err := m.Merge(out, &aStorage, &bStorage)
+		b.SetBytes(int64(aStorage.Size + bStorage.Size))
 		if !assertions.NoError(err, "merge failed") {
 			return
 		}
 	}
-	b.StopTimer()
 
 	// Sanity check outside the clock: the merged file loads and has every doc.
 	var merged storage.Storage

@@ -51,7 +51,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	wg.Go(func() {
 		if len(a.DocumentsIds) > 0 {
 			aDocsSlice := unsafe.Slice((*byte)(unsafe.Pointer(&a.DocumentsIds[0])), DocumentIdSize*uintptr(len(a.DocumentsIds)))
-			_, err = tmpDocIdsFile.Write(aDocsSlice)
+			_, err := tmpDocIdsFile.Write(aDocsSlice)
 			if err != nil {
 				errorsCh <- fmt.Errorf("failed to write storage A's document ids: %w", err)
 				return
@@ -108,7 +108,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 
 			// Write field header to temporary fields file
-			_, err = fieldsW.Write(pointers.UnsafeSlice(&fieldHash))
+			_, err := fieldsW.Write(pointers.UnsafeSlice(&fieldHash))
 			if err != nil {
 				errorsCh <- fmt.Errorf("failed to write A's field hash: %w: %d", err, fieldHash)
 				return
@@ -213,7 +213,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 
 			// Write field header to temporary fields file
-			_, err = fieldsW.Write(pointers.UnsafeSlice(&fieldHash))
+			_, err := fieldsW.Write(pointers.UnsafeSlice(&fieldHash))
 			if err != nil {
 				errorsCh <- fmt.Errorf("failed to write B's field hash: %w: %d", err, fieldHash)
 				return
@@ -354,7 +354,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				// Write the posting list
 				size := reusableBitmap.GetSerializedSizeInBytes()
 
-				_, err = postingsW.Write(pointers.UnsafeSlice(&size))
+				_, err := postingsW.Write(pointers.UnsafeSlice(&size))
 				if err != nil {
 					return fmt.Errorf("failed to write Collision field token posting list size: %w: %d:%s", err, fieldHash, tokenA.Value.UnsafeString())
 				}
@@ -405,7 +405,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				if err != nil {
 					return fmt.Errorf("failed to write A's field token posting list size: %w: %d:%s", err, fieldHash, tokenA.Value.UnsafeString())
 				}
-				_, err = postingsW.Write(postingList.Data)
+				_, err := postingsW.Write(postingList.Data)
 				if err != nil {
 					return fmt.Errorf("failed to write A's field token posting list contents: %w: %d:%s", err, fieldHash, tokenA.Value.UnsafeString())
 				}
@@ -435,7 +435,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 				size := reusableBitmap.GetSerializedSizeInBytes()
 
-				_, err = postingsW.Write(pointers.UnsafeSlice(&size))
+				_, err := postingsW.Write(pointers.UnsafeSlice(&size))
 				if err != nil {
 					return fmt.Errorf("failed to write B's field token posting list size: %w: %d:%s", err, fieldHash, tokenB.Value.UnsafeString())
 				}

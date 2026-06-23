@@ -25,9 +25,9 @@ func New(s *storage.Storage) (searcher *Searcher) {
 
 // Once a filtering and scoring are done, next step of a searching algorithm
 // Resolves the ctx to an actual idx slice
-func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint64) {
+func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint32) {
 	type scoreEntry struct {
-		docIdx uint64
+		docIdx uint32
 		score  float64
 	}
 
@@ -59,7 +59,7 @@ func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint64) {
 		},
 	)
 
-	idxs = make([]uint64, len(scores))
+	idxs = make([]uint32, len(scores))
 	for index := range scores {
 		idxs[index] = scores[index].docIdx
 	}

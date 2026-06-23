@@ -113,7 +113,7 @@ it into a roaring64 bitmap with `Bitmap`, which uses `FromUnsafeBytes` — the
 bitmap aliases the mmap buffer with no copy:
 
 ```go
-var bm roaring64.Bitmap
+var bm roaring.Bitmap
 pl.Bitmap(&bm)              // zero-copy decode into the caller-owned bitmap
 ```
 

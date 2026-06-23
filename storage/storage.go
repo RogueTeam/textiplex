@@ -9,7 +9,7 @@ import (
 	"slices"
 	"unsafe"
 
-	"github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/RoaringBitmap/roaring"
 	"github.com/RogueTeam/textiplex/pool"
 	"github.com/tidwall/btree"
 	"golang.org/x/sys/unix"
@@ -103,7 +103,8 @@ type PostingList struct {
 	Data []byte
 }
 
-func (l *PostingList) Bitmap(dst *roaring64.Bitmap) {
+// Clears the destination and loads the bitmap into it
+func (l *PostingList) Bitmap(dst *roaring.Bitmap) {
 	dst.Clear()
 	if len(l.Data) > 0 {
 		_, err := dst.FromUnsafeBytes(l.Data)
@@ -165,7 +166,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 
 	type PostingData struct {
 		Value  []byte
-		Bitmap *roaring64.Bitmap
+		Bitmap *roaring.Bitmap
 		Freqs  []TokenFrequencyEntry
 	}
 	type FieldAccumulator struct {
@@ -180,11 +181,11 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 
 	fieldAccPool := pool.New[FieldAccumulator](20)
 	pdPool := pool.New[PostingData](20)
-	bitmapPool := pool.New[roaring64.Bitmap](20)
+	bitmapPool := pool.New[roaring.Bitmap](20)
 
 	for docIndex, doc := range docs {
 		s.DocumentsIds[docIndex] = doc.Id
-		internalID := uint64(docIndex)
+		internalID := uint32(docIndex)
 
 		// doc id header + doc id bytes
 		s.Size += uint64(DocumentIdSize)
@@ -221,6 +222,9 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 
 			var queryPd PostingData
 			for _, tokenDef := range fieldDef.Tokens {
+				if tokenDef == nil {
+					continue
+				}
 				queryPd.Value = tokenDef.Value
 				pd, found := fieldAccumulator.Tokens.Get(&queryPd)
 				if !found {
@@ -345,7 +349,8 @@ func (s *Storage) SaveTo(name string) (err error) {
 	out = binary.NativeEndian.AppendUint64(out, MagicNumber)
 	out = binary.NativeEndian.AppendUint16(out, s.Version)
 	out = append(out, 0, 0, 0, 0, 0, 0) // Padding 6 bytes
-	out = binary.NativeEndian.AppendUint64(out, uint64(len(s.DocumentsIds)))
+	out = binary.NativeEndian.AppendUint32(out, uint32(len(s.DocumentsIds)))
+	out = append(out, 0, 0, 0, 0)
 	out = binary.NativeEndian.AppendUint64(out, uint64(len(s.Fields)))
 	out = binary.NativeEndian.AppendUint64(out, uint64(len(s.PostingLists)))
 	out = binary.NativeEndian.AppendUint64(out, uint64(len(s.TokenFrequencies)))
@@ -406,7 +411,8 @@ func (s *Storage) SaveTo(name string) (err error) {
 		for index := range field.DocumentLengths {
 			docLength := &field.DocumentLengths[index]
 
-			out = binary.NativeEndian.AppendUint64(out, docLength.Index)
+			out = binary.NativeEndian.AppendUint32(out, docLength.Index)
+			out = append(out, 0, 0, 0, 0) // Padding
 			out = binary.NativeEndian.AppendUint64(out, docLength.Length)
 		}
 
@@ -431,7 +437,8 @@ func (s *Storage) SaveTo(name string) (err error) {
 	for index := range tokenFrequenciesCluster {
 		freq := &tokenFrequenciesCluster[index]
 
-		out = binary.NativeEndian.AppendUint64(out, freq.DocumentIndex)
+		out = binary.NativeEndian.AppendUint32(out, freq.DocumentIndex)
+		out = append(out, 0, 0, 0, 0) // Padding
 		out = binary.NativeEndian.AppendUint64(out, freq.Frequency)
 	}
 
@@ -505,7 +512,7 @@ func (s *Storage) Load(name string) (err error) {
 		}
 	}()
 
-	err = unix.Madvise(s.Buffer, unix.MADV_HUGEPAGE)
+	err = unix.Madvise(s.Buffer, unix.MADV_SEQUENTIAL|unix.MADV_HUGEPAGE)
 	if err != nil {
 		return fmt.Errorf("failed to madvise mmapped buffer: %w", err)
 	}

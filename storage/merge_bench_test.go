@@ -77,34 +77,30 @@ func BenchmarkMerge(b *testing.B) {
 		return
 	}
 
-	var a storage.Storage
-	if !assertions.Nil(a.Load(aFile), "failed to load a") {
+	var aStorage storage.Storage
+	if !assertions.Nil(aStorage.Load(aFile), "failed to load a") {
 		return
 	}
-	b.Cleanup(func() { a.Close() })
+	b.Cleanup(func() { aStorage.Close() })
 
-	var bb storage.Storage
-	if !assertions.Nil(bb.Load(bFile), "failed to load b") {
+	var bStorage storage.Storage
+	if !assertions.Nil(bStorage.Load(bFile), "failed to load b") {
 		return
 	}
-	b.Cleanup(func() { bb.Close() })
+	b.Cleanup(func() { bStorage.Close() })
 
 	m := storage.Merger{TempDir: b.TempDir()}
 	out := testsuite.TempFilename(b, "merge_bench_out_*.bin")
 
-	totalDocs := int64(len(a.DocumentsIds) + len(bb.DocumentsIds))
-
-	b.ReportAllocs()
-	b.SetBytes(int64(a.Size + bb.Size))
-	b.ResetTimer()
+	totalDocs := int64(len(aStorage.DocumentsIds) + len(bStorage.DocumentsIds))
 
 	for b.Loop() {
-		err := m.Merge(out, &a, &bb)
+		err := m.Merge(out, &aStorage, &bStorage)
+		b.SetBytes(int64(aStorage.Size + bStorage.Size))
 		if !assertions.NoError(err, "merge failed") {
 			return
 		}
 	}
-	b.StopTimer()
 
 	// Sanity check outside the clock: the merged file loads and has every doc.
 	var merged storage.Storage

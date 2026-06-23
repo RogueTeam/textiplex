@@ -1,6 +1,6 @@
 package query
 
-import "github.com/RoaringBitmap/roaring/roaring64"
+import "github.com/RoaringBitmap/roaring"
 
 // Filter the documents id index into the destination bitmap
 // the idea is to filter first the score results based on conditions
@@ -10,7 +10,7 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 	shouldsCount := q.Shoulds.Count()
 	mustNotsCount := q.MustNots.Count()
 
-	var bitmapForPostingListRetrieval roaring64.Bitmap
+	var bitmapForPostingListRetrieval roaring.Bitmap
 	if mustsCount > 0 {
 		// Musts define the candidate set: intersection of all Must posting lists.
 		var firstMust bool

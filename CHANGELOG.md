@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.3.0](https://github.com/RogueTeam/textiplex/compare/v1.2.1...v1.3.0) (2026-06-23)
+
+
+### Features
+
+* moved engine to roaring 32 ([5804e3b](https://github.com/RogueTeam/textiplex/commit/5804e3b9ba69024fbc83e8afdef46b254ec8cdce))
+* parallel creation of document ids and the rest of the file ([e301b90](https://github.com/RogueTeam/textiplex/commit/e301b90b61867129ace90d7471cf5b5c02d962cb))
+* removed experimental simd ([21700ad](https://github.com/RogueTeam/textiplex/commit/21700ad43ae4a2625a92fab198f743336c150617))
+* support for simd operations ([a153aab](https://github.com/RogueTeam/textiplex/commit/a153aab961006d3b34cde05c2f8ab0d8ad4dfea7))
+* updated .gitignore ([7935e90](https://github.com/RogueTeam/textiplex/commit/7935e903bdc49a5800a546fe52efcfd410f29ab1))
+* write document ids directly into the target file without binary encoding ([32d39e3](https://github.com/RogueTeam/textiplex/commit/32d39e3da03c6bab62b964482ece315831d77ec4))
+
+
+### Bug Fixes
+
+* capture parentheses ([0379cc2](https://github.com/RogueTeam/textiplex/commit/0379cc2edcd15040e170ce53de97511acf598dae))
+* correct setup of merge benchmark ([1973d32](https://github.com/RogueTeam/textiplex/commit/1973d32b6bf0a3e7de5715560faae556edf4c620))
+* do not use append on buffer ([42452b6](https://github.com/RogueTeam/textiplex/commit/42452b64da4f59e210d7efe2a0182caba90d0eb8))
+* improved benchmark initialization ([495f514](https://github.com/RogueTeam/textiplex/commit/495f5149b58d5c6ea976546dab3e31c2252665d6))
+* improved hot path by writing entire structs directly ([6f6c593](https://github.com/RogueTeam/textiplex/commit/6f6c593265901571d54e188234586d03f0e1094e))
+* improved write speed by removing almost all data binary conversions ([d57db5f](https://github.com/RogueTeam/textiplex/commit/d57db5ffffec909bed8ac79b16a92a6214a91093))
+* keep using bufio even when writing directly ([dd7bcd2](https://github.com/RogueTeam/textiplex/commit/dd7bcd22466188b17633efcd2903578556265540))
+* loop unrolling for bitmap operation ([3c84079](https://github.com/RogueTeam/textiplex/commit/3c840794cc8a4a409fe9384f1b8d23fcde529590))
+* parallel heavy bench ([6a0ce35](https://github.com/RogueTeam/textiplex/commit/6a0ce358bbd3a96414c71e366703d1fc0665f2b5))
+* reduced number of copies by writing directly to bufio ([051ea91](https://github.com/RogueTeam/textiplex/commit/051ea913fb69b3c7f27ef0768b6f565951bd24a3))
+* remove copies from hot collision path ([8311f4f](https://github.com/RogueTeam/textiplex/commit/8311f4fc370e1571a4971b41d01af2e1b30cd42a))
+* removed dead map ([68a6ff6](https://github.com/RogueTeam/textiplex/commit/68a6ff6a14e6b1b6b9dec93514d5d260714d3d94))
+* restored writes without allocs ([a2b918f](https://github.com/RogueTeam/textiplex/commit/a2b918f5303a5521b7463f42e340f80be591c9cd))
+* runtime.GC on every benchmark iteration ([69f1618](https://github.com/RogueTeam/textiplex/commit/69f1618b1105b57c5b9e1ff3c7dd9472803d9708))
+* skip empty tokens ([e60a95b](https://github.com/RogueTeam/textiplex/commit/e60a95bb7da688cbafc8ae55c98c4be08983e0c1))
+* support for correct type for document count ([982745b](https://github.com/RogueTeam/textiplex/commit/982745b4a7446577f8eb5f539226f16400843097))
+* support vector as a receiver ([39b9b57](https://github.com/RogueTeam/textiplex/commit/39b9b5772bc627812faf4d7ce04c6c038fbf53c1))
+* use counter instead ([e332ff4](https://github.com/RogueTeam/textiplex/commit/e332ff4c4ba615369866f6ec39c944810a501007))
+* use directly vectors over data ([0babf33](https://github.com/RogueTeam/textiplex/commit/0babf33dde37546abb2167bb973eadcd31a31d87))
+* use sequential advice for mmap load ([be351a5](https://github.com/RogueTeam/textiplex/commit/be351a5ca3060c03e1f4153d4e557889106dc33d))
+* write directly to files on big-buffer optimization scenario ([971f509](https://github.com/RogueTeam/textiplex/commit/971f509e6b8bfe844bfa78e12efc60b5811f091a))
+* write document lengths directly into destination without binary encoding ([f757cc9](https://github.com/RogueTeam/textiplex/commit/f757cc92c80fbc87f252dd9d19f1e06cbec225fe))
+
 ### [1.2.1](https://github.com/RogueTeam/textiplex/compare/v1.2.0...v1.2.1) (2026-06-21)
 
 

@@ -97,6 +97,8 @@ type Field struct {
 	// DocumentLength entries
 	// Keys are indexes of the documents
 	DocumentLengths []DocumentLengthEntry
+	// Sum of all token frequencies count
+	TotalTokenFrequenciesCount uint64
 }
 
 type PostingList struct {
@@ -170,10 +172,11 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 		Freqs  []TokenFrequencyEntry
 	}
 	type FieldAccumulator struct {
-		TotalLength      uint64
-		DocumentsCount   uint64
-		DocumentsLengths []DocumentLengthEntry
-		Tokens           *btree.BTreeG[*PostingData]
+		TotalLength                uint64
+		DocumentsCount             uint64
+		DocumentsLengths           []DocumentLengthEntry
+		Tokens                     *btree.BTreeG[*PostingData]
+		TotalTokenFrequenciesCount uint64
 	}
 
 	var postingListsCounter, tokensFreqsCounter uint64
@@ -241,6 +244,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 					Frequency:     tokenDef.Frequency,
 				})
 				tokensFreqsCounter++
+				fieldAccumulator.TotalTokenFrequenciesCount++
 				s.Size += uint64(TokenFrequencyEntrySize)
 			}
 		}
@@ -254,8 +258,9 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 		field := fieldsPool.Get()
 
 		*field = Field{
-			Tokens:          make([]Token, acc.Tokens.Len()),
-			DocumentLengths: acc.DocumentsLengths,
+			Tokens:                     make([]Token, acc.Tokens.Len()),
+			DocumentLengths:            acc.DocumentsLengths,
+			TotalTokenFrequenciesCount: acc.TotalTokenFrequenciesCount,
 		}
 		if acc.DocumentsCount > 0 {
 			field.AvgDocumentLength = float64(acc.TotalLength) / float64(acc.DocumentsCount)
@@ -406,6 +411,7 @@ func (s *Storage) SaveTo(name string) (err error) {
 		out = binary.NativeEndian.AppendUint64(out, fieldHash)
 		out = binary.NativeEndian.AppendUint64(out, *(*uint64)(unsafe.Pointer(&field.AvgDocumentLength)))
 		out = binary.NativeEndian.AppendUint64(out, uint64(len(field.Tokens)))
+		out = binary.NativeEndian.AppendUint64(out, field.TotalTokenFrequenciesCount)
 		out = binary.NativeEndian.AppendUint64(out, uint64(len(field.DocumentLengths)))
 
 		for index := range field.DocumentLengths {
@@ -556,6 +562,7 @@ func (s *Storage) Load(name string) (err error) {
 		s.Fields[fHeader.Hash] = field
 
 		field.AvgDocumentLength = fHeader.AvgDocumentLength
+		field.TotalTokenFrequenciesCount = fHeader.TotalTokenFrequencies
 
 		docsLengthSize := DocumentLengthEntrySize * uintptr(fHeader.DocumentLengthCount)
 		if uintptr(len(inUseBuffer)) < docsLengthSize {

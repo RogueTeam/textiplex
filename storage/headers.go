@@ -35,7 +35,10 @@ type FieldHeader struct {
 	// Precomputed so the reader can go directly to queries
 	AvgDocumentLength float64
 	// Number of total tokens the field has
+	// This number is also the number of posting lists
 	TokenCount uint64
+	// Sum of all token frequencies count
+	TotalTokenFrequencies uint64
 	// Number of document lengths included
 	DocumentLengthCount uint64
 }

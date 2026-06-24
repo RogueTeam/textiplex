@@ -814,15 +814,11 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	}
 	defer CloseAndRemove(tmpFieldFile)
 
-	fieldsW := bufio.NewWriterSize(tmpFieldFile, 4<<20)
-
 	tmpPostingsFile, err := m.CreateTemp("tmp_postinglists_*.part")
 	if err != nil {
 		return fmt.Errorf("failed to create temporary file for posting lists: %w", err)
 	}
 	defer CloseAndRemove(tmpPostingsFile)
-
-	postingsW := bufio.NewWriterSize(tmpPostingsFile, 4<<20)
 
 	tmpTokenFreqsFile, err := m.CreateTemp("tmp_tokenfreqs_*.part")
 	if err != nil {
@@ -830,15 +826,53 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	}
 	defer CloseAndRemove(tmpTokenFreqsFile)
 
-	tokenFreqsW := bufio.NewWriterSize(tmpTokenFreqsFile, 4<<20)
-
 	go func() { wg.Wait(); close(pendingWrites) }()
 	var allErrors []error
 	for option := range pendingWrites {
 		if option.Error != nil {
 			allErrors = append(allErrors, option.Error)
 		} else {
+			err := func() (err error) {
+				defer option.Success.Release()
 
+				fieldFile, err := os.Open(option.Success.FieldFile)
+				if err != nil {
+					return fmt.Errorf("failed to open field file: %w", err)
+				}
+				defer CloseAndRemove(fieldFile)
+
+				_, err = tmpFieldFile.ReadFrom(fieldFile)
+				if err != nil {
+					return fmt.Errorf("failed to read from file: %w", err)
+				}
+
+				plFile, err := os.Open(option.Success.PostingListFile)
+				if err != nil {
+					return fmt.Errorf("failed to open field's posting list file: %w", err)
+				}
+				defer CloseAndRemove(plFile)
+
+				_, err = tmpPostingsFile.ReadFrom(plFile)
+				if err != nil {
+					return fmt.Errorf("failed to read from file: %w", err)
+				}
+
+				tokFreqsFile, err := os.Open(option.Success.TokenFrequenciesFile)
+				if err != nil {
+					return fmt.Errorf("failed to open field's token frequencies file: %w", err)
+				}
+				defer CloseAndRemove(tokFreqsFile)
+
+				_, err = tmpTokenFreqsFile.ReadFrom(tokFreqsFile)
+				if err != nil {
+					return fmt.Errorf("failed to read from file: %w", err)
+				}
+
+				return nil
+			}()
+			if err != nil {
+				allErrors = append(allErrors, fmt.Errorf("failed to write pending: %w", err))
+			}
 		}
 	}
 
@@ -877,14 +911,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	}
 
 	tmpDocIdsFile.Seek(0, 0)
-
-	fieldsW.Flush()
 	tmpFieldFile.Seek(0, 0)
-
-	postingsW.Flush()
 	tmpPostingsFile.Seek(0, 0)
-
-	tokenFreqsW.Flush()
 	tmpTokenFreqsFile.Seek(0, 0)
 
 	// Hopefully all these calls will use send file or splice internally :)

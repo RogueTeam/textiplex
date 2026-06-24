@@ -3,9 +3,9 @@ package dorks
 import (
 	"iter"
 
-	"github.com/RogueTeam/textiplex/numeric"
 	"github.com/RogueTeam/textiplex/query"
 	"github.com/RogueTeam/textiplex/tokenizer"
+	"github.com/RogueTeam/textiplex/tokenizer/keyword"
 	"github.com/zeebo/xxh3"
 )
 
@@ -23,6 +23,10 @@ func PickTokenizer(defTokenizer tokenizer.Tokenizer, fieldsTokenizer map[uint64]
 		if ft, ok := fieldsTokenizer[fieldHash]; ok {
 			return ft
 		}
+	}
+
+	if defTokenizer == nil {
+		return keyword.Tokenizer
 	}
 	return defTokenizer
 }
@@ -71,43 +75,20 @@ func (q *Query) Compile(defTokenizer tokenizer.Tokenizer, fieldsTokenizer map[ui
 
 		// 2. Structured values are NEVER analyzed: numbers and dates are
 		//    sortable-encoded, and any range keeps its literal bound.
-		var data []byte
-		switch {
-		case match.Date != nil:
-			data = make([]byte, 8)
-			numeric.PutSortableInteger(data, match.Date.Value.UnixNano())
-		case match.Integer != nil:
-			data = make([]byte, 8)
-			numeric.PutSortableInteger(data, match.Integer.Value)
-		case match.Float != nil:
-			data = make([]byte, 8)
-			numeric.PutSortableFloat(data, match.Float.Value)
-		case match.Keyword != nil:
-			// A keyword-valued equality match (field:value) is analyzed with the
-			// field's tokenizer (default if none) and expanded. A keyword RANGE
-			// (field:>value) keeps its literal lexicographic bound, so it falls
-			// through to the range handling below unanalyzed.
-			if match.Operator == MatchOperatorNone {
-				toknizer := PickTokenizer(defTokenizer, fieldsTokenizer, fieldHash)
-				for token := range TokenizeOrPushValue(toknizer, []byte(*match.Keyword)) {
-					targetClause.FieldKeyword(fieldHash, token.Value, boost, fuzzy)
-				}
-				continue
+		tokenizer := PickTokenizer(defTokenizer, fieldsTokenizer, fieldHash)
+		for tok := range tokenizer([]byte(match.Value)) {
+			switch match.Operator {
+			case MatchOperatorNone:
+				targetClause.FieldKeyword(fieldHash, tok.Value, boost, fuzzy)
+			case MatchOperatorGreater:
+				targetClause.FieldRange(fieldHash, tok.Value, nil, query.RangeCaptureModeRight, boost)
+			case MatchOperatorGreaterEqual:
+				targetClause.FieldRange(fieldHash, tok.Value, nil, query.RangeCaptureModeBoth, boost)
+			case MatchOperatorLess:
+				targetClause.FieldRange(fieldHash, nil, tok.Value, query.RangeCaptureModeLeft, boost)
+			case MatchOperatorLessEqual:
+				targetClause.FieldRange(fieldHash, nil, tok.Value, query.RangeCaptureModeBoth, boost)
 			}
-			data = []byte(*match.Keyword)
-		}
-
-		switch match.Operator {
-		case MatchOperatorNone:
-			targetClause.FieldKeyword(fieldHash, data, boost, fuzzy)
-		case MatchOperatorGreater:
-			targetClause.FieldRange(fieldHash, data, nil, query.RangeCaptureModeRight, boost)
-		case MatchOperatorGreaterEqual:
-			targetClause.FieldRange(fieldHash, data, nil, query.RangeCaptureModeBoth, boost)
-		case MatchOperatorLess:
-			targetClause.FieldRange(fieldHash, nil, data, query.RangeCaptureModeLeft, boost)
-		case MatchOperatorLessEqual:
-			targetClause.FieldRange(fieldHash, nil, data, query.RangeCaptureModeBoth, boost)
 		}
 	}
 	return sq

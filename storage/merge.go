@@ -33,16 +33,12 @@ func CloseAndRemove(file *os.File) {
 const DefaultBufferedWriterSize = 4 << 20
 
 type PendingWrite struct {
-	Idx                  uint64
-	FieldFile            string
-	PostingListFile      string
-	TokenFrequenciesFile string
+	Idx      uint64
+	Filename string
 }
 
 func (w *PendingWrite) Release() {
-	os.Remove(w.FieldFile)
-	os.Remove(w.PostingListFile)
-	os.Remove(w.TokenFrequenciesFile)
+	os.Remove(w.Filename)
 }
 
 func (m *Merger) writeCollisionToken(
@@ -203,20 +199,54 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	var errorsCh = make(chan error, 4)
 	var wg sync.WaitGroup
 
-	var pendingWrites = btree.NewBTreeGOptions(
-		func(a, b *PendingWrite) bool {
-			return cmp.Less(a.Idx, b.Idx)
-		},
-		btree.Options{
-			NoLocks: false,
-		})
+	var (
+		pendingFields = btree.NewBTreeGOptions(
+			func(a, b *PendingWrite) bool {
+				return cmp.Less(a.Idx, b.Idx)
+			},
+			btree.Options{
+				NoLocks: false,
+			})
+		pendingPls = btree.NewBTreeGOptions(
+			func(a, b *PendingWrite) bool {
+				return cmp.Less(a.Idx, b.Idx)
+			},
+			btree.Options{
+				NoLocks: false,
+			})
+		pendingTokenFreqs = btree.NewBTreeGOptions(
+			func(a, b *PendingWrite) bool {
+				return cmp.Less(a.Idx, b.Idx)
+			},
+			btree.Options{
+				NoLocks: false,
+			})
+	)
 	defer func() {
-		it := pendingWrites.Iter()
-		defer it.Release()
+		func() {
+			it := pendingFields.Iter()
+			defer it.Release()
 
-		for valid := it.First(); valid; valid = it.Next() {
-			it.Item().Release()
-		}
+			for valid := it.First(); valid; valid = it.Next() {
+				it.Item().Release()
+			}
+		}()
+		func() {
+			it := pendingPls.Iter()
+			defer it.Release()
+
+			for valid := it.First(); valid; valid = it.Next() {
+				it.Item().Release()
+			}
+		}()
+		func() {
+			it := pendingTokenFreqs.Iter()
+			defer it.Release()
+
+			for valid := it.First(); valid; valid = it.Next() {
+				it.Item().Release()
+			}
+		}()
 	}()
 	var fieldCollisionsCount uint64
 	var fieldCollisions = make([]uint64, 0, len(a.Fields))
@@ -240,8 +270,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		freqsCursor += field.TotalTokenFrequenciesCount
 
 		wg.Go(func() {
-			var write = new(PendingWrite)
-
 			err := func() (err error) {
 				var buffer [8]byte
 
@@ -374,12 +402,9 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				plW.Flush()
 				tokFreqsW.Flush()
 
-				*write = PendingWrite{
-					Idx:                  currFieldIdx,
-					FieldFile:            fieldFile.Name(),
-					PostingListFile:      plFile.Name(),
-					TokenFrequenciesFile: tokFreqsFile.Name(),
-				}
+				pendingFields.Set(&PendingWrite{Idx: currFieldIdx, Filename: fieldFile.Name()})
+				pendingPls.Set(&PendingWrite{Idx: currFieldIdx, Filename: plFile.Name()})
+				pendingTokenFreqs.Set(&PendingWrite{Idx: currFieldIdx, Filename: tokFreqsFile.Name()})
 				return nil
 			}()
 
@@ -387,8 +412,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				errorsCh <- fmt.Errorf("failed to process A's field: %d: %w", fieldHash, err)
 				return
 			}
-
-			pendingWrites.Set(write)
 		})
 	}
 
@@ -407,8 +430,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		freqsCursor += field.TotalTokenFrequenciesCount
 
 		wg.Go(func() {
-			var write = new(PendingWrite)
-
 			err := func() (err error) {
 				var buffer [8]byte
 
@@ -566,20 +587,15 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				plW.Flush()
 				tokFreqsW.Flush()
 
-				*write = PendingWrite{
-					Idx:                  currFieldIdx,
-					FieldFile:            fieldFile.Name(),
-					PostingListFile:      plFile.Name(),
-					TokenFrequenciesFile: tokFreqsFile.Name(),
-				}
+				pendingFields.Set(&PendingWrite{Idx: currFieldIdx, Filename: fieldFile.Name()})
+				pendingPls.Set(&PendingWrite{Idx: currFieldIdx, Filename: plFile.Name()})
+				pendingTokenFreqs.Set(&PendingWrite{Idx: currFieldIdx, Filename: tokFreqsFile.Name()})
 				return nil
 			}()
 			if err != nil {
 				errorsCh <- fmt.Errorf("failed to process B's field: %d: %w", fieldHash, err)
 				return
 			}
-
-			pendingWrites.Set(write)
 		})
 	}
 
@@ -619,7 +635,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		wg.Go(func() {
 			var buffer [8]byte
 
-			var write = new(PendingWrite)
 			err := func() (err error) {
 				var finalTokensCount uint64
 				var cachedBitmapChunk [OffsetBitmapCachedSize]uint32
@@ -853,12 +868,9 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 				//
 
-				*write = PendingWrite{
-					Idx:                  currFieldIdx,
-					FieldFile:            fieldFile.Name(),
-					PostingListFile:      plFile.Name(),
-					TokenFrequenciesFile: tokFreqsFile.Name(),
-				}
+				pendingFields.Set(&PendingWrite{Idx: currFieldIdx, Filename: fieldFile.Name()})
+				pendingPls.Set(&PendingWrite{Idx: currFieldIdx, Filename: plFile.Name()})
+				pendingTokenFreqs.Set(&PendingWrite{Idx: currFieldIdx, Filename: tokFreqsFile.Name()})
 				return nil
 			}()
 
@@ -866,8 +878,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				errorsCh <- fmt.Errorf("failed to process collision field: %d: %w", fieldHash, err)
 				return
 			}
-
-			pendingWrites.Set(write)
 		})
 	}
 
@@ -884,18 +894,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	default:
 		return fmt.Errorf("multiple errors during merge: %w", errors.Join(allErrors...))
 	}
-
-	tmpPostingsFile, err := m.CreateTemp("tmp_postinglists_*.part")
-	if err != nil {
-		return fmt.Errorf("failed to create temporary file for posting lists: %w", err)
-	}
-	defer CloseAndRemove(tmpPostingsFile)
-
-	tmpTokenFreqsFile, err := m.CreateTemp("tmp_tokenfreqs_*.part")
-	if err != nil {
-		return fmt.Errorf("failed to create temporary file for token frequencies: %w", err)
-	}
-	defer CloseAndRemove(tmpTokenFreqsFile)
 
 	// Phase 5, Assembly everything
 	dstFile, err := os.Create(name)
@@ -939,14 +937,15 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 	}
 
+	// Pending fields
 	err = func() (err error) {
-		it := pendingWrites.Iter()
+		it := pendingFields.Iter()
 		defer it.Release()
 
 		for valid := it.First(); valid; valid = it.Next() {
 			write := it.Item()
 
-			fieldFile, err := os.Open(write.FieldFile)
+			fieldFile, err := os.Open(write.Filename)
 			if err != nil {
 				return fmt.Errorf("failed to open field file: %w", err)
 			}
@@ -954,49 +953,66 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 			_, err = dstFile.ReadFrom(fieldFile)
 			if err != nil {
-				return fmt.Errorf("failed to read from file: %w", err)
-			}
-
-			plFile, err := os.Open(write.PostingListFile)
-			if err != nil {
-				return fmt.Errorf("failed to open field's posting list file: %w", err)
-			}
-			defer CloseAndRemove(plFile)
-
-			_, err = tmpPostingsFile.ReadFrom(plFile)
-			if err != nil {
-				return fmt.Errorf("failed to read from file: %w", err)
-			}
-
-			tokFreqsFile, err := os.Open(write.TokenFrequenciesFile)
-			if err != nil {
-				return fmt.Errorf("failed to open field's token frequencies file: %w", err)
-			}
-			defer CloseAndRemove(tokFreqsFile)
-
-			_, err = tmpTokenFreqsFile.ReadFrom(tokFreqsFile)
-			if err != nil {
-				return fmt.Errorf("failed to read from file: %w", err)
+				return fmt.Errorf("failed to read from field file: %w", err)
 			}
 		}
 
 		return nil
 	}()
 	if err != nil {
-		return fmt.Errorf("failed to write files: %w", err)
+		return fmt.Errorf("failed to write field files: %w", err)
 	}
 
-	tmpPostingsFile.Seek(0, 0)
-	tmpTokenFreqsFile.Seek(0, 0)
+	// Pending Posting lists
+	err = func() (err error) {
+		it := pendingPls.Iter()
+		defer it.Release()
 
-	// Hopefully all these calls will use send file or splice internally :)
-	_, err = dstFile.ReadFrom(tmpPostingsFile)
+		for valid := it.First(); valid; valid = it.Next() {
+			write := it.Item()
+
+			plFile, err := os.Open(write.Filename)
+			if err != nil {
+				return fmt.Errorf("failed to open posting list file: %w", err)
+			}
+			defer CloseAndRemove(plFile)
+
+			_, err = dstFile.ReadFrom(plFile)
+			if err != nil {
+				return fmt.Errorf("failed to read from posting list file: %w", err)
+			}
+		}
+
+		return nil
+	}()
 	if err != nil {
-		return fmt.Errorf("failed to append posting lists: %w", err)
+		return fmt.Errorf("failed to write posting lists files: %w", err)
 	}
-	_, err = dstFile.ReadFrom(tmpTokenFreqsFile)
+
+	// Pending Posting lists
+	err = func() (err error) {
+		it := pendingTokenFreqs.Iter()
+		defer it.Release()
+
+		for valid := it.First(); valid; valid = it.Next() {
+			write := it.Item()
+
+			tokFreqsFile, err := os.Open(write.Filename)
+			if err != nil {
+				return fmt.Errorf("failed to open token frequencies file: %w", err)
+			}
+			defer CloseAndRemove(tokFreqsFile)
+
+			_, err = dstFile.ReadFrom(tokFreqsFile)
+			if err != nil {
+				return fmt.Errorf("failed to read from token frequencies file: %w", err)
+			}
+		}
+
+		return nil
+	}()
 	if err != nil {
-		return fmt.Errorf("failed to append token freqs: %w", err)
+		return fmt.Errorf("failed to write token frequencies files: %w", err)
 	}
 
 	return nil

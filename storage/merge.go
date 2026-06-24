@@ -200,34 +200,8 @@ func (m *Merger) writeCollisionToken(
 func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	docOffset := uint32(len(a.DocumentsIds))
 
-	tmpDocIdsFile, err := m.CreateTemp("tmp_docids_*.part")
-	if err != nil {
-		return fmt.Errorf("failed to create temporary file for documents ids: %w", err)
-	}
-	defer CloseAndRemove(tmpDocIdsFile)
-
 	var errorsCh = make(chan error, 4)
 	var wg sync.WaitGroup
-	// Phase 1, write document ids to temporary file
-	wg.Go(func() {
-		if len(a.DocumentsIds) > 0 {
-			aDocsSlice := unsafe.Slice((*byte)(unsafe.Pointer(&a.DocumentsIds[0])), DocumentIdSize*uintptr(len(a.DocumentsIds)))
-			_, err := tmpDocIdsFile.Write(aDocsSlice)
-			if err != nil {
-				errorsCh <- fmt.Errorf("failed to write storage A's document ids: %w", err)
-				return
-			}
-		}
-
-		if len(b.DocumentsIds) > 0 {
-			bDocsSlice := unsafe.Slice((*byte)(unsafe.Pointer(&b.DocumentsIds[0])), DocumentIdSize*uintptr(len(b.DocumentsIds)))
-			_, err = tmpDocIdsFile.Write(bDocsSlice)
-			if err != nil {
-				errorsCh <- fmt.Errorf("failed to write storage B's document ids: %w", err)
-				return
-			}
-		}
-	})
 
 	var pendingWrites = btree.NewBTreeGOptions(
 		func(a, b *PendingWrite) bool {
@@ -911,13 +885,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		return fmt.Errorf("multiple errors during merge: %w", errors.Join(allErrors...))
 	}
 
-	// Prepare fields, posting lists and token frequencies
-	tmpFieldFile, err := m.CreateTemp("tmp_fields_*.part")
-	if err != nil {
-		return fmt.Errorf("failed to create temporary file for fields: %w", err)
-	}
-	defer CloseAndRemove(tmpFieldFile)
-
 	tmpPostingsFile, err := m.CreateTemp("tmp_postinglists_*.part")
 	if err != nil {
 		return fmt.Errorf("failed to create temporary file for posting lists: %w", err)
@@ -929,6 +896,48 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		return fmt.Errorf("failed to create temporary file for token frequencies: %w", err)
 	}
 	defer CloseAndRemove(tmpTokenFreqsFile)
+
+	// Phase 5, Assembly everything
+	dstFile, err := os.Create(name)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer func() {
+		dstFile.Close()
+		if err != nil {
+			os.Remove(name)
+		}
+	}()
+
+	// File Header
+	header := Header{
+		Magic:                 MagicNumber,
+		Version:               VersionV1,
+		TotalDocuments:        uint32(len(a.DocumentsIds)) + uint32(len(b.DocumentsIds)),
+		FieldCount:            (uint64(len(a.Fields)) + uint64(len(b.Fields))) - fieldCollisionsCount,
+		TotalPostingLists:     postingListsCursor,
+		TotalTokenFrequencies: freqsCursor,
+	}
+	_, err = dstFile.Write(pointers.UnsafeSlice(&header))
+	if err != nil {
+		return fmt.Errorf("failed to write header: %w ", err)
+	}
+
+	if len(a.DocumentsIds) > 0 {
+		aDocsSlice := unsafe.Slice((*byte)(unsafe.Pointer(&a.DocumentsIds[0])), DocumentIdSize*uintptr(len(a.DocumentsIds)))
+		_, err := dstFile.Write(aDocsSlice)
+		if err != nil {
+			return fmt.Errorf("failed to write storage A's document ids: %w", err)
+		}
+	}
+
+	if len(b.DocumentsIds) > 0 {
+		bDocsSlice := unsafe.Slice((*byte)(unsafe.Pointer(&b.DocumentsIds[0])), DocumentIdSize*uintptr(len(b.DocumentsIds)))
+		_, err = dstFile.Write(bDocsSlice)
+		if err != nil {
+			return fmt.Errorf("failed to write storage B's document ids: %w", err)
+		}
+	}
 
 	err = func() (err error) {
 		it := pendingWrites.Iter()
@@ -943,7 +952,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 			defer CloseAndRemove(fieldFile)
 
-			_, err = tmpFieldFile.ReadFrom(fieldFile)
+			_, err = dstFile.ReadFrom(fieldFile)
 			if err != nil {
 				return fmt.Errorf("failed to read from file: %w", err)
 			}
@@ -977,46 +986,10 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		return fmt.Errorf("failed to write files: %w", err)
 	}
 
-	// Phase 5, Assembly everything
-	dstFile, err := os.Create(name)
-	if err != nil {
-		return fmt.Errorf("failed to create destination file: %w", err)
-	}
-	defer func() {
-		dstFile.Close()
-		if err != nil {
-			os.Remove(name)
-		}
-	}()
-
-	// File Header
-	header := Header{
-		Magic:                 MagicNumber,
-		Version:               VersionV1,
-		TotalDocuments:        uint32(len(a.DocumentsIds)) + uint32(len(b.DocumentsIds)),
-		FieldCount:            (uint64(len(a.Fields)) + uint64(len(b.Fields))) - fieldCollisionsCount,
-		TotalPostingLists:     postingListsCursor,
-		TotalTokenFrequencies: freqsCursor,
-	}
-	_, err = dstFile.Write(pointers.UnsafeSlice(&header))
-	if err != nil {
-		return fmt.Errorf("failed to write header: %w ", err)
-	}
-
-	tmpDocIdsFile.Seek(0, 0)
-	tmpFieldFile.Seek(0, 0)
 	tmpPostingsFile.Seek(0, 0)
 	tmpTokenFreqsFile.Seek(0, 0)
 
 	// Hopefully all these calls will use send file or splice internally :)
-	_, err = dstFile.ReadFrom(tmpDocIdsFile)
-	if err != nil {
-		return fmt.Errorf("failed to append doc ids: %w", err)
-	}
-	_, err = dstFile.ReadFrom(tmpFieldFile)
-	if err != nil {
-		return fmt.Errorf("failed to append fields: %w", err)
-	}
 	_, err = dstFile.ReadFrom(tmpPostingsFile)
 	if err != nil {
 		return fmt.Errorf("failed to append posting lists: %w", err)

@@ -945,15 +945,22 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		for valid := it.First(); valid; valid = it.Next() {
 			write := it.Item()
 
-			fieldFile, err := os.Open(write.Filename)
-			if err != nil {
-				return fmt.Errorf("failed to open field file: %w", err)
-			}
-			defer CloseAndRemove(fieldFile)
+			err = func() (err error) {
+				fieldFile, err := os.Open(write.Filename)
+				if err != nil {
+					return fmt.Errorf("failed to open field file: %w", err)
+				}
+				defer CloseAndRemove(fieldFile)
 
-			_, err = dstFile.ReadFrom(fieldFile)
+				_, err = dstFile.ReadFrom(fieldFile)
+				if err != nil {
+					return fmt.Errorf("failed to read from field file: %w", err)
+				}
+
+				return nil
+			}()
 			if err != nil {
-				return fmt.Errorf("failed to read from field file: %w", err)
+				return fmt.Errorf("failed to to process field file: %s: %w", write.Filename, err)
 			}
 		}
 
@@ -971,15 +978,22 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		for valid := it.First(); valid; valid = it.Next() {
 			write := it.Item()
 
-			plFile, err := os.Open(write.Filename)
-			if err != nil {
-				return fmt.Errorf("failed to open posting list file: %w", err)
-			}
-			defer CloseAndRemove(plFile)
+			err = func() (err error) {
+				plFile, err := os.Open(write.Filename)
+				if err != nil {
+					return fmt.Errorf("failed to open posting list file: %w", err)
+				}
+				defer CloseAndRemove(plFile)
 
-			_, err = dstFile.ReadFrom(plFile)
+				_, err = dstFile.ReadFrom(plFile)
+				if err != nil {
+					return fmt.Errorf("failed to read from posting list file: %w", err)
+				}
+
+				return nil
+			}()
 			if err != nil {
-				return fmt.Errorf("failed to read from posting list file: %w", err)
+				return fmt.Errorf("failed to to process posting list file: %s: %w", write.Filename, err)
 			}
 		}
 
@@ -997,15 +1011,21 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		for valid := it.First(); valid; valid = it.Next() {
 			write := it.Item()
 
-			tokFreqsFile, err := os.Open(write.Filename)
-			if err != nil {
-				return fmt.Errorf("failed to open token frequencies file: %w", err)
-			}
-			defer CloseAndRemove(tokFreqsFile)
+			err = func() (err error) {
+				tokFreqsFile, err := os.Open(write.Filename)
+				if err != nil {
+					return fmt.Errorf("failed to open token frequencies file: %w", err)
+				}
+				defer CloseAndRemove(tokFreqsFile)
 
-			_, err = dstFile.ReadFrom(tokFreqsFile)
+				_, err = dstFile.ReadFrom(tokFreqsFile)
+				if err != nil {
+					return fmt.Errorf("failed to read from token frequencies file: %w", err)
+				}
+				return nil
+			}()
 			if err != nil {
-				return fmt.Errorf("failed to read from token frequencies file: %w", err)
+				return fmt.Errorf("failed to to process token frequencies file: %s: %w", write.Filename, err)
 			}
 		}
 

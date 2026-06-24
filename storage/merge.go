@@ -283,6 +283,10 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		if err != nil {
 			return fmt.Errorf("failed to write A's field avgdl: %w: %d", err, fieldHash)
 		}
+		_, err = dstW.Write(pointers.UnsafeSlice(&field.TotalDocumentsLength))
+		if err != nil {
+			return fmt.Errorf("failed to write A's field total document lengths: %w: %d", err, fieldHash)
+		}
 		binary.NativeEndian.PutUint64(buffer[:], uint64(len(field.Tokens)))
 		_, err = dstW.Write(buffer[:])
 		if err != nil {
@@ -376,6 +380,10 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		_, err = dstW.Write(pointers.UnsafeSlice(&field.AvgDocumentLength))
 		if err != nil {
 			return fmt.Errorf("failed to write B's field avgdl: %w: %d", err, fieldHash)
+		}
+		_, err = dstW.Write(pointers.UnsafeSlice(&field.TotalDocumentsLength))
+		if err != nil {
+			return fmt.Errorf("failed to write B's field total document lengths: %w: %d", err, fieldHash)
 		}
 		binary.NativeEndian.PutUint64(buffer[:], uint64(len(field.Tokens)))
 		_, err = dstW.Write(buffer[:])
@@ -481,13 +489,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		fieldA := a.Fields[fieldHash]
 		fieldB := b.Fields[fieldHash]
 
-		var totalDocumentLengths uint64
-		for i := range fieldA.DocumentLengths {
-			totalDocumentLengths += fieldA.DocumentLengths[i].Length
-		}
-		for i := range fieldB.DocumentLengths {
-			totalDocumentLengths += fieldB.DocumentLengths[i].Length
-		}
+		var totalDocumentLengths = fieldA.TotalDocumentsLength + fieldB.TotalDocumentsLength
 		var avgDocumentLength = float64(totalDocumentLengths) / float64(len(fieldA.DocumentLengths)+len(fieldB.DocumentLengths))
 		var tokensCount = CountTokensBetweenCollisionFields(fieldA, fieldB)
 
@@ -499,6 +501,10 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		_, err = dstW.Write(pointers.UnsafeSlice(&avgDocumentLength))
 		if err != nil {
 			return fmt.Errorf("failed to write collision field avgdl: %w: %d", err, fieldHash)
+		}
+		_, err = dstW.Write(pointers.UnsafeSlice(&totalDocumentLengths))
+		if err != nil {
+			return fmt.Errorf("failed to write collision field total document length: %w: %d", err, fieldHash)
 		}
 		_, err = dstW.Write(pointers.UnsafeSlice(&tokensCount))
 		if err != nil {

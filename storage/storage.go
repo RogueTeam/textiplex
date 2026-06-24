@@ -90,6 +90,8 @@ func (s *Tokens) IterBytes(lo, hi []byte) (seq iter.Seq[*Token]) {
 type Field struct {
 	// Used for BM25 calculation
 	AvgDocumentLength float64
+	// Computed on load time
+	TotalDocumentsLength uint64
 	// Tokens present on the file
 	// This field is stored in memory but most of its references
 	// are direct mmap zero-copied arrays
@@ -261,6 +263,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 			Tokens:                     make([]Token, acc.Tokens.Len()),
 			DocumentLengths:            acc.DocumentsLengths,
 			TotalTokenFrequenciesCount: acc.TotalTokenFrequenciesCount,
+			TotalDocumentsLength:       acc.TotalLength,
 		}
 		if acc.DocumentsCount > 0 {
 			field.AvgDocumentLength = float64(acc.TotalLength) / float64(acc.DocumentsCount)
@@ -410,6 +413,7 @@ func (s *Storage) SaveTo(name string) (err error) {
 
 		out = binary.NativeEndian.AppendUint64(out, fieldHash)
 		out = binary.NativeEndian.AppendUint64(out, *(*uint64)(unsafe.Pointer(&field.AvgDocumentLength)))
+		out = binary.NativeEndian.AppendUint64(out, *(*uint64)(unsafe.Pointer(&field.TotalDocumentsLength)))
 		out = binary.NativeEndian.AppendUint64(out, uint64(len(field.Tokens)))
 		out = binary.NativeEndian.AppendUint64(out, field.TotalTokenFrequenciesCount)
 		out = binary.NativeEndian.AppendUint64(out, uint64(len(field.DocumentLengths)))
@@ -562,6 +566,7 @@ func (s *Storage) Load(name string) (err error) {
 		s.Fields[fHeader.Hash] = field
 
 		field.AvgDocumentLength = fHeader.AvgDocumentLength
+		field.TotalDocumentsLength = fHeader.TotalDocumentsLength
 		field.TotalTokenFrequenciesCount = fHeader.TotalTokenFrequencies
 
 		docsLengthSize := DocumentLengthEntrySize * uintptr(fHeader.DocumentLengthCount)

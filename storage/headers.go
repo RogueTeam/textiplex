@@ -34,6 +34,8 @@ type FieldHeader struct {
 	// Avgdl used in the BM25 formula
 	// Precomputed so the reader can go directly to queries
 	AvgDocumentLength float64
+	// Storage total document lengths
+	TotalDocumentsLength uint64
 	// Number of total tokens the field has
 	// This number is also the number of posting lists
 	TokenCount uint64

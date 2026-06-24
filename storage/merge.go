@@ -889,7 +889,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}()
 
 			if err != nil {
-				errorsCh <- fmt.Errorf("failed to process B's field: %d: %w", fieldHash, err)
+				errorsCh <- fmt.Errorf("failed to process collision field: %d: %w", fieldHash, err)
 				return
 			}
 

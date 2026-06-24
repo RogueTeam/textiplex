@@ -14,7 +14,6 @@ import (
 	"github.com/RoaringBitmap/roaring"
 	"github.com/RogueTeam/textiplex/pointers"
 	"github.com/tidwall/btree"
-	"github.com/zeebo/xxh3"
 )
 
 // Handles merges between storages
@@ -621,17 +620,27 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		currPlCursor := postingListsCursor
 		var totalPls uint64
 		{
-			var visited = make(map[uint64]struct{}, len(fieldA.Tokens))
-			for tokIdx := range fieldA.Tokens {
-				visited[xxh3.Hash(fieldA.Tokens[tokIdx].Value.Bytes())] = struct{}{}
-			}
-			for tokIdx := range fieldB.Tokens {
-				hash := xxh3.Hash(fieldB.Tokens[tokIdx].Value.Bytes())
-				if _, found := visited[hash]; !found {
-					visited[hash] = struct{}{}
+			aLen, bLen := len(fieldA.Tokens), len(fieldB.Tokens)
+			var totalPls uint64
+			for aIdx, bIdx := 0, 0; aIdx < aLen || bIdx < bLen; {
+				totalPls++
+				switch {
+				case aIdx >= aLen:
+					bIdx++
+				case bIdx >= bLen:
+					aIdx++
+				default:
+					switch bytes.Compare(fieldA.Tokens[aIdx].Value.Bytes(), fieldB.Tokens[bIdx].Value.Bytes()) {
+					case 0:
+						aIdx++
+						bIdx++
+					case -1:
+						aIdx++
+					default:
+						bIdx++
+					}
 				}
 			}
-			totalPls = uint64(len(visited))
 		}
 		postingListsCursor += totalPls
 		currFreqsCursor := freqsCursor

@@ -490,7 +490,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 		var avgDocumentLength = float64(totalDocumentLengths) / float64(len(fieldA.DocumentLengths)+len(fieldB.DocumentLengths))
 		var tokensCount = CountTokensBetweenCollisionFields(fieldA, fieldB)
-		freqsCursor += fieldA.TotalTokenFrequenciesCount + fieldB.TotalTokenFrequenciesCount
 
 		// Write the field header inmediatly
 		_, err = dstW.Write(pointers.UnsafeSlice(&fieldHash))

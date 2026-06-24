@@ -94,11 +94,11 @@ type Field struct {
 	// This field is stored in memory but most of its references
 	// are direct mmap zero-copied arrays
 	Tokens Tokens
+	// Sum of all token frequencies count
+	TotalTokenFrequenciesCount uint64
 	// DocumentLength entries
 	// Keys are indexes of the documents
 	DocumentLengths []DocumentLengthEntry
-	// Sum of all token frequencies count
-	TotalTokenFrequenciesCount uint64
 }
 
 type PostingList struct {

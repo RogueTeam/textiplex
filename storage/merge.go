@@ -324,16 +324,15 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				if err != nil {
 					return fmt.Errorf("failed to write A's tokens length: %w: %d", err, fieldHash)
 				}
+				_, err = fieldW.Write(pointers.UnsafeSlice(&field.TotalTokenFrequenciesCount))
+				if err != nil {
+					return fmt.Errorf("failed to write A's total frequencies count: %w: %d", err, fieldHash)
+				}
 				binary.NativeEndian.PutUint64(buffer[:], uint64(len(field.DocumentLengths)))
 				_, err = fieldW.Write(buffer[:])
 				if err != nil {
 					return fmt.Errorf("failed to write A's documents lengths: %w: %d", err, fieldHash)
 				}
-				_, err = fieldW.Write(pointers.UnsafeSlice(&field.TotalTokenFrequenciesCount))
-				if err != nil {
-					return fmt.Errorf("failed to write A's total frequencies count: %w: %d", err, fieldHash)
-				}
-
 				if len(field.DocumentLengths) > 0 {
 					fieldDocLengths := unsafe.Slice((*byte)(unsafe.Pointer(&field.DocumentLengths[0])), DocumentLengthEntrySize*uintptr(len(field.DocumentLengths)))
 					_, err = fieldW.Write(fieldDocLengths)
@@ -496,14 +495,14 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				if err != nil {
 					return fmt.Errorf("failed to write B's tokens length: %w: %d", err, fieldHash)
 				}
+				_, err = fieldW.Write(pointers.UnsafeSlice(&field.TotalTokenFrequenciesCount))
+				if err != nil {
+					return fmt.Errorf("failed to write B's field total frequencies count: %w: %d", err, fieldHash)
+				}
 				binary.NativeEndian.PutUint64(buffer[:], uint64(len(field.DocumentLengths)))
 				_, err = fieldW.Write(buffer[:])
 				if err != nil {
 					return fmt.Errorf("failed to write B's documents lengths: %w: %d", err, fieldHash)
-				}
-				_, err = fieldW.Write(pointers.UnsafeSlice(&field.TotalTokenFrequenciesCount))
-				if err != nil {
-					return fmt.Errorf("failed to write B's field total frequencies count: %w: %d", err, fieldHash)
 				}
 
 				for index := range field.DocumentLengths {
@@ -618,12 +617,10 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		currFieldIdx := fieldIdx
 		fieldIdx++
 		currPlCursor := postingListsCursor
-		var totalPls uint64
 		{
 			aLen, bLen := len(fieldA.Tokens), len(fieldB.Tokens)
-			var totalPls uint64
 			for aIdx, bIdx := 0, 0; aIdx < aLen || bIdx < bLen; {
-				totalPls++
+				postingListsCursor++
 				switch {
 				case aIdx >= aLen:
 					bIdx++
@@ -642,7 +639,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				}
 			}
 		}
-		postingListsCursor += totalPls
 		currFreqsCursor := freqsCursor
 		freqsCursor += fieldA.TotalTokenFrequenciesCount + fieldB.TotalTokenFrequenciesCount
 
@@ -848,15 +844,15 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 					if err != nil {
 						return fmt.Errorf("failed to write collision field tokens length: %w: %d", err, fieldHash)
 					}
-					binary.NativeEndian.PutUint64(buffer[:], uint64(len(fieldA.DocumentLengths)+len(fieldB.DocumentLengths)))
-					_, err = fieldW.Write(buffer[:])
-					if err != nil {
-						return fmt.Errorf("failed to write collision field documents lengths: %w: %d", err, fieldHash)
-					}
 					binary.NativeEndian.PutUint64(buffer[:], fieldA.TotalTokenFrequenciesCount+fieldB.TotalTokenFrequenciesCount)
 					_, err = fieldW.Write(buffer[:])
 					if err != nil {
 						return fmt.Errorf("failed to write collision field total tokens freqs count: %w: %d", err, fieldHash)
+					}
+					binary.NativeEndian.PutUint64(buffer[:], uint64(len(fieldA.DocumentLengths)+len(fieldB.DocumentLengths)))
+					_, err = fieldW.Write(buffer[:])
+					if err != nil {
+						return fmt.Errorf("failed to write collision field documents lengths: %w: %d", err, fieldHash)
 					}
 
 					err = fieldW.Flush()

@@ -156,7 +156,7 @@ func TestReader(t *testing.T) {
 			}
 			defer reader.Close()
 
-			seq, err := reader.QueryString(test.SortField, test.Query)
+			seq, err := reader.QueryString(0, test.SortField, test.Query)
 			if !assertions.NoError(err, "failed to query string") {
 				return
 			}

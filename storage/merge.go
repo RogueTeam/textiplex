@@ -607,14 +607,11 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		TotalPostingLists:     ctx.PostingListCursor,
 		TotalTokenFrequencies: ctx.FrequenciesCursor,
 	}
-	ctx.DstFile.Seek(0, io.SeekStart)
 
-	_, err = ctx.DstFile.Write(pointers.UnsafeSlice(&header))
+	_, err = ctx.DstFile.WriteAt(pointers.UnsafeSlice(&header), 0)
 	if err != nil {
 		return fmt.Errorf("failed to write header: %w ", err)
 	}
-
-	ctx.DstFile.Seek(0, io.SeekEnd)
 
 	ctx.PlFile.Seek(0, io.SeekStart)
 	_, err = ctx.DstFile.ReadFrom(ctx.PlFile)

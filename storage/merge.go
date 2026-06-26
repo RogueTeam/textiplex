@@ -160,6 +160,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		StorageA:         a,
 		StorageB:         b,
 		TokenFrequencies: make([]TokenFrequencyEntry, 0, len(a.TokenFrequencies)+len(b.TokenFrequencies)),
+		PostingLists:     make([]PendingPostingList, 0, len(a.PostingLists)),
 	}
 
 	ctx.DstFile, err = os.Create(name)

@@ -11,7 +11,6 @@ import (
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/RogueTeam/textiplex/pointers"
-	"github.com/RogueTeam/textiplex/pool"
 )
 
 // Handles merges between storages
@@ -54,6 +53,39 @@ func CountTokensBetweenCollisionFields(fieldA, fieldB *Field) (count uint64) {
 	return count
 }
 
+func CountTotalPostingLists(a *Storage, b *Storage) (total uint64) {
+	var fieldCollisions []uint64
+	for fieldHash, field := range a.Fields {
+		_, found := b.Fields[fieldHash]
+		if found {
+			fieldCollisions = append(fieldCollisions, fieldHash)
+			// Do not process collision fields yet
+			continue
+		}
+
+		total += uint64(len(field.Tokens))
+	}
+
+	// Phase 3, write B's only fields
+	for fieldHash, field := range b.Fields {
+		_, found := a.Fields[fieldHash]
+		if found {
+			continue
+		}
+
+		total += uint64(len(field.Tokens))
+	}
+
+	// Phase 4, add collision fields
+	for _, fieldHash := range fieldCollisions {
+		fieldA := a.Fields[fieldHash]
+		fieldB := b.Fields[fieldHash]
+
+		total += CountTokensBetweenCollisionFields(fieldA, fieldB)
+	}
+	return total
+}
+
 type PendingPostingList struct {
 	IndexA int64
 	IndexB int64
@@ -67,8 +99,7 @@ type MergeContext struct {
 	PostingListCursor, FrequenciesCursor uint64
 	// Cached token frequencies
 	TokenFrequencies                              []TokenFrequencyEntry
-	PendingPostingListsPool                       *pool.Pool[PendingPostingList]
-	PostingLists                                  []*PendingPostingList
+	PostingLists                                  []PendingPostingList
 	Buffer                                        [8]byte
 	CachedBitmapChunk                             [OffsetBitmapCachedSize]uint32
 	DocumentOffset                                uint32
@@ -86,12 +117,10 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 		finalToken.FrequenciesIndex = ctx.FrequenciesCursor
 		ctx.FrequenciesCursor += finalToken.FrequencyCount
 
-		pendingPl := ctx.PendingPostingListsPool.Get()
-		*pendingPl = PendingPostingList{
+		ctx.PostingLists = append(ctx.PostingLists, PendingPostingList{
 			IndexA: int64(tokenA.PostingListIndex),
 			IndexB: int64(tokenB.PostingListIndex),
-		}
-		ctx.PostingLists = append(ctx.PostingLists, pendingPl)
+		})
 
 		// Write the frequencies
 		freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
@@ -114,12 +143,10 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 		ctx.FrequenciesCursor += finalToken.FrequencyCount
 
 		// Write the posting list
-		pendingPl := ctx.PendingPostingListsPool.Get()
-		*pendingPl = PendingPostingList{
+		ctx.PostingLists = append(ctx.PostingLists, PendingPostingList{
 			IndexA: int64(tokenA.PostingListIndex),
 			IndexB: -1,
-		}
-		ctx.PostingLists = append(ctx.PostingLists, pendingPl)
+		})
 
 		// Write the frequencies
 		freqs := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
@@ -132,12 +159,10 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 		ctx.FrequenciesCursor += finalToken.FrequencyCount
 
 		// Write the posting list
-		pendingPl := ctx.PendingPostingListsPool.Get()
-		*pendingPl = PendingPostingList{
+		ctx.PostingLists = append(ctx.PostingLists, PendingPostingList{
 			IndexA: -1,
 			IndexB: int64(tokenB.PostingListIndex),
-		}
-		ctx.PostingLists = append(ctx.PostingLists, pendingPl)
+		})
 
 		// Write the frequencies
 		freqsB := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
@@ -164,12 +189,11 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 // otherwise undefined behavior will ocurr
 func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	var ctx = MergeContext{
-		DocumentOffset:          uint32(len(a.DocumentsIds)),
-		StorageA:                a,
-		StorageB:                b,
-		TokenFrequencies:        make([]TokenFrequencyEntry, 0, len(a.TokenFrequencies)+len(b.TokenFrequencies)),
-		PendingPostingListsPool: pool.New[PendingPostingList](20),
-		PostingLists:            make([]*PendingPostingList, 0, len(a.PostingLists)),
+		DocumentOffset:   uint32(len(a.DocumentsIds)),
+		StorageA:         a,
+		StorageB:         b,
+		TokenFrequencies: make([]TokenFrequencyEntry, 0, len(a.TokenFrequencies)+len(b.TokenFrequencies)),
+		PostingLists:     make([]PendingPostingList, 0, CountTotalPostingLists(a, b)),
 	}
 
 	ctx.DstFile, err = os.Create(name)
@@ -258,7 +282,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 
 		if cap(ctx.PostingLists)-len(ctx.PostingLists) < len(field.Tokens) {
-			newPls := make([]*PendingPostingList, len(ctx.PostingLists), len(ctx.PostingLists)+len(field.Tokens))
+			fmt.Println("HERE 1")
+			newPls := make([]PendingPostingList, len(ctx.PostingLists), len(ctx.PostingLists)+len(field.Tokens))
 			copy(newPls, ctx.PostingLists)
 			ctx.PostingLists = newPls
 		}
@@ -295,12 +320,10 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 
 			// Write directly to the posting lists temporary file
-			pendingPl := ctx.PendingPostingListsPool.Get()
-			*pendingPl = PendingPostingList{
+			ctx.PostingLists = append(ctx.PostingLists, PendingPostingList{
 				IndexA: int64(token.PostingListIndex),
 				IndexB: -1,
-			}
-			ctx.PostingLists = append(ctx.PostingLists, pendingPl)
+			})
 
 			// Write directly to frequencies temporary file
 			freqs := a.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
@@ -359,7 +382,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 
 		if cap(ctx.PostingLists)-len(ctx.PostingLists) < len(field.Tokens) {
-			newPls := make([]*PendingPostingList, len(ctx.PostingLists), len(ctx.PostingLists)+len(field.Tokens))
+			fmt.Println("HERE 2")
+			newPls := make([]PendingPostingList, len(ctx.PostingLists), len(ctx.PostingLists)+len(field.Tokens))
 			copy(newPls, ctx.PostingLists)
 			ctx.PostingLists = newPls
 		}
@@ -382,12 +406,10 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 
 			// Write directly to the posting lists temporary file
-			pendingPl := ctx.PendingPostingListsPool.Get()
-			*pendingPl = PendingPostingList{
+			ctx.PostingLists = append(ctx.PostingLists, PendingPostingList{
 				IndexA: -1,
 				IndexB: int64(token.PostingListIndex),
-			}
-			ctx.PostingLists = append(ctx.PostingLists, pendingPl)
+			})
 
 			// Add token frequency
 			binary.NativeEndian.PutUint64(ctx.Buffer[:], ctx.FrequenciesCursor)
@@ -427,7 +449,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		var tokensCount = CountTokensBetweenCollisionFields(fieldA, fieldB)
 
 		if uint64(cap(ctx.PostingLists)-len(ctx.PostingLists)) < tokensCount {
-			newPls := make([]*PendingPostingList, len(ctx.PostingLists), uint64(len(ctx.PostingLists))+tokensCount)
+			fmt.Println("Here 3")
+			newPls := make([]PendingPostingList, len(ctx.PostingLists), uint64(len(ctx.PostingLists))+tokensCount)
 			copy(newPls, ctx.PostingLists)
 			ctx.PostingLists = newPls
 		}

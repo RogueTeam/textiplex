@@ -22,7 +22,6 @@ var DefaultTokenizer = en.TokenizerWithoutStopwords
 const MaxBatchSize = 1024 * 1024 * 1024 // 1GB
 
 func BenchmarkHeavyWriter(b *testing.B) {
-
 	b.StopTimer()
 
 	var writer = textiplex.Writer{

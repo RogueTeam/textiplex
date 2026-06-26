@@ -229,9 +229,13 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 		defer unix.Munmap(mmapMemFile)
 
-		err = unix.Madvise(mmapMemFile, unix.MADV_SEQUENTIAL|unix.MADV_HUGEPAGE)
+		err = unix.Madvise(mmapMemFile, unix.MADV_SEQUENTIAL)
 		if err != nil {
-			return fmt.Errorf("failed to madvise mmapped buffer: %w", err)
+			return fmt.Errorf("failed to madvise sequential: %w", err)
+		}
+		err = unix.Madvise(mmapMemFile, unix.MADV_HUGEPAGE)
+		if err != nil {
+			return fmt.Errorf("failed to madvise huge page: %w", err)
 		}
 
 		if tokFreqsCount > 0 {

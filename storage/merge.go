@@ -257,6 +257,12 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 		}
 
+		if cap(ctx.PostingLists)-len(ctx.PostingLists) < len(field.Tokens) {
+			newPls := make([]*PendingPostingList, len(ctx.PostingLists), len(ctx.PostingLists)+len(field.Tokens))
+			copy(newPls, ctx.PostingLists)
+			ctx.PostingLists = newPls
+		}
+
 		// Write posting lists
 		for tokenIdx := range field.Tokens {
 			token := &field.Tokens[tokenIdx]
@@ -352,6 +358,12 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 		}
 
+		if cap(ctx.PostingLists)-len(ctx.PostingLists) < len(field.Tokens) {
+			newPls := make([]*PendingPostingList, len(ctx.PostingLists), len(ctx.PostingLists)+len(field.Tokens))
+			copy(newPls, ctx.PostingLists)
+			ctx.PostingLists = newPls
+		}
+
 		// Write posting lists
 		for tokenIdx := range field.Tokens {
 			token := &field.Tokens[tokenIdx]
@@ -413,6 +425,12 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		var totalDocumentLengths = fieldA.TotalDocumentsLength + fieldB.TotalDocumentsLength
 		var avgDocumentLength = float64(totalDocumentLengths) / float64(len(fieldA.DocumentLengths)+len(fieldB.DocumentLengths))
 		var tokensCount = CountTokensBetweenCollisionFields(fieldA, fieldB)
+
+		if uint64(cap(ctx.PostingLists)-len(ctx.PostingLists)) < tokensCount {
+			newPls := make([]*PendingPostingList, len(ctx.PostingLists), uint64(len(ctx.PostingLists))+tokensCount)
+			copy(newPls, ctx.PostingLists)
+			ctx.PostingLists = newPls
+		}
 
 		// Write the field header inmediatly
 		_, err = ctx.DstW.Write(pointers.UnsafeSlice(&fieldHash))

@@ -53,16 +53,23 @@ func CountTokensBetweenCollisionFields(fieldA, fieldB *Field) (count uint64) {
 	return count
 }
 
+type PendingPostingList struct {
+	IndexA int64
+	IndexB int64
+}
+
 type MergeContext struct {
-	StorageA                                      *Storage
-	StorageB                                      *Storage
-	DstFile, PlFile                               *os.File
-	DstW, PlW                                     *bufio.Writer
-	PostingListCursor, FrequenciesCursor          uint64
+	StorageA                             *Storage
+	StorageB                             *Storage
+	DstFile                              *os.File
+	DstW                                 *bufio.Writer
+	PostingListCursor, FrequenciesCursor uint64
+	// Cached token frequencies
+	TokenFrequencies                              []TokenFrequencyEntry
+	PostingLists                                  []PendingPostingList
 	Buffer                                        [8]byte
 	CachedBitmapChunk                             [OffsetBitmapCachedSize]uint32
 	DocumentOffset                                uint32
-	TokenFrequenciesOffset                        int64
 	ReusableBitmap, BitmapForPostingListRetrieval roaring.Bitmap
 }
 
@@ -77,56 +84,23 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 		finalToken.FrequenciesIndex = ctx.FrequenciesCursor
 		ctx.FrequenciesCursor += finalToken.FrequencyCount
 
-		ctx.ReusableBitmap.Clear()
-
-		ctx.StorageA.PostingLists[tokenA.PostingListIndex].Bitmap(&ctx.BitmapForPostingListRetrieval)
-		ctx.ReusableBitmap.Or(&ctx.BitmapForPostingListRetrieval)
-
-		ctx.StorageB.PostingLists[tokenB.PostingListIndex].Bitmap(&ctx.BitmapForPostingListRetrieval)
-
-		addOffsetFrom(ctx, &ctx.ReusableBitmap, &ctx.BitmapForPostingListRetrieval)
-
-		// Write the posting list
-		size := ctx.ReusableBitmap.GetSerializedSizeInBytes()
-
-		_, err := ctx.PlW.Write(pointers.UnsafeSlice(&size))
-		if err != nil {
-			return fmt.Errorf("failed to write Collision field token posting list size: %w: %d:%s", err, fieldHash, tokenA.Value.UnsafeString())
-		}
-
-		_, err = ctx.ReusableBitmap.WriteTo(ctx.PlW)
-		if err != nil {
-			return fmt.Errorf("failed to write Collision field token posting list contents: %w: %d:%s", err, fieldHash, tokenA.Value.UnsafeString())
-		}
+		ctx.PostingLists = append(ctx.PostingLists, PendingPostingList{
+			IndexA: int64(tokenA.PostingListIndex),
+			IndexB: int64(tokenB.PostingListIndex),
+		})
 
 		// Write the frequencies
 		freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
+		ctx.TokenFrequencies = append(ctx.TokenFrequencies, freqsA...)
 		freqsB := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
-
-		if len(freqsA) > 0 {
-			freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqsA[0])), TokenFrequencyEntrySize*uintptr(len(freqsA)))
-			tokFreqsDelta, err := ctx.DstFile.WriteAt(freqsBytes, ctx.TokenFrequenciesOffset)
-			if err != nil {
-				return fmt.Errorf("failed to write A' storage frequencies: %w", err)
-			}
-			ctx.TokenFrequenciesOffset += int64(tokFreqsDelta)
-		}
 
 		for index := range freqsB {
 			freq := &freqsB[index]
 
-			binary.NativeEndian.PutUint32(ctx.Buffer[:], ctx.DocumentOffset+freq.DocumentIndex)
-			tokFreqsDelta, err := ctx.DstFile.WriteAt(ctx.Buffer[:], ctx.TokenFrequenciesOffset)
-			if err != nil {
-				return fmt.Errorf("failed to write B's field token frequency: %w: %d", err, fieldHash)
-			}
-			ctx.TokenFrequenciesOffset += int64(tokFreqsDelta)
-
-			tokFreqsDelta, err = ctx.DstFile.WriteAt(pointers.UnsafeSlice(&freq.Frequency), ctx.TokenFrequenciesOffset)
-			if err != nil {
-				return fmt.Errorf("failed to write B's field token frequency: %w: %d", err, fieldHash)
-			}
-			ctx.TokenFrequenciesOffset += int64(tokFreqsDelta)
+			ctx.TokenFrequencies = append(ctx.TokenFrequencies, TokenFrequencyEntry{
+				DocumentIndex: ctx.DocumentOffset + freq.DocumentIndex,
+				Frequency:     freq.Frequency,
+			})
 		}
 	case tokenA != nil:
 		finalToken = *tokenA
@@ -136,28 +110,14 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 		ctx.FrequenciesCursor += finalToken.FrequencyCount
 
 		// Write the posting list
-		postingList := &ctx.StorageA.PostingLists[tokenA.PostingListIndex]
-
-		binary.NativeEndian.PutUint64(ctx.Buffer[:], uint64(len(postingList.Data)))
-		_, err = ctx.PlW.Write(ctx.Buffer[:])
-		if err != nil {
-			return fmt.Errorf("failed to write A's field token posting list size: %w: %d:%s", err, fieldHash, tokenA.Value.UnsafeString())
-		}
-		_, err := ctx.PlW.Write(postingList.Data)
-		if err != nil {
-			return fmt.Errorf("failed to write A's field token posting list contents: %w: %d:%s", err, fieldHash, tokenA.Value.UnsafeString())
-		}
+		ctx.PostingLists = append(ctx.PostingLists, PendingPostingList{
+			IndexA: int64(tokenA.PostingListIndex),
+			IndexB: -1,
+		})
 
 		// Write the frequencies
 		freqs := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
-		if len(freqs) > 0 {
-			freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqs[0])), TokenFrequencyEntrySize*uintptr(len(freqs)))
-			tokFreqsDelta, err := ctx.DstFile.WriteAt(freqsBytes, ctx.TokenFrequenciesOffset)
-			if err != nil {
-				return fmt.Errorf("failed to write A' storage frequencies: %w", err)
-			}
-			ctx.TokenFrequenciesOffset += int64(tokFreqsDelta)
-		}
+		ctx.TokenFrequencies = append(ctx.TokenFrequencies, freqs...)
 	case tokenB != nil:
 		finalToken = *tokenB
 		finalToken.PostingListIndex = ctx.PostingListCursor
@@ -166,41 +126,21 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 		ctx.FrequenciesCursor += finalToken.FrequencyCount
 
 		// Write the posting list
-		ctx.StorageB.PostingLists[tokenB.PostingListIndex].Bitmap(&ctx.BitmapForPostingListRetrieval)
-
-		ctx.ReusableBitmap.Clear()
-
-		addOffsetFrom(ctx, &ctx.ReusableBitmap, &ctx.BitmapForPostingListRetrieval)
-
-		size := ctx.ReusableBitmap.GetSerializedSizeInBytes()
-
-		_, err := ctx.PlW.Write(pointers.UnsafeSlice(&size))
-		if err != nil {
-			return fmt.Errorf("failed to write B's field token posting list size: %w: %d:%s", err, fieldHash, tokenB.Value.UnsafeString())
-		}
-		_, err = ctx.ReusableBitmap.WriteTo(ctx.PlW)
-		if err != nil {
-			return fmt.Errorf("failed to write B's field token posting list contents: %w: %d:%s", err, fieldHash, tokenB.Value.UnsafeString())
-		}
+		ctx.PostingLists = append(ctx.PostingLists, PendingPostingList{
+			IndexA: -1,
+			IndexB: int64(tokenB.PostingListIndex),
+		})
 
 		// Write the frequencies
-		freqs := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
+		freqsB := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
 
-		for index := range freqs {
-			freq := &freqs[index]
+		for index := range freqsB {
+			freq := &freqsB[index]
 
-			binary.NativeEndian.PutUint32(ctx.Buffer[:], ctx.DocumentOffset+freq.DocumentIndex)
-			tokFreqsDelta, err := ctx.DstFile.WriteAt(ctx.Buffer[:], ctx.TokenFrequenciesOffset)
-			if err != nil {
-				return fmt.Errorf("failed to write B's field token frequency: %w: %d:%s", err, fieldHash, tokenB.Value.UnsafeString())
-			}
-			ctx.TokenFrequenciesOffset += int64(tokFreqsDelta)
-
-			tokFreqsDelta, err = ctx.DstFile.WriteAt(pointers.UnsafeSlice(&freq.Frequency), ctx.TokenFrequenciesOffset)
-			if err != nil {
-				return fmt.Errorf("failed to write B's field token frequency: %w: %d:%s", err, fieldHash, tokenB.Value.UnsafeString())
-			}
-			ctx.TokenFrequenciesOffset += int64(tokFreqsDelta)
+			ctx.TokenFrequencies = append(ctx.TokenFrequencies, TokenFrequencyEntry{
+				DocumentIndex: ctx.DocumentOffset + freq.DocumentIndex,
+				Frequency:     freq.Frequency,
+			})
 		}
 	}
 
@@ -216,9 +156,10 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 // otherwise undefined behavior will ocurr
 func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	var ctx = MergeContext{
-		DocumentOffset: uint32(len(a.DocumentsIds)),
-		StorageA:       a,
-		StorageB:       b,
+		DocumentOffset:   uint32(len(a.DocumentsIds)),
+		StorageA:         a,
+		StorageB:         b,
+		TokenFrequencies: make([]TokenFrequencyEntry, 0, len(a.TokenFrequencies)+len(b.TokenFrequencies)),
 	}
 
 	ctx.DstFile, err = os.Create(name)
@@ -232,25 +173,13 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 	}()
 
-	// Temporary helper files
-	ctx.PlFile, err = m.CreateTemp("posting-lists-*")
-	if err != nil {
-		return fmt.Errorf("failed to prepare field's posting list file: %w", err)
-	}
-	defer CloseAndRemove(ctx.PlFile)
-
 	// Reserve the space for the header and the document ids inmediatly
 	docIdsSize := (int64(DocumentIdSize) * (int64(len(a.DocumentsIds)) + int64(len(b.DocumentsIds))))
-	tokenFreqsSize := (int64(TokenFrequencyEntrySize) * (int64(len(a.TokenFrequencies)) + int64(len(b.TokenFrequencies))))
-	reserveSize := int64(HeaderSize) +
-		docIdsSize +
-		tokenFreqsSize
+	reserveSize := int64(HeaderSize) + docIdsSize
 
 	ctx.DstFile.Truncate(reserveSize)
 	// Seek after the header to write document ids directly
 	ctx.DstFile.Seek(int64(HeaderSize), 0)
-
-	ctx.TokenFrequenciesOffset = int64(HeaderSize) + docIdsSize
 
 	if len(a.DocumentsIds) > 0 {
 		aDocsSlice := unsafe.Slice((*byte)(unsafe.Pointer(&a.DocumentsIds[0])), DocumentIdSize*uintptr(len(a.DocumentsIds)))
@@ -271,7 +200,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	ctx.DstFile.Seek(reserveSize, io.SeekStart)
 
 	ctx.DstW = bufio.NewWriterSize(ctx.DstFile, DefaultBufferedWriterSize)
-	ctx.PlW = bufio.NewWriterSize(ctx.PlFile, DefaultBufferedWriterSize)
 
 	var fieldCollisions = make([]uint64, 0, len(a.Fields))
 
@@ -351,28 +279,14 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 
 			// Write directly to the posting lists temporary file
-			postingList := &a.PostingLists[token.PostingListIndex]
-
-			binary.NativeEndian.PutUint64(ctx.Buffer[:], uint64(len(postingList.Data)))
-			_, err = ctx.PlW.Write(ctx.Buffer[:])
-			if err != nil {
-				return fmt.Errorf("failed to write A's field token posting list size: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-			}
-			_, err = ctx.PlW.Write(postingList.Data)
-			if err != nil {
-				return fmt.Errorf("failed to write A's field token posting list contents: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-			}
+			ctx.PostingLists = append(ctx.PostingLists, PendingPostingList{
+				IndexA: int64(token.PostingListIndex),
+				IndexB: -1,
+			})
 
 			// Write directly to frequencies temporary file
 			freqs := a.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
-			if len(freqs) > 0 {
-				freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqs[0])), TokenFrequencyEntrySize*uintptr(len(freqs)))
-				tokFreqsDelta, err := ctx.DstFile.WriteAt(freqsBytes, ctx.TokenFrequenciesOffset)
-				if err != nil {
-					return fmt.Errorf("failed to write storage frequencies: %w", err)
-				}
-				ctx.TokenFrequenciesOffset += int64(tokFreqsDelta)
-			}
+			ctx.TokenFrequencies = append(ctx.TokenFrequencies, freqs...)
 		}
 	}
 
@@ -444,22 +358,10 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 
 			// Write directly to the posting lists temporary file
-			b.PostingLists[token.PostingListIndex].Bitmap(&ctx.BitmapForPostingListRetrieval)
-
-			ctx.ReusableBitmap.Clear()
-
-			addOffsetFrom(&ctx, &ctx.ReusableBitmap, &ctx.BitmapForPostingListRetrieval)
-
-			size := ctx.ReusableBitmap.GetSerializedSizeInBytes()
-
-			_, err = ctx.PlW.Write(pointers.UnsafeSlice(&size))
-			if err != nil {
-				return fmt.Errorf("failed to write B's field token posting list size: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-			}
-			_, err = ctx.ReusableBitmap.WriteTo(ctx.PlW)
-			if err != nil {
-				return fmt.Errorf("failed to write B's field token posting list contents: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-			}
+			ctx.PostingLists = append(ctx.PostingLists, PendingPostingList{
+				IndexA: -1,
+				IndexB: int64(token.PostingListIndex),
+			})
 
 			// Add token frequency
 			binary.NativeEndian.PutUint64(ctx.Buffer[:], ctx.FrequenciesCursor)
@@ -475,18 +377,10 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			for index := range freqs {
 				freq := &freqs[index]
 
-				binary.NativeEndian.PutUint32(ctx.Buffer[:], ctx.DocumentOffset+freq.DocumentIndex)
-				tokFreqsDelta, err := ctx.DstFile.WriteAt(ctx.Buffer[:], ctx.TokenFrequenciesOffset)
-				if err != nil {
-					return fmt.Errorf("failed to write B's field token frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-				}
-				ctx.TokenFrequenciesOffset += int64(tokFreqsDelta)
-
-				tokFreqsDelta, err = ctx.DstFile.WriteAt(pointers.UnsafeSlice(&freq.Frequency), ctx.TokenFrequenciesOffset)
-				if err != nil {
-					return fmt.Errorf("failed to write B's field token frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
-				}
-				ctx.TokenFrequenciesOffset += int64(tokFreqsDelta)
+				ctx.TokenFrequencies = append(ctx.TokenFrequencies, TokenFrequencyEntry{
+					DocumentIndex: ctx.DocumentOffset + freq.DocumentIndex,
+					Frequency:     freq.Frequency,
+				})
 			}
 
 			// Write the actual token
@@ -595,8 +489,76 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 	// Phase 5, Assembly everything
 
+	if len(ctx.TokenFrequencies) > 0 {
+		freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&ctx.TokenFrequencies[0])), TokenFrequencyEntrySize*uintptr(len(ctx.TokenFrequencies)))
+		_, err = ctx.DstW.Write(freqsBytes)
+		if err != nil {
+			return fmt.Errorf("failed to write token frequencies: %w", err)
+		}
+	}
+
+	for i := range ctx.PostingLists {
+		pending := &ctx.PostingLists[i]
+
+		switch {
+		case pending.IndexA != -1 && pending.IndexB != -1:
+			rawA := &a.PostingLists[pending.IndexA]
+			rawB := &b.PostingLists[pending.IndexB]
+
+			ctx.ReusableBitmap.Clear()
+			rawA.Bitmap(&ctx.BitmapForPostingListRetrieval)
+			ctx.ReusableBitmap.Or(&ctx.BitmapForPostingListRetrieval)
+
+			rawB.Bitmap(&ctx.BitmapForPostingListRetrieval)
+			addOffsetFrom(&ctx, &ctx.ReusableBitmap, &ctx.BitmapForPostingListRetrieval)
+
+			size := ctx.ReusableBitmap.GetSerializedSizeInBytes()
+			binary.NativeEndian.PutUint64(ctx.Buffer[:], size)
+			_, err = ctx.DstW.Write(ctx.Buffer[:])
+			if err != nil {
+				return fmt.Errorf("failed to write length of posting list A&B: %w", err)
+			}
+
+			_, err = ctx.ReusableBitmap.WriteTo(ctx.DstW)
+			if err != nil {
+				return fmt.Errorf("failed to write contents of posting list A&B: %w", err)
+			}
+		case pending.IndexA != -1:
+			rawA := &a.PostingLists[pending.IndexA]
+
+			binary.NativeEndian.PutUint64(ctx.Buffer[:], uint64(len(rawA.Data)))
+			_, err = ctx.DstW.Write(ctx.Buffer[:])
+			if err != nil {
+				return fmt.Errorf("failed to write length of posting list A: %w", err)
+			}
+
+			_, err = ctx.DstW.Write(rawA.Data)
+			if err != nil {
+				return fmt.Errorf("failed to write contents of posting list A: %w", err)
+			}
+		case pending.IndexB != -1:
+			rawB := &b.PostingLists[pending.IndexB]
+
+			ctx.ReusableBitmap.Clear()
+			rawB.Bitmap(&ctx.BitmapForPostingListRetrieval)
+
+			addOffsetFrom(&ctx, &ctx.ReusableBitmap, &ctx.BitmapForPostingListRetrieval)
+
+			size := ctx.ReusableBitmap.GetSerializedSizeInBytes()
+			binary.NativeEndian.PutUint64(ctx.Buffer[:], size)
+			_, err = ctx.DstW.Write(ctx.Buffer[:])
+			if err != nil {
+				return fmt.Errorf("failed to write length of posting list A&B: %w", err)
+			}
+
+			_, err = ctx.ReusableBitmap.WriteTo(ctx.DstW)
+			if err != nil {
+				return fmt.Errorf("failed to write contents of posting list A&B: %w", err)
+			}
+		}
+	}
+
 	ctx.DstW.Flush()
-	ctx.PlW.Flush()
 
 	// File Header
 	header := Header{
@@ -611,12 +573,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	_, err = ctx.DstFile.WriteAt(pointers.UnsafeSlice(&header), 0)
 	if err != nil {
 		return fmt.Errorf("failed to write header: %w ", err)
-	}
-
-	ctx.PlFile.Seek(0, io.SeekStart)
-	_, err = ctx.DstFile.ReadFrom(ctx.PlFile)
-	if err != nil {
-		return fmt.Errorf("failed to append posting lists file: %w", err)
 	}
 
 	return nil

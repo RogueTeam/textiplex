@@ -11,6 +11,7 @@ import (
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/RogueTeam/textiplex/pointers"
+	"golang.org/x/sys/unix"
 )
 
 // Handles merges between storages
@@ -90,6 +91,8 @@ type PendingPostingList struct {
 	IndexA int64
 	IndexB int64
 }
+
+const PendingPostingListSize = unsafe.Sizeof(PendingPostingList{})
 
 type MergeContext struct {
 	StorageA                             *Storage
@@ -188,12 +191,57 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 // Document ids should not collide in both storage
 // otherwise undefined behavior will ocurr
 func (m *Merger) Merge(name string, a, b *Storage) (err error) {
+	tokFreqsCount := int64(len(a.TokenFrequencies)) + int64(len(b.TokenFrequencies))
+	tokFreqsSize := TokenFrequencyEntrySize * uintptr(tokFreqsCount)
+	plCount := CountTotalPostingLists(a, b)
+	plSize := PendingPostingListSize * uintptr(plCount)
+	memFileTruncate := int64(tokFreqsSize) + int64(plSize)
+
 	var ctx = MergeContext{
-		DocumentOffset:   uint32(len(a.DocumentsIds)),
-		StorageA:         a,
-		StorageB:         b,
-		TokenFrequencies: make([]TokenFrequencyEntry, 0, len(a.TokenFrequencies)+len(b.TokenFrequencies)),
-		PostingLists:     make([]PendingPostingList, 0, CountTotalPostingLists(a, b)),
+		DocumentOffset: uint32(len(a.DocumentsIds)),
+		StorageA:       a,
+		StorageB:       b,
+	}
+
+	var memFile *os.File
+	var mmapMemFile []byte
+	if memFileTruncate > 0 {
+		memFile, err = m.CreateTemp("*.tmp")
+		if err != nil {
+			return fmt.Errorf("failed to create temporary file: %w", err)
+		}
+		defer CloseAndRemove(memFile)
+
+		err = memFile.Truncate(memFileTruncate)
+		if err != nil {
+			return fmt.Errorf("failed to truncate temporary memfile: %w", err)
+		}
+
+		mmapMemFile, err = unix.Mmap(
+			int(memFile.Fd()),
+			0,
+			int(memFileTruncate),
+			unix.PROT_READ|unix.PROT_WRITE,
+			unix.MAP_SHARED,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to mmap file: %w", err)
+		}
+		defer unix.Munmap(mmapMemFile)
+
+		err = unix.Madvise(mmapMemFile, unix.MADV_SEQUENTIAL|unix.MADV_HUGEPAGE)
+		if err != nil {
+			return fmt.Errorf("failed to madvise mmapped buffer: %w", err)
+		}
+
+		if tokFreqsCount > 0 {
+			ptr := (*TokenFrequencyEntry)(unsafe.Pointer(&mmapMemFile[0]))
+			ctx.TokenFrequencies = unsafe.Slice(ptr, tokFreqsCount)[:0]
+		}
+		if plCount > 0 {
+			ptr := (*PendingPostingList)(unsafe.Pointer(&mmapMemFile[tokFreqsSize]))
+			ctx.PostingLists = unsafe.Slice(ptr, plCount)[:0]
+		}
 	}
 
 	ctx.DstFile, err = os.Create(name)
@@ -279,13 +327,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			if err != nil {
 				return fmt.Errorf("failed to write storage Field Document length ids: %w", err)
 			}
-		}
-
-		if cap(ctx.PostingLists)-len(ctx.PostingLists) < len(field.Tokens) {
-			fmt.Println("HERE 1")
-			newPls := make([]PendingPostingList, len(ctx.PostingLists), len(ctx.PostingLists)+len(field.Tokens))
-			copy(newPls, ctx.PostingLists)
-			ctx.PostingLists = newPls
 		}
 
 		// Write posting lists
@@ -381,13 +422,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 		}
 
-		if cap(ctx.PostingLists)-len(ctx.PostingLists) < len(field.Tokens) {
-			fmt.Println("HERE 2")
-			newPls := make([]PendingPostingList, len(ctx.PostingLists), len(ctx.PostingLists)+len(field.Tokens))
-			copy(newPls, ctx.PostingLists)
-			ctx.PostingLists = newPls
-		}
-
 		// Write posting lists
 		for tokenIdx := range field.Tokens {
 			token := &field.Tokens[tokenIdx]
@@ -447,13 +481,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		var totalDocumentLengths = fieldA.TotalDocumentsLength + fieldB.TotalDocumentsLength
 		var avgDocumentLength = float64(totalDocumentLengths) / float64(len(fieldA.DocumentLengths)+len(fieldB.DocumentLengths))
 		var tokensCount = CountTokensBetweenCollisionFields(fieldA, fieldB)
-
-		if uint64(cap(ctx.PostingLists)-len(ctx.PostingLists)) < tokensCount {
-			fmt.Println("Here 3")
-			newPls := make([]PendingPostingList, len(ctx.PostingLists), uint64(len(ctx.PostingLists))+tokensCount)
-			copy(newPls, ctx.PostingLists)
-			ctx.PostingLists = newPls
-		}
 
 		// Write the field header inmediatly
 		_, err = ctx.DstW.Write(pointers.UnsafeSlice(&fieldHash))
@@ -543,6 +570,13 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	}
 
 	// Phase 5, Assembly everything
+
+	if mmapMemFile != nil {
+		err = unix.Msync(mmapMemFile, unix.MS_SYNC)
+		if err != nil {
+			return fmt.Errorf("failed to sync changes to disk: %w", err)
+		}
+	}
 
 	if len(ctx.TokenFrequencies) > 0 {
 		freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&ctx.TokenFrequencies[0])), TokenFrequencyEntrySize*uintptr(len(ctx.TokenFrequencies)))

@@ -582,13 +582,17 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 	}
 
+	ctx.DstW.Flush()
+
 	if len(ctx.TokenFrequencies) > 0 {
 		freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&ctx.TokenFrequencies[0])), TokenFrequencyEntrySize*uintptr(len(ctx.TokenFrequencies)))
-		_, err = ctx.DstW.Write(freqsBytes)
+		_, err = ctx.DstFile.Write(freqsBytes)
 		if err != nil {
 			return fmt.Errorf("failed to write token frequencies: %w", err)
 		}
 	}
+
+	ctx.DstW.Reset(ctx.DstFile)
 
 	for _, pending := range ctx.PostingLists {
 		switch {

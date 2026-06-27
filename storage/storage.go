@@ -364,10 +364,15 @@ func (s *Storage) SaveTo(name string) (err error) {
 	out = binary.NativeEndian.AppendUint64(out, uint64(len(s.TokenFrequencies)))
 
 	// Document Ids table
-	for docIdIdx := range s.DocumentsIds {
-		docId := &s.DocumentsIds[docIdIdx]
-		out = binary.NativeEndian.AppendUint64(out, docId.Value.Size)
-		out = append(out, docId.Value.Data[:]...)
+	if len(s.DocumentsIds) > 0 {
+		docIdsAsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&s.DocumentsIds[0])), DocumentIdSize*uintptr(len(s.DocumentsIds)))
+		out = append(out, docIdsAsBytes...)
+	}
+
+	// Write token frequencies
+	if len(s.TokenFrequencies) > 0 {
+		tokFreqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&s.TokenFrequencies[0])), TokenFrequencyEntrySize*uintptr(len(s.TokenFrequencies)))
+		out = append(out, tokFreqsBytes...)
 	}
 
 	// Write fields
@@ -396,15 +401,6 @@ func (s *Storage) SaveTo(name string) (err error) {
 			out = binary.NativeEndian.AppendUint64(out, token.Value.Size)
 			out = append(out, token.Value.Data[:]...)
 		}
-	}
-
-	// Write token frequencies
-	for index := range s.TokenFrequencies {
-		freq := &s.TokenFrequencies[index]
-
-		out = binary.NativeEndian.AppendUint32(out, freq.DocumentIndex)
-		out = append(out, 0, 0, 0, 0) // Padding
-		out = binary.NativeEndian.AppendUint64(out, freq.Frequency)
 	}
 
 	// Write posting lists
@@ -520,6 +516,16 @@ func (s *Storage) Load(name string) (err error) {
 		inUseBuffer = inUseBuffer[docIdsSize:]
 	}
 
+	tokenFreqsSize := TokenFrequencyEntrySize * uintptr(header.TotalTokenFrequencies)
+	if uintptr(len(inUseBuffer)) < tokenFreqsSize {
+		return fmt.Errorf("not enough space for loading token frequencies from buffer")
+	}
+
+	if tokenFreqsSize > 0 {
+		s.TokenFrequencies = unsafe.Slice((*TokenFrequencyEntry)(unsafe.Pointer(&inUseBuffer[0])), header.TotalTokenFrequencies)
+		inUseBuffer = inUseBuffer[tokenFreqsSize:]
+	}
+
 	s.Fields = make(map[uint64]*Field, header.FieldCount)
 	var fieldsPool = pool.New[Field](20)
 	for range header.FieldCount {
@@ -560,16 +566,6 @@ func (s *Storage) Load(name string) (err error) {
 			field.Tokens = unsafe.Slice((*Token)(unsafe.Pointer(&inUseBuffer[0])), fHeader.TokenCount)
 			inUseBuffer = inUseBuffer[tokensSubBufferSize:]
 		}
-	}
-
-	tokenFreqsSize := TokenFrequencyEntrySize * uintptr(header.TotalTokenFrequencies)
-	if uintptr(len(inUseBuffer)) < tokenFreqsSize {
-		return fmt.Errorf("not enough space for loading token frequencies from buffer")
-	}
-
-	if tokenFreqsSize > 0 {
-		s.TokenFrequencies = unsafe.Slice((*TokenFrequencyEntry)(unsafe.Pointer(&inUseBuffer[0])), header.TotalTokenFrequencies)
-		inUseBuffer = inUseBuffer[tokenFreqsSize:]
 	}
 
 	s.PostingLists = make([]PostingList, header.TotalPostingLists)

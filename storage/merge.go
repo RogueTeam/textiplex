@@ -54,37 +54,189 @@ func CountTokensBetweenCollisionFields(fieldA, fieldB *Field) (count uint64) {
 	return count
 }
 
-func CountTotalPostingLists(a *Storage, b *Storage) (total uint64) {
-	var fieldCollisions []uint64
-	for fieldHash, field := range a.Fields {
-		_, found := b.Fields[fieldHash]
+func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
+	ctx.FieldsOrder.A = make([]uint64, 0, len(ctx.StorageA.Fields))
+
+	for fieldHash, field := range ctx.StorageA.Fields {
+		_, found := ctx.StorageB.Fields[fieldHash]
 		if found {
-			fieldCollisions = append(fieldCollisions, fieldHash)
 			// Do not process collision fields yet
+			ctx.FieldsOrder.Collision = append(ctx.FieldsOrder.Collision, fieldHash)
 			continue
 		}
+		ctx.FieldsOrder.A = append(ctx.FieldsOrder.A, fieldHash)
 
-		total += uint64(len(field.Tokens))
+		// Write posting lists
+		ctx.PostingListCount += uint64(len(field.Tokens))
+		for tokenIdx := range field.Tokens {
+			token := &field.Tokens[tokenIdx]
+
+			freqs := ctx.StorageA.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
+
+			freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqs[0])), TokenFrequencyEntrySize*uintptr(len(freqs)))
+			_, err = ctx.DstW.Write(freqsBytes)
+			if err != nil {
+				return fmt.Errorf("failed to write A's token frequencies: %w", err)
+			}
+		}
 	}
 
+	ctx.FieldsOrder.B = make([]uint64, 0, len(ctx.StorageB.Fields)-len(ctx.FieldsOrder.Collision))
 	// Phase 3, write B's only fields
-	for fieldHash, field := range b.Fields {
-		_, found := a.Fields[fieldHash]
+	for fieldHash, field := range ctx.StorageB.Fields {
+		_, found := ctx.StorageA.Fields[fieldHash]
 		if found {
 			continue
 		}
+		ctx.FieldsOrder.B = append(ctx.FieldsOrder.B, fieldHash)
 
-		total += uint64(len(field.Tokens))
+		// Write posting lists
+		ctx.PostingListCount += uint64(len(field.Tokens))
+		for tokenIdx := range field.Tokens {
+			token := &field.Tokens[tokenIdx]
+
+			// Write directly to frequencies temporary file
+			freqs := ctx.StorageB.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
+
+			for index := range freqs {
+				freq := &freqs[index]
+
+				binary.NativeEndian.PutUint32(ctx.Buffer[:], ctx.DocumentOffset+freq.DocumentIndex)
+				_, err = ctx.DstW.Write(ctx.Buffer[:])
+				if err != nil {
+					return fmt.Errorf("failed to write B's token frequency index: %w", err)
+				}
+
+				_, err = ctx.DstW.Write(pointers.UnsafeSlice(&freq.Frequency))
+				if err != nil {
+					return fmt.Errorf("failed to write B's token frequency: %w", err)
+				}
+			}
+		}
 	}
 
 	// Phase 4, add collision fields
-	for _, fieldHash := range fieldCollisions {
-		fieldA := a.Fields[fieldHash]
-		fieldB := b.Fields[fieldHash]
+	for _, fieldHash := range ctx.FieldsOrder.Collision {
+		fieldA := ctx.StorageA.Fields[fieldHash]
+		fieldB := ctx.StorageB.Fields[fieldHash]
 
-		total += CountTokensBetweenCollisionFields(fieldA, fieldB)
+		//
+
+		err = func() (err error) {
+			aLen, bLen := len(fieldA.Tokens), len(fieldB.Tokens)
+			for aIdx, bIdx := 0, 0; aIdx < aLen || bIdx < bLen; {
+				ctx.PostingListCount++
+				switch {
+				case aIdx >= aLen:
+					tokenB := &fieldB.Tokens[bIdx]
+
+					freqsB := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
+					for index := range freqsB {
+						freq := &freqsB[index]
+
+						binary.NativeEndian.PutUint32(ctx.Buffer[:], ctx.DocumentOffset+freq.DocumentIndex)
+						_, err = ctx.DstW.Write(ctx.Buffer[:])
+						if err != nil {
+							return fmt.Errorf("failed to write B's token frequency index: %w", err)
+						}
+
+						_, err = ctx.DstW.Write(pointers.UnsafeSlice(&freq.Frequency))
+						if err != nil {
+							return fmt.Errorf("failed to write B's token frequency: %w", err)
+						}
+					}
+
+					bIdx++
+				case bIdx >= bLen:
+					tokenA := &fieldA.Tokens[aIdx]
+
+					freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
+
+					freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqsA[0])), TokenFrequencyEntrySize*uintptr(len(freqsA)))
+					_, err = ctx.DstW.Write(freqsBytes)
+					if err != nil {
+						return fmt.Errorf("failed to write A's token frequencies: %w", err)
+					}
+
+					aIdx++
+				default:
+					switch bytes.Compare(fieldA.Tokens[aIdx].Value.Bytes(), fieldB.Tokens[bIdx].Value.Bytes()) {
+					case 0:
+						tokenA := &fieldA.Tokens[aIdx]
+						tokenB := &fieldB.Tokens[bIdx]
+
+						freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
+
+						freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqsA[0])), TokenFrequencyEntrySize*uintptr(len(freqsA)))
+						_, err = ctx.DstW.Write(freqsBytes)
+						if err != nil {
+							return fmt.Errorf("failed to write A's token frequencies: %w", err)
+						}
+
+						freqsB := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
+						for index := range freqsB {
+							freq := &freqsB[index]
+
+							binary.NativeEndian.PutUint32(ctx.Buffer[:], ctx.DocumentOffset+freq.DocumentIndex)
+							_, err = ctx.DstW.Write(ctx.Buffer[:])
+							if err != nil {
+								return fmt.Errorf("failed to write B's token frequency index: %w", err)
+							}
+
+							_, err = ctx.DstW.Write(pointers.UnsafeSlice(&freq.Frequency))
+							if err != nil {
+								return fmt.Errorf("failed to write B's token frequency: %w", err)
+							}
+						}
+
+						aIdx++
+						bIdx++
+					case -1:
+						tokenA := &fieldA.Tokens[aIdx]
+
+						freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
+
+						freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqsA[0])), TokenFrequencyEntrySize*uintptr(len(freqsA)))
+						_, err = ctx.DstW.Write(freqsBytes)
+						if err != nil {
+							return fmt.Errorf("failed to write A's token frequencies: %w", err)
+						}
+
+						aIdx++
+					default:
+						tokenB := &fieldB.Tokens[bIdx]
+
+						freqsB := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
+						for index := range freqsB {
+							freq := &freqsB[index]
+
+							binary.NativeEndian.PutUint32(ctx.Buffer[:], ctx.DocumentOffset+freq.DocumentIndex)
+							_, err = ctx.DstW.Write(ctx.Buffer[:])
+							if err != nil {
+								return fmt.Errorf("failed to write B's token frequency index: %w", err)
+							}
+
+							_, err = ctx.DstW.Write(pointers.UnsafeSlice(&freq.Frequency))
+							if err != nil {
+								return fmt.Errorf("failed to write B's token frequency: %w", err)
+							}
+						}
+
+						bIdx++
+					}
+				}
+				if err != nil {
+					return fmt.Errorf("failed to write collision token: %w: %d", err, fieldHash)
+				}
+			}
+			return nil
+		}()
+		if err != nil {
+			return fmt.Errorf("failed to handle collision field: %d: %w", fieldHash, err)
+		}
 	}
-	return total
+
+	return nil
 }
 
 type PendingPostingList struct {
@@ -94,6 +246,14 @@ type PendingPostingList struct {
 
 const PendingPostingListSize = unsafe.Sizeof(PendingPostingList{})
 
+type FieldsOrder struct {
+	A, B, Collision []uint64
+}
+
+func (o *FieldsOrder) Count() (count uint64) {
+	return uint64(len(o.A)) + uint64(len(o.B)) + uint64(len(o.Collision))
+}
+
 type MergeContext struct {
 	StorageA                             *Storage
 	StorageB                             *Storage
@@ -101,12 +261,14 @@ type MergeContext struct {
 	DstW                                 *bufio.Writer
 	PostingListCursor, FrequenciesCursor uint64
 	// Cached token frequencies
-	TokenFrequencies                              []TokenFrequencyEntry
+	PostingListCount                              uint64
 	PostingLists                                  []PendingPostingList
 	Buffer                                        [8]byte
 	CachedBitmapChunk                             [OffsetBitmapCachedSize]uint32
 	DocumentOffset                                uint32
 	ReusableBitmap, BitmapForPostingListRetrieval roaring.Bitmap
+	// Iteration order
+	FieldsOrder FieldsOrder
 }
 
 func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA, tokenB *Token) (err error) {
@@ -124,20 +286,6 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 			IndexA: int64(tokenA.PostingListIndex),
 			IndexB: int64(tokenB.PostingListIndex),
 		})
-
-		// Write the frequencies
-		freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
-		ctx.TokenFrequencies = append(ctx.TokenFrequencies, freqsA...)
-		freqsB := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
-
-		for index := range freqsB {
-			freq := &freqsB[index]
-
-			ctx.TokenFrequencies = append(ctx.TokenFrequencies, TokenFrequencyEntry{
-				DocumentIndex: ctx.DocumentOffset + freq.DocumentIndex,
-				Frequency:     freq.Frequency,
-			})
-		}
 	case tokenA != nil:
 		finalToken = *tokenA
 		finalToken.PostingListIndex = ctx.PostingListCursor
@@ -150,10 +298,6 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 			IndexA: int64(tokenA.PostingListIndex),
 			IndexB: -1,
 		})
-
-		// Write the frequencies
-		freqs := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
-		ctx.TokenFrequencies = append(ctx.TokenFrequencies, freqs...)
 	case tokenB != nil:
 		finalToken = *tokenB
 		finalToken.PostingListIndex = ctx.PostingListCursor
@@ -166,18 +310,6 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 			IndexA: -1,
 			IndexB: int64(tokenB.PostingListIndex),
 		})
-
-		// Write the frequencies
-		freqsB := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
-
-		for index := range freqsB {
-			freq := &freqsB[index]
-
-			ctx.TokenFrequencies = append(ctx.TokenFrequencies, TokenFrequencyEntry{
-				DocumentIndex: ctx.DocumentOffset + freq.DocumentIndex,
-				Frequency:     freq.Frequency,
-			})
-		}
 	}
 
 	_, err = ctx.DstW.Write(pointers.UnsafeSlice(&finalToken))
@@ -191,61 +323,10 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 // Document ids should not collide in both storage
 // otherwise undefined behavior will ocurr
 func (m *Merger) Merge(name string, a, b *Storage) (err error) {
-	tokFreqsCount := int64(len(a.TokenFrequencies)) + int64(len(b.TokenFrequencies))
-	tokFreqsSize := TokenFrequencyEntrySize * uintptr(tokFreqsCount)
-	plCount := CountTotalPostingLists(a, b)
-	plSize := PendingPostingListSize * uintptr(plCount)
-	memFileTruncate := int64(tokFreqsSize) + int64(plSize)
-
 	var ctx = MergeContext{
 		DocumentOffset: uint32(len(a.DocumentsIds)),
 		StorageA:       a,
 		StorageB:       b,
-	}
-
-	var memFile *os.File
-	var mmapMemFile []byte
-	if memFileTruncate > 0 {
-		memFile, err = m.CreateTemp("*.tmp")
-		if err != nil {
-			return fmt.Errorf("failed to create temporary file: %w", err)
-		}
-		defer CloseAndRemove(memFile)
-
-		err = memFile.Truncate(memFileTruncate)
-		if err != nil {
-			return fmt.Errorf("failed to truncate temporary memfile: %w", err)
-		}
-
-		mmapMemFile, err = unix.Mmap(
-			int(memFile.Fd()),
-			0,
-			int(memFileTruncate),
-			unix.PROT_READ|unix.PROT_WRITE,
-			unix.MAP_SHARED,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to mmap file: %w", err)
-		}
-		defer unix.Munmap(mmapMemFile)
-
-		err = unix.Madvise(mmapMemFile, unix.MADV_SEQUENTIAL)
-		if err != nil {
-			return fmt.Errorf("failed to madvise sequential: %w", err)
-		}
-		err = unix.Madvise(mmapMemFile, unix.MADV_HUGEPAGE)
-		if err != nil {
-			return fmt.Errorf("failed to madvise huge page: %w", err)
-		}
-
-		if tokFreqsCount > 0 {
-			ptr := (*TokenFrequencyEntry)(unsafe.Pointer(&mmapMemFile[0]))
-			ctx.TokenFrequencies = unsafe.Slice(ptr, tokFreqsCount)[:0]
-		}
-		if plCount > 0 {
-			ptr := (*PendingPostingList)(unsafe.Pointer(&mmapMemFile[tokFreqsSize]))
-			ctx.PostingLists = unsafe.Slice(ptr, plCount)[:0]
-		}
 	}
 
 	ctx.DstFile, err = os.Create(name)
@@ -287,16 +368,58 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 	ctx.DstW = bufio.NewWriterSize(ctx.DstFile, DefaultBufferedWriterSize)
 
-	var fieldCollisions = make([]uint64, 0, len(a.Fields))
+	err = m.preparationPass(&ctx)
+	if err != nil {
+		return fmt.Errorf("failed to write token frequencies: %w", err)
+	}
+
+	plSize := PendingPostingListSize * uintptr(ctx.PostingListCount)
+	memFileTruncate := int64(plSize)
+
+	var memFile *os.File
+	var mmapMemFile []byte
+	if memFileTruncate > 0 {
+		memFile, err = m.CreateTemp("*.tmp")
+		if err != nil {
+			return fmt.Errorf("failed to create temporary file: %w", err)
+		}
+		defer CloseAndRemove(memFile)
+
+		err = memFile.Truncate(memFileTruncate)
+		if err != nil {
+			return fmt.Errorf("failed to truncate temporary memfile: %w", err)
+		}
+
+		mmapMemFile, err = unix.Mmap(
+			int(memFile.Fd()),
+			0,
+			int(memFileTruncate),
+			unix.PROT_READ|unix.PROT_WRITE,
+			unix.MAP_SHARED,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to mmap file: %w", err)
+		}
+		defer unix.Munmap(mmapMemFile)
+
+		err = unix.Madvise(mmapMemFile, unix.MADV_SEQUENTIAL)
+		if err != nil {
+			return fmt.Errorf("failed to madvise sequential: %w", err)
+		}
+		err = unix.Madvise(mmapMemFile, unix.MADV_HUGEPAGE)
+		if err != nil {
+			return fmt.Errorf("failed to madvise huge page: %w", err)
+		}
+
+		if ctx.PostingListCount > 0 {
+			ptr := (*PendingPostingList)(unsafe.Pointer(&mmapMemFile[0]))
+			ctx.PostingLists = unsafe.Slice(ptr, ctx.PostingListCount)[:0]
+		}
+	}
 
 	// Phase 2, write A's only fields
-	for fieldHash, field := range a.Fields {
-		_, found := b.Fields[fieldHash]
-		if found {
-			// Do not process collision fields yet
-			fieldCollisions = append(fieldCollisions, fieldHash)
-			continue
-		}
+	for _, fieldHash := range ctx.FieldsOrder.A {
+		field := ctx.StorageA.Fields[fieldHash]
 
 		// Write field header to temporary fields file
 		_, err = ctx.DstW.Write(pointers.UnsafeSlice(&fieldHash))
@@ -369,19 +492,12 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				IndexA: int64(token.PostingListIndex),
 				IndexB: -1,
 			})
-
-			// Write directly to frequencies temporary file
-			freqs := a.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
-			ctx.TokenFrequencies = append(ctx.TokenFrequencies, freqs...)
 		}
 	}
 
 	// Phase 3, write B's only fields
-	for fieldHash, field := range b.Fields {
-		_, found := a.Fields[fieldHash]
-		if found {
-			continue
-		}
+	for _, fieldHash := range ctx.FieldsOrder.B {
+		field := ctx.StorageB.Fields[fieldHash]
 
 		// Write field header to temporary fields file
 		_, err = ctx.DstW.Write(pointers.UnsafeSlice(&fieldHash))
@@ -457,18 +573,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				return fmt.Errorf("failed to write B's field token frequencies index: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
 			}
 
-			// Write directly to frequencies temporary file
-			freqs := b.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
-
-			for index := range freqs {
-				freq := &freqs[index]
-
-				ctx.TokenFrequencies = append(ctx.TokenFrequencies, TokenFrequencyEntry{
-					DocumentIndex: ctx.DocumentOffset + freq.DocumentIndex,
-					Frequency:     freq.Frequency,
-				})
-			}
-
 			// Write the actual token
 			_, err = ctx.DstW.Write(pointers.UnsafeSlice(&token.Value))
 			if err != nil {
@@ -478,7 +582,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	}
 
 	// Phase 4, add collision fields
-	for _, fieldHash := range fieldCollisions {
+	for _, fieldHash := range ctx.FieldsOrder.Collision {
 		fieldA := a.Fields[fieldHash]
 		fieldB := b.Fields[fieldHash]
 
@@ -584,14 +688,6 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 	ctx.DstW.Flush()
 
-	if len(ctx.TokenFrequencies) > 0 {
-		freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&ctx.TokenFrequencies[0])), TokenFrequencyEntrySize*uintptr(len(ctx.TokenFrequencies)))
-		_, err = ctx.DstFile.Write(freqsBytes)
-		if err != nil {
-			return fmt.Errorf("failed to write token frequencies: %w", err)
-		}
-	}
-
 	ctx.DstW.Reset(ctx.DstFile)
 
 	for _, pending := range ctx.PostingLists {
@@ -660,7 +756,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		Magic:                 MagicNumber,
 		Version:               VersionV1,
 		TotalDocuments:        uint32(len(a.DocumentsIds)) + uint32(len(b.DocumentsIds)),
-		FieldCount:            (uint64(len(a.Fields)) + uint64(len(b.Fields))) - uint64(len(fieldCollisions)),
+		FieldCount:            ctx.FieldsOrder.Count(),
 		TotalPostingLists:     ctx.PostingListCursor,
 		TotalTokenFrequencies: ctx.FrequenciesCursor,
 	}

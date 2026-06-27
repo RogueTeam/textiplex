@@ -3,14 +3,18 @@ package storage
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
+	"runtime"
+	"time"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/RogueTeam/textiplex/pointers"
+	"github.com/shirou/gopsutil/v4/mem"
 	"golang.org/x/sys/unix"
 )
 
@@ -374,18 +378,29 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	}
 
 	plSize := PendingPostingListSize * uintptr(ctx.PostingListCount)
-	memFileTruncate := int64(plSize)
+	necessarySize := int64(plSize)
+
+	var maxInMemoryPostingList int64
+	memCtx, cancel := context.WithTimeout(context.TODO(), time.Second)
+	defer cancel()
+	v, _ := mem.VirtualMemoryWithContext(memCtx)
+	if v != nil {
+		maxInMemoryPostingList = int64(v.Available / uint64(runtime.NumCPU()))
+	}
 
 	var memFile *os.File
 	var mmapMemFile []byte
-	if memFileTruncate > 0 {
+	if necessarySize < maxInMemoryPostingList {
+		ctx.PostingLists = make([]PendingPostingList, 0, ctx.PostingListCount)
+		defer func() { ctx.PostingLists = nil }() // Drop the reference as soon as posible
+	} else {
 		memFile, err = m.CreateTemp("*.tmp")
 		if err != nil {
 			return fmt.Errorf("failed to create temporary file: %w", err)
 		}
 		defer CloseAndRemove(memFile)
 
-		err = memFile.Truncate(memFileTruncate)
+		err = memFile.Truncate(necessarySize)
 		if err != nil {
 			return fmt.Errorf("failed to truncate temporary memfile: %w", err)
 		}
@@ -393,7 +408,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		mmapMemFile, err = unix.Mmap(
 			int(memFile.Fd()),
 			0,
-			int(memFileTruncate),
+			int(necessarySize),
 			unix.PROT_READ|unix.PROT_WRITE,
 			unix.MAP_SHARED,
 		)

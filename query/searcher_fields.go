@@ -11,23 +11,32 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 	cardinality := ctx.Bitmap.GetCardinality()
 	ctx.Scores = make(map[uint32]float64, cardinality)
 
+	var docIdxs [32]uint32
+
 	var bitmapForPostingListRetrieval roaring.Bitmap
 	for tokenIdx := range field.Tokens {
 		token := &field.Tokens[tokenIdx]
 
 		s.Storage.PostingLists[token.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
-		for plIt := bitmapForPostingListRetrieval.Iterator(); plIt.HasNext(); {
-			docIdx := plIt.Next()
 
-			if !ctx.Bitmap.Contains(docIdx) {
-				continue
+		it := bitmapForPostingListRetrieval.ManyIterator()
+		for {
+			n := it.NextMany(docIdxs[:])
+			for _, docIdx := range docIdxs[:n] {
+				if !ctx.Bitmap.Contains(docIdx) {
+					continue
+				}
+
+				_, found := ctx.Scores[docIdx]
+				if found {
+					continue
+				}
+				ctx.Scores[docIdx] = float64(cardinality - uint64(len(ctx.Scores)))
 			}
 
-			_, found := ctx.Scores[docIdx]
-			if found {
-				continue
+			if n < 32 {
+				break
 			}
-			ctx.Scores[docIdx] = float64(cardinality - uint64(len(ctx.Scores)))
 		}
 	}
 }

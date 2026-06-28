@@ -33,19 +33,25 @@ func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint32) {
 
 	scores := make([]scoreEntry, 0, ctx.Bitmap.GetCardinality())
 
-	it := ctx.Bitmap.Iterator()
-	for it.HasNext() {
-		doxIdx := it.Next()
+	var docIdxs [32]uint32
+	it := ctx.Bitmap.ManyIterator()
+	for {
+		n := it.NextMany(docIdxs[:])
+		for _, docIdx := range docIdxs[:n] {
+			score := ctx.Scores[docIdx]
+			if score == 0 {
+				continue
+			}
 
-		score := ctx.Scores[doxIdx]
-		if score == 0 {
-			continue
+			scores = append(scores, scoreEntry{
+				score:  score,
+				docIdx: docIdx,
+			})
 		}
 
-		scores = append(scores, scoreEntry{
-			score:  score,
-			docIdx: doxIdx,
-		})
+		if n < 32 {
+			break
+		}
 	}
 
 	slices.SortFunc(

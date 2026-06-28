@@ -31,7 +31,11 @@ func PickTokenizer(defTokenizer tokenizer.Tokenizer, fieldsTokenizer map[uint64]
 	return defTokenizer
 }
 
-func (q *Query) Compile(defTokenizer tokenizer.Tokenizer, fieldsTokenizer map[uint64]tokenizer.Tokenizer) (sq *query.SimpleQuery) {
+const AllFieldNone = 0
+
+// The all field permits dorks to focus search on a specific field when keywords are
+// received without field
+func (q *Query) Compile(allField uint64, defTokenizer tokenizer.Tokenizer, fieldsTokenizer map[uint64]tokenizer.Tokenizer) (sq *query.SimpleQuery) {
 	sq = new(query.SimpleQuery)
 
 	for _, dork := range q.Dorks {
@@ -64,8 +68,14 @@ func (q *Query) Compile(defTokenizer tokenizer.Tokenizer, fieldsTokenizer map[ui
 		// 1. Bare keyword (no field, no value): free text, analyzed with the
 		//    default tokenizer and expanded into one entry per produced term.
 		if dork.Match == nil {
-			for token := range TokenizeOrPushValue(defTokenizer, []byte(dork.Keyword)) {
-				targetClause.Keyword(token.Value, boost, fuzzy)
+			if allField != 0 {
+				for token := range TokenizeOrPushValue(defTokenizer, []byte(dork.Keyword)) {
+					targetClause.FieldKeyword(allField, token.Value, boost, fuzzy)
+				}
+			} else {
+				for token := range TokenizeOrPushValue(defTokenizer, []byte(dork.Keyword)) {
+					targetClause.Keyword(token.Value, boost, fuzzy)
+				}
 			}
 			continue
 		}

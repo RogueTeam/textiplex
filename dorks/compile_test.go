@@ -44,7 +44,7 @@ func TestCompileReturnsBuiltQuery(t *testing.T) {
 		return
 	}
 
-	sq := parsed.Compile(en.Tokenizer, nil)
+	sq := parsed.Compile(dorks.AllFieldNone, en.Tokenizer, nil)
 	if !assertions.NotNil(sq, "Compile must return the SimpleQuery it built, not nil") {
 		return
 	}

@@ -29,6 +29,7 @@ func CompileQueryWith(t *testing.T, q string, def tokenizer.Tokenizer, fields ma
 	}
 
 	sq := parsed.Compile(
+		dorks.AllFieldNone,
 		func(in []byte) (seq iter.Seq[*tokenizer.Token]) {
 			return func(yield func(*tokenizer.Token) bool) {
 				for entry := range def(in) {

@@ -19,6 +19,7 @@ var DefaultMaxWorkers = runtime.NumCPU()
 // Writer abstract the entire logic needed to write
 // a multi-segment index to then merge into a single unit segment
 type Writer struct {
+	// Maximum number of concurrent workers for merge
 	MaxWorkers         int
 	TemporaryDirectory string
 	Directory          string

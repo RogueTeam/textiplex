@@ -18,6 +18,7 @@ import (
 // If you need custom options for searcher or tune the storage your own way.
 // Copy the code and hack your way in :)
 type Reader struct {
+	AllField uint64
 	// Is caller responsability to populate this field
 	// Default tokenizer used by the search engine when no field matches
 	DefaultTokenizer tokenizer.Tokenizer
@@ -46,7 +47,7 @@ func (r *Reader) QueryString(skip uint, field SortField, qstr string) (docIds it
 		return nil, fmt.Errorf("failed to compile query string: %w", err)
 	}
 
-	docIds, err = r.Query(skip, field, dork.Compile(r.DefaultTokenizer, r.FieldTokenizers))
+	docIds, err = r.Query(skip, field, dork.Compile(r.AllField, r.DefaultTokenizer, r.FieldTokenizers))
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare query iterator: %w", err)
 	}

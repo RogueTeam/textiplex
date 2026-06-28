@@ -7,6 +7,7 @@ import (
 
 	"github.com/RogueTeam/textiplex/numeric"
 	"github.com/RogueTeam/textiplex/tokenizer"
+	"github.com/RogueTeam/textiplex/tokenizer/date"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -82,7 +83,7 @@ func SortableFloat64(v float64) []byte {
 func SortableDate(t *testing.T, s string) []byte {
 	t.Helper()
 	assertions := assert.New(t)
-	tm, err := time.Parse(time.DateOnly, s)
+	tm, err := time.Parse(date.DefaultDateLayout, s)
 	assertions.NoError(err, "parse date %q", s)
 	return SortableInt64(tm.UnixNano())
 }

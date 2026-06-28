@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.4.0](https://github.com/RogueTeam/textiplex/compare/v1.3.0...v1.4.0) (2026-06-28)
+
+
+### Features
+
+* include precomputed total document length ([ad579d3](https://github.com/RogueTeam/textiplex/commit/ad579d35bdf0073ea92cd4ddf540e69ac11565cd))
+* initial support for parallel processing of collision tokens ([9b075bf](https://github.com/RogueTeam/textiplex/commit/9b075bf4aba04f42cbcd2be7e2e145d07193439e))
+* make pass of token frequencies in a single sweep ([8e960f6](https://github.com/RogueTeam/textiplex/commit/8e960f60599f8b5e20ebb313bdde7f60ea205fad))
+* support for loading the pending posting list' list in memory when there is available ([c6a56a0](https://github.com/RogueTeam/textiplex/commit/c6a56a0eaced619b2729d42b6ad7378cc9a0a49d))
+* support for skipping n idxs ([88a7337](https://github.com/RogueTeam/textiplex/commit/88a7337319c654a559ed0e24dbb4ef2ca9835d94))
+* support for token frequencies and posting list to be written in a single pass ([da2b30f](https://github.com/RogueTeam/textiplex/commit/da2b30ffe9ac9558f4348c17da1c775f03c0fd34))
+* write token frequencies at the beginning of the function call ([80660c0](https://github.com/RogueTeam/textiplex/commit/80660c093a634b98870adc1cc6690bf5f7d2d115))
+
+
+### Bug Fixes
+
+* correct iteration code for collision fields ([97298f4](https://github.com/RogueTeam/textiplex/commit/97298f448b7d73ec1112da31cf22f351dd0fcc14))
+* dorks properly permit numeric, float and date tokenizers ([4126022](https://github.com/RogueTeam/textiplex/commit/412602210f9db758a3eb744586c200f20c6e62a8))
+* fix defer overflow on for loops ([d06ea56](https://github.com/RogueTeam/textiplex/commit/d06ea56b549153285f9a1cea71bad7df74604bbc))
+* fixed typo on error handling for collision field ([fbc1607](https://github.com/RogueTeam/textiplex/commit/fbc160775e6122c6f85fd5aeaa9c49728d9c3915))
+* force allocations to only support necessary size ([d9b525d](https://github.com/RogueTeam/textiplex/commit/d9b525da9977f462cfdc23a1e303a690c3a37e00))
+* initial support for parallel processing ([9216f28](https://github.com/RogueTeam/textiplex/commit/9216f28500da2827bb6247a53d6b3dcdab773a6a))
+* pool pending posting lists and work over pointers instead ([63355ba](https://github.com/RogueTeam/textiplex/commit/63355ba96cc3c0b462062e51e3bbf81cf1739fed))
+* prepared cursor prior goroutine ([55cd581](https://github.com/RogueTeam/textiplex/commit/55cd5815da7bf36cf534fa7b83fe2e3f4a269324))
+* restored to sequential since I/O gets destroyed by copying the same bytes over and over ([a1a2189](https://github.com/RogueTeam/textiplex/commit/a1a218912166dde2c1847e653fff4543ce56a412))
+* split madavise call ([a9dc424](https://github.com/RogueTeam/textiplex/commit/a9dc424c3d61b7b65180e68c8e97eb8633a4ff46))
+* support for fixed size precomputed for pre-iteration ([e9d2ab7](https://github.com/RogueTeam/textiplex/commit/e9d2ab78b6a1aa439bae797d2472ba64942c16e4))
+* support for prealloc part of posting list by guessing collissions from A's side ([8e70d45](https://github.com/RogueTeam/textiplex/commit/8e70d45cad23f0d68449930cede4ddd60d496543))
+* use local-file as swap ([835a3d7](https://github.com/RogueTeam/textiplex/commit/835a3d7ec976038e2283126dc6bd7a8b943f933a))
+* working parallel processing of merge ([fdfe8cf](https://github.com/RogueTeam/textiplex/commit/fdfe8cfe5422df29d89c257c06cbbad6378c1936))
+* working single pass construction of almost the entire dst file ([f812ab8](https://github.com/RogueTeam/textiplex/commit/f812ab8bed7c679ab70a7e137213a38abacd096d))
+* write directly from pending files to dst ([89c6f68](https://github.com/RogueTeam/textiplex/commit/89c6f687698834400e9ad5b19c3962b0daf02b9b))
+* write directly to the dst file ([b56393e](https://github.com/RogueTeam/textiplex/commit/b56393e6adc7782c77140e8b615004a1dd437638))
+* write huge chunk directly using a syscall ([766bbab](https://github.com/RogueTeam/textiplex/commit/766bbabd4dd5af1cedd558e5ff7082b7dc9211c8))
+* write the header with writeat instead of seek ([c1b8ea8](https://github.com/RogueTeam/textiplex/commit/c1b8ea8825a689cc59c47c0dcf4a9141621267ea))
+
 ## [1.3.0](https://github.com/RogueTeam/textiplex/compare/v1.2.1...v1.3.0) (2026-06-23)
 
 

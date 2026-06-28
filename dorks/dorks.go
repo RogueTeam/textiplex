@@ -2,66 +2,26 @@ package dorks
 
 import (
 	"io"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
 )
 
-type Time struct {
-	Value time.Time
-}
+type UnquotedString string
 
-func (t *Time) Capture(values []string) (err error) {
-	if values[0][0] == '"' {
-		t.Value, err = time.Parse(time.DateOnly, values[0][1:len(values[0])-1])
-	} else {
-		t.Value, err = time.Parse(time.DateOnly, values[0])
-	}
-	return err
-}
-
-type Float struct {
-	Value float64
-}
-
-func (f *Float) Capture(values []string) (err error) {
-	if values[0][0] == '"' {
-		f.Value, err = strconv.ParseFloat(values[0][1:len(values[0])-1], 64)
-	} else {
-		f.Value, err = strconv.ParseFloat(values[0], 64)
-	}
-	return err
-}
-
-type Integer struct {
-	Value int64
-}
-
-func (i *Integer) Capture(values []string) (err error) {
-	if values[0][0] == '"' {
-		i.Value, err = strconv.ParseInt(values[0][1:len(values[0])-1], 10, 64)
-	} else {
-		i.Value, err = strconv.ParseInt(values[0], 10, 64)
-	}
-	return err
-}
-
-type Keyword string
-
-func (k *Keyword) Capture(values []string) (err error) {
+func (v *UnquotedString) Capture(values []string) (err error) {
 	value := values[0]
 	if len(value) == 0 {
 		return nil
 	}
-	if value[0] == '"' {
-		*k = Keyword(strings.Clone(values[0][1 : len(values[0])-1]))
+
+	if values[0][0] == '"' {
+		*v = UnquotedString(strings.Clone(values[0][1 : len(values[0])-1]))
 	} else {
-		*k = Keyword(strings.Clone(values[0]))
+		*v = UnquotedString(strings.Clone(values[0]))
 	}
-	return nil
+	return err
 }
 
 type Operator uint8
@@ -117,19 +77,16 @@ func (o *MatchOperator) Capture(values []string) (err error) {
 }
 
 type Match struct {
-	Operator MatchOperator `parser:"':' @MatchOperator?" json:"operator,omitzero"`
-	Date     *Time         `parser:"(@Time" json:"date,omitzero"`
-	Float    *Float        `parser:"| @Float" json:"float,omitzero"`
-	Integer  *Integer      `parser:"| @Int" json:"integer,omitzero"`
-	Keyword  *string       `parser:"| @(Keyword | Phrase))" json:"keyword,omitzero"`
+	Operator MatchOperator  `parser:"':' @MatchOperator?" json:"operator,omitzero"`
+	Value    UnquotedString `parser:"@(Time | Float | Int | Keyword | Phrase)" json:"date,omitzero"`
 }
 
 type Dork struct {
-	Operator Operator `parser:"@( '+' | '-')?" json:"operator,omitzero"`
-	Keyword  Keyword  `parser:"@(Time | Float | Int | Phrase | Keyword)" json:"keyword,omitzero"`
-	Match    *Match   `parser:"@@?" json:"match,omitzero"`
-	Boost    *float64 `parser:"(';' @(Float | Int))?" json:"boost,omitzero"`
-	Fuzzy    *int     `parser:"('~' @Int)?" json:"fuzzy,omitzero"`
+	Operator Operator       `parser:"@( '+' | '-')?" json:"operator,omitzero"`
+	Keyword  UnquotedString `parser:"@(Time | Float | Int | Phrase | Keyword | Phrase)" json:"keyword,omitzero"`
+	Match    *Match         `parser:"@@?" json:"match,omitzero"`
+	Boost    *float64       `parser:"(';' @(Float | Int))?" json:"boost,omitzero"`
+	Fuzzy    *int           `parser:"('~' @Int)?" json:"fuzzy,omitzero"`
 }
 
 type Query struct {

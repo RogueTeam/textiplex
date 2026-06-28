@@ -8,15 +8,15 @@ const OffsetBitmapCachedSize = 16
 
 // Adds all the elements from src + offset
 // vector is the already prepared vector of [8]uint64{offset}
-func addOffsetFrom(dst *roaring.Bitmap, src *roaring.Bitmap, cached *[OffsetBitmapCachedSize]uint32, offset uint32) {
+func addOffsetFrom(ctx *MergeContext, dst *roaring.Bitmap, src *roaring.Bitmap) {
 	for it := src.ManyIterator(); ; {
-		n := it.NextMany(cached[:])
+		n := it.NextMany(ctx.CachedBitmapChunk[:])
 
-		for i := range cached[:n] {
-			cached[i] += offset
+		for i := range ctx.CachedBitmapChunk[:n] {
+			ctx.CachedBitmapChunk[i] += ctx.DocumentOffset
 		}
 
-		dst.AddMany(cached[:n])
+		dst.AddMany(ctx.CachedBitmapChunk[:n])
 		if n < 8 {
 			break
 		}

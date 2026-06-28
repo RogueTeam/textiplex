@@ -90,10 +90,14 @@ func (s *Tokens) IterBytes(lo, hi []byte) (seq iter.Seq[*Token]) {
 type Field struct {
 	// Used for BM25 calculation
 	AvgDocumentLength float64
+	// Computed on load time
+	TotalDocumentsLength uint64
 	// Tokens present on the file
 	// This field is stored in memory but most of its references
 	// are direct mmap zero-copied arrays
 	Tokens Tokens
+	// Sum of all token frequencies count
+	TotalTokenFrequenciesCount uint64
 	// DocumentLength entries
 	// Keys are indexes of the documents
 	DocumentLengths []DocumentLengthEntry
@@ -170,10 +174,11 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 		Freqs  []TokenFrequencyEntry
 	}
 	type FieldAccumulator struct {
-		TotalLength      uint64
-		DocumentsCount   uint64
-		DocumentsLengths []DocumentLengthEntry
-		Tokens           *btree.BTreeG[*PostingData]
+		TotalLength                uint64
+		DocumentsCount             uint64
+		DocumentsLengths           []DocumentLengthEntry
+		Tokens                     *btree.BTreeG[*PostingData]
+		TotalTokenFrequenciesCount uint64
 	}
 
 	var postingListsCounter, tokensFreqsCounter uint64
@@ -241,6 +246,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 					Frequency:     tokenDef.Frequency,
 				})
 				tokensFreqsCounter++
+				fieldAccumulator.TotalTokenFrequenciesCount++
 				s.Size += uint64(TokenFrequencyEntrySize)
 			}
 		}
@@ -254,8 +260,10 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 		field := fieldsPool.Get()
 
 		*field = Field{
-			Tokens:          make([]Token, acc.Tokens.Len()),
-			DocumentLengths: acc.DocumentsLengths,
+			Tokens:                     make([]Token, acc.Tokens.Len()),
+			DocumentLengths:            acc.DocumentsLengths,
+			TotalTokenFrequenciesCount: acc.TotalTokenFrequenciesCount,
+			TotalDocumentsLength:       acc.TotalLength,
 		}
 		if acc.DocumentsCount > 0 {
 			field.AvgDocumentLength = float64(acc.TotalLength) / float64(acc.DocumentsCount)
@@ -356,56 +364,24 @@ func (s *Storage) SaveTo(name string) (err error) {
 	out = binary.NativeEndian.AppendUint64(out, uint64(len(s.TokenFrequencies)))
 
 	// Document Ids table
-	for docIdIdx := range s.DocumentsIds {
-		docId := &s.DocumentsIds[docIdIdx]
-		out = binary.NativeEndian.AppendUint64(out, docId.Value.Size)
-		out = append(out, docId.Value.Data[:]...)
+	if len(s.DocumentsIds) > 0 {
+		docIdsAsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&s.DocumentsIds[0])), DocumentIdSize*uintptr(len(s.DocumentsIds)))
+		out = append(out, docIdsAsBytes...)
 	}
 
-	// Field pre-insertion
-	// Clusters of posting lists related to the same Fields
-	// They are keep near each other to reduce page-cache misses
-	var postingListCluster = make([]PostingList, 0, len(s.PostingLists))
-	// Token frequencies cluster lists related to the same Fields
-	// They are keep near each other to reduce page-cache misses
-	var tokenFrequenciesCluster = make([]TokenFrequencyEntry, 0, len(s.TokenFrequencies))
-	// Field slices used for deterministic iteration since maps iterations could differ between runs
-	var fields = make([]uint64, 0, len(s.Fields))
-	for fieldHash := range s.Fields {
-		fields = append(fields, fieldHash)
+	// Write token frequencies
+	if len(s.TokenFrequencies) > 0 {
+		tokFreqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&s.TokenFrequencies[0])), TokenFrequencyEntrySize*uintptr(len(s.TokenFrequencies)))
+		out = append(out, tokFreqsBytes...)
 	}
-
-	slices.Sort(fields)
-	for _, fieldHash := range fields {
-		field := s.Fields[fieldHash]
-
-		for tokenIdx := range field.Tokens {
-			token := &field.Tokens[tokenIdx]
-
-			newPlIndex := uint64(len(postingListCluster)) // Always update the index
-			postingListCluster = append(postingListCluster, s.PostingLists[token.PostingListIndex])
-			token.PostingListIndex = newPlIndex
-
-			newFreqIndex := uint64(len(tokenFrequenciesCluster))
-			tokenFrequenciesCluster = append(
-				tokenFrequenciesCluster,
-				s.TokenFrequencies[token.FrequenciesIndex:token.FrequenciesIndex+token.FrequencyCount]...,
-			)
-			token.FrequenciesIndex = newFreqIndex // Always update the index
-		}
-	}
-
-	// Re-assign so the update of token indexes point to the new clusters
-	s.PostingLists = postingListCluster
-	s.TokenFrequencies = tokenFrequenciesCluster
 
 	// Write fields
-	for _, fieldHash := range fields {
-		field := s.Fields[fieldHash]
-
+	for fieldHash, field := range s.Fields {
 		out = binary.NativeEndian.AppendUint64(out, fieldHash)
 		out = binary.NativeEndian.AppendUint64(out, *(*uint64)(unsafe.Pointer(&field.AvgDocumentLength)))
+		out = binary.NativeEndian.AppendUint64(out, *(*uint64)(unsafe.Pointer(&field.TotalDocumentsLength)))
 		out = binary.NativeEndian.AppendUint64(out, uint64(len(field.Tokens)))
+		out = binary.NativeEndian.AppendUint64(out, field.TotalTokenFrequenciesCount)
 		out = binary.NativeEndian.AppendUint64(out, uint64(len(field.DocumentLengths)))
 
 		for index := range field.DocumentLengths {
@@ -426,20 +402,13 @@ func (s *Storage) SaveTo(name string) (err error) {
 			out = append(out, token.Value.Data[:]...)
 		}
 	}
+
 	// Write posting lists
-	for index := range postingListCluster {
-		pl := &postingListCluster[index]
+	for index := range s.PostingLists {
+		pl := &s.PostingLists[index]
 
 		out = binary.NativeEndian.AppendUint64(out, uint64(len(pl.Data)))
 		out = append(out, pl.Data...)
-	}
-	// Write token frequencies
-	for index := range tokenFrequenciesCluster {
-		freq := &tokenFrequenciesCluster[index]
-
-		out = binary.NativeEndian.AppendUint32(out, freq.DocumentIndex)
-		out = append(out, 0, 0, 0, 0) // Padding
-		out = binary.NativeEndian.AppendUint64(out, freq.Frequency)
 	}
 
 	err = unix.Msync(dst, unix.MS_SYNC)
@@ -512,9 +481,13 @@ func (s *Storage) Load(name string) (err error) {
 		}
 	}()
 
-	err = unix.Madvise(s.Buffer, unix.MADV_SEQUENTIAL|unix.MADV_HUGEPAGE)
+	err = unix.Madvise(s.Buffer, unix.MADV_SEQUENTIAL)
 	if err != nil {
-		return fmt.Errorf("failed to madvise mmapped buffer: %w", err)
+		return fmt.Errorf("failed to madvise sequential: %w", err)
+	}
+	err = unix.Madvise(s.Buffer, unix.MADV_HUGEPAGE)
+	if err != nil {
+		return fmt.Errorf("failed to madvise huge page: %w", err)
 	}
 
 	inUseBuffer := s.Buffer
@@ -525,21 +498,33 @@ func (s *Storage) Load(name string) (err error) {
 
 	// Zero copy access to the underlying buffer
 	header := (*Header)(unsafe.Pointer(&inUseBuffer[0]))
-	inUseBuffer = inUseBuffer[HeaderSize:]
-
 	// TODO: In the future add magic number and version
 	s.Version = header.Version
+
+	inUseBuffer = inUseBuffer[HeaderSize:]
+	if len(inUseBuffer) == 0 {
+		return nil
+	}
 
 	docIdsSize := DocumentIdSize * uintptr(header.TotalDocuments)
 	if uintptr(len(inUseBuffer)) < docIdsSize {
 		return fmt.Errorf("not enough space for document ids")
 	}
 
-	if len(inUseBuffer) == 0 {
-		return nil
+	if docIdsSize > 0 {
+		s.DocumentsIds = unsafe.Slice((*DocumentId)(unsafe.Pointer(&inUseBuffer[0])), header.TotalDocuments)
+		inUseBuffer = inUseBuffer[docIdsSize:]
 	}
-	s.DocumentsIds = unsafe.Slice((*DocumentId)(unsafe.Pointer(&inUseBuffer[0])), header.TotalDocuments)
-	inUseBuffer = inUseBuffer[docIdsSize:]
+
+	tokenFreqsSize := TokenFrequencyEntrySize * uintptr(header.TotalTokenFrequencies)
+	if uintptr(len(inUseBuffer)) < tokenFreqsSize {
+		return fmt.Errorf("not enough space for loading token frequencies from buffer")
+	}
+
+	if tokenFreqsSize > 0 {
+		s.TokenFrequencies = unsafe.Slice((*TokenFrequencyEntry)(unsafe.Pointer(&inUseBuffer[0])), header.TotalTokenFrequencies)
+		inUseBuffer = inUseBuffer[tokenFreqsSize:]
+	}
 
 	s.Fields = make(map[uint64]*Field, header.FieldCount)
 	var fieldsPool = pool.New[Field](20)
@@ -556,24 +541,31 @@ func (s *Storage) Load(name string) (err error) {
 		s.Fields[fHeader.Hash] = field
 
 		field.AvgDocumentLength = fHeader.AvgDocumentLength
+		field.TotalDocumentsLength = fHeader.TotalDocumentsLength
+		field.TotalTokenFrequenciesCount = fHeader.TotalTokenFrequencies
 
 		docsLengthSize := DocumentLengthEntrySize * uintptr(fHeader.DocumentLengthCount)
 		if uintptr(len(inUseBuffer)) < docsLengthSize {
 			return fmt.Errorf("not enough space for loading field's documents lengths from buffer")
 		}
 
-		field.DocumentLengths = unsafe.Slice(
-			(*DocumentLengthEntry)(unsafe.Pointer(&inUseBuffer[0])),
-			fHeader.DocumentLengthCount,
-		)
-		inUseBuffer = inUseBuffer[docsLengthSize:]
+		if docsLengthSize > 0 {
+			field.DocumentLengths = unsafe.Slice(
+				(*DocumentLengthEntry)(unsafe.Pointer(&inUseBuffer[0])),
+				fHeader.DocumentLengthCount,
+			)
+			inUseBuffer = inUseBuffer[docsLengthSize:]
+		}
 
 		tokensSubBufferSize := TokenSize * uintptr(fHeader.TokenCount)
 		if uintptr(len(inUseBuffer)) < tokensSubBufferSize {
 			return fmt.Errorf("not enough space for loading field's tokens from buffer")
 		}
-		field.Tokens = unsafe.Slice((*Token)(unsafe.Pointer(&inUseBuffer[0])), fHeader.TokenCount)
-		inUseBuffer = inUseBuffer[tokensSubBufferSize:]
+
+		if tokensSubBufferSize > 0 {
+			field.Tokens = unsafe.Slice((*Token)(unsafe.Pointer(&inUseBuffer[0])), fHeader.TokenCount)
+			inUseBuffer = inUseBuffer[tokensSubBufferSize:]
+		}
 	}
 
 	s.PostingLists = make([]PostingList, header.TotalPostingLists)
@@ -592,16 +584,6 @@ func (s *Storage) Load(name string) (err error) {
 		// Zero copy loading of posting list
 		s.PostingLists[index].Data = inUseBuffer[:pHeader.Size]
 		inUseBuffer = inUseBuffer[pHeader.Size:]
-	}
-
-	tokenFreqsSize := TokenFrequencyEntrySize * uintptr(header.TotalTokenFrequencies)
-	if uintptr(len(inUseBuffer)) < tokenFreqsSize {
-		return fmt.Errorf("not enough space for loading token frequencies from buffer")
-	}
-
-	if tokenFreqsSize > 0 {
-		s.TokenFrequencies = unsafe.Slice((*TokenFrequencyEntry)(unsafe.Pointer(&inUseBuffer[0])), header.TotalTokenFrequencies)
-		inUseBuffer = inUseBuffer[tokenFreqsSize:]
 	}
 
 	s.Size = uint64(size) - uint64(len(inUseBuffer))

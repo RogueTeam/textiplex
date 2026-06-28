@@ -10,9 +10,13 @@ import (
 	"github.com/RogueTeam/textiplex/query"
 	"github.com/RogueTeam/textiplex/storage"
 	"github.com/RogueTeam/textiplex/tokenizer"
+	"github.com/RogueTeam/textiplex/tokenizer/date"
 	"github.com/RogueTeam/textiplex/tokenizer/en"
 	"github.com/RogueTeam/textiplex/tokenizer/es"
+	"github.com/RogueTeam/textiplex/tokenizer/floating"
+	"github.com/RogueTeam/textiplex/tokenizer/integer"
 	"github.com/stretchr/testify/assert"
+	"github.com/zeebo/xxh3"
 )
 
 func CompileQueryWith(t *testing.T, q string, def tokenizer.Tokenizer, fields map[uint64]tokenizer.Tokenizer) *query.SimpleQuery {
@@ -53,11 +57,18 @@ func CompileSpanishQuery(t *testing.T, q string) *query.SimpleQuery {
 }
 
 func EnglishMatchedSet(t *testing.T, q string, s *storage.Storage) []string {
-	return MatchedSetWith(t, q, s, en.Tokenizer, nil)
+	return MatchedSetWith(t, q, s, en.Tokenizer, map[uint64]tokenizer.Tokenizer{
+		xxh3.HashString("value"):      integer.Tokenizer,
+		xxh3.HashString("price"):      integer.Tokenizer,
+		xxh3.HashString("rate"):       floating.Tokenizer,
+		xxh3.HashString("created_at"): date.Tokenizer,
+	})
 }
 
 func SpanishMatchedSet(t *testing.T, q string, s *storage.Storage) []string {
-	return MatchedSetWith(t, q, s, es.Tokenizer, nil)
+	return MatchedSetWith(t, q, s, es.Tokenizer, map[uint64]tokenizer.Tokenizer{
+		xxh3.HashString("valor"): integer.Tokenizer,
+	})
 }
 
 func MatchedSetWith(t *testing.T, q string, s *storage.Storage, def tokenizer.Tokenizer, fields map[uint64]tokenizer.Tokenizer) []string {

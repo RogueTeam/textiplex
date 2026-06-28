@@ -40,13 +40,13 @@ const SortFieldBM25 SortField = 0
 // Same syntax from LUCENE and Bluge's query_str. Check dorks package for more details
 // Sort field is 0 (SortFieldBM25) when the sorting should be made by the bm25 engine
 // otherwise, caller should compute xxh3.Hash("FIELD_NAME") in order to sort by a specific field.
-func (r *Reader) QueryString(field SortField, qstr string) (docIds iter.Seq[[]byte], err error) {
+func (r *Reader) QueryString(skip uint, field SortField, qstr string) (docIds iter.Seq[[]byte], err error) {
 	dork, err := dorks.Parse(strings.NewReader(qstr))
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile query string: %w", err)
 	}
 
-	docIds, err = r.Query(field, dork.Compile(r.DefaultTokenizer, r.FieldTokenizers))
+	docIds, err = r.Query(skip, field, dork.Compile(r.DefaultTokenizer, r.FieldTokenizers))
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare query iterator: %w", err)
 	}
@@ -69,7 +69,7 @@ func (r *Reader) QueryString(field SortField, qstr string) (docIds iter.Seq[[]by
 	return docIds, nil
 }
 
-func (r *Reader) Query(field SortField, q *query.SimpleQuery) (docIds iter.Seq[[]byte], err error) {
+func (r *Reader) Query(skip uint, field SortField, q *query.SimpleQuery) (docIds iter.Seq[[]byte], err error) {
 	if r.Searcher == nil {
 		return nil, fmt.Errorf("no searcher is configured, make sure to use reset to build the reader")
 	}
@@ -83,7 +83,8 @@ func (r *Reader) Query(field SortField, q *query.SimpleQuery) (docIds iter.Seq[[
 			r.Searcher.FieldScore(&ctx, uint64(field))
 		}
 
-		for _, docIdx := range r.Searcher.ResolveScores(&ctx) {
+		idxs := r.Searcher.ResolveScores(&ctx)
+		for _, docIdx := range idxs[min(skip, uint(len(idxs))):] {
 			if !yield(r.Storage.DocumentsIds[docIdx].Value.Bytes()) {
 				return
 			}

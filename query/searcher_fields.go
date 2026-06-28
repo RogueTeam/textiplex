@@ -11,7 +11,7 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 	cardinality := ctx.Bitmap.GetCardinality()
 	ctx.Scores = make(map[uint32]float64, cardinality)
 
-	var docIdxs [32]uint32
+	var docIdxs [8]uint32
 
 	var bitmapForPostingListRetrieval roaring.Bitmap
 	for tokenIdx := range field.Tokens {
@@ -34,7 +34,7 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 				ctx.Scores[docIdx] = float64(cardinality - uint64(len(ctx.Scores)))
 			}
 
-			if n < 32 {
+			if n < len(docIdxs) {
 				break
 			}
 		}

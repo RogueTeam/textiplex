@@ -28,7 +28,7 @@ func (s *Searcher) UpdateScoresWithBM25(ctx *QueryContext, state *ClauseState) {
 	docLengths := field.DocumentLengths
 	freqs := s.Storage.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
 
-	var docIdxs [32]uint32
+	var docIdxs [9]uint32
 	it := ctx.Bitmap.ManyIterator()
 
 	for {
@@ -74,7 +74,7 @@ func (s *Searcher) UpdateScoresWithBM25(ctx *QueryContext, state *ClauseState) {
 			)
 		}
 
-		if n < 32 {
+		if n < len(docIdxs) {
 			break
 		}
 	}

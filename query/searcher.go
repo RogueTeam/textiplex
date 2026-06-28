@@ -33,7 +33,7 @@ func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint32) {
 
 	scores := make([]scoreEntry, 0, ctx.Bitmap.GetCardinality())
 
-	var docIdxs [32]uint32
+	var docIdxs [8]uint32
 	it := ctx.Bitmap.ManyIterator()
 	for {
 		n := it.NextMany(docIdxs[:])
@@ -49,7 +49,7 @@ func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint32) {
 			})
 		}
 
-		if n < 32 {
+		if n < len(docIdxs) {
 			break
 		}
 	}

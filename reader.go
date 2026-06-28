@@ -5,6 +5,7 @@ import (
 	"iter"
 	"os"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/RogueTeam/textiplex/dorks"
@@ -41,13 +42,13 @@ const SortFieldBM25 SortField = 0
 // Same syntax from LUCENE and Bluge's query_str. Check dorks package for more details
 // Sort field is 0 (SortFieldBM25) when the sorting should be made by the bm25 engine
 // otherwise, caller should compute xxh3.Hash("FIELD_NAME") in order to sort by a specific field.
-func (r *Reader) QueryString(skip uint, field SortField, qstr string) (docIds iter.Seq[[]byte], err error) {
+func (r *Reader) QueryString(skip uint, field SortField, reverse bool, qstr string) (docIds iter.Seq[[]byte], err error) {
 	dork, err := dorks.Parse(strings.NewReader(qstr))
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile query string: %w", err)
 	}
 
-	docIds, err = r.Query(skip, field, dork.Compile(r.AllField, r.DefaultTokenizer, r.FieldTokenizers))
+	docIds, err = r.Query(skip, field, reverse, dork.Compile(r.AllField, r.DefaultTokenizer, r.FieldTokenizers))
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare query iterator: %w", err)
 	}
@@ -70,7 +71,7 @@ func (r *Reader) QueryString(skip uint, field SortField, qstr string) (docIds it
 	return docIds, nil
 }
 
-func (r *Reader) Query(skip uint, field SortField, q *query.SimpleQuery) (docIds iter.Seq[[]byte], err error) {
+func (r *Reader) Query(skip uint, field SortField, reverse bool, q *query.SimpleQuery) (docIds iter.Seq[[]byte], err error) {
 	if r.Searcher == nil {
 		return nil, fmt.Errorf("no searcher is configured, make sure to use reset to build the reader")
 	}
@@ -85,7 +86,17 @@ func (r *Reader) Query(skip uint, field SortField, q *query.SimpleQuery) (docIds
 		}
 
 		idxs := r.Searcher.ResolveScores(&ctx)
-		for _, docIdx := range idxs[min(skip, uint(len(idxs))):] {
+		if reverse {
+			idxs = idxs[:max(uint(len(idxs))-skip, 0)]
+			for _, docIdx := range slices.Backward(idxs) {
+				if !yield(r.Storage.DocumentsIds[docIdx].Value.Bytes()) {
+					return
+				}
+			}
+			return
+		}
+		idxs = idxs[min(skip, uint(len(idxs))):]
+		for _, docIdx := range idxs {
 			if !yield(r.Storage.DocumentsIds[docIdx].Value.Bytes()) {
 				return
 			}

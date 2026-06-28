@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.6.0](https://github.com/RogueTeam/textiplex/compare/v1.5.0...v1.6.0) (2026-06-28)
+
+
+### Features
+
+* support for reverse ordering of search ([6b53eec](https://github.com/RogueTeam/textiplex/commit/6b53eecf40facfd923c936bbcf8864956ed355fd))
+
 ## [1.5.0](https://github.com/RogueTeam/textiplex/compare/v1.3.0...v1.5.0) (2026-06-28)
 
 

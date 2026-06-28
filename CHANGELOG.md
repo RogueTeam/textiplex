@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.5.0](https://github.com/RogueTeam/textiplex/compare/v1.3.0...v1.5.0) (2026-06-28)
+
+
+### Features
+
+* support for allfield compilation ([3271b56](https://github.com/RogueTeam/textiplex/commit/3271b562fa21ce38ca2d0abc1242376da486e8c3))
+
 ## [1.4.0](https://github.com/RogueTeam/textiplex/compare/v1.3.0...v1.4.0) (2026-06-28)
 
 

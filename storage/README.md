@@ -4,32 +4,40 @@
 ┌─────────────────────────────────────────────────────┐
 │                      HEADER                         │
 │  magic (8B) | version (2B) | padding (6B)           │
-│  total_docs (8B) | field_count (8B)                 │
+│  total_docs (4B) | padding (4B)                     │
+│  field_count (8B)                                   │
 │  total_posting_lists (8B)                           │
 │  total_token_frequencies (8B)                       │
 ├─────────────────────────────────────────────────────┤
 │                  DOC ID TABLE                       │
-│  [size (8B) | data (48B)] × total_docs              │
-│  (fixed 56B stride; sorted alphabetically;          │
+│  [size (8B) | data (128B)] × total_docs             │
+│  (fixed 136B stride; sorted alphabetically;         │
 │   position = internal ID; mapped zero-copy)         │
+├─────────────────────────────────────────────────────┤
+│           TOKEN FREQUENCIES REGION                  │
+│  [doc_index (4B) | padding (4B) | frequency (8B)]   │
+│  × total_token_frequencies                          │
+│  (fixed 16B stride; indexed by frequencies_index)  │
 ├─────────────────────────────────────────────────────┤
 │                 FIELD BLOCKS                        │
 │  ┌───────────────────────────────────────────────┐  │
 │  │  hash (8B) | avgdl (8B f64)                   │  │
-│  │  token_count (8B) | doc_length_count (8B)     │  │
+│  │  total_docs_length (8B)                       │  │
+│  │  token_count (8B) | total_token_freqs (8B)    │  │
+│  │  doc_length_count (8B)                        │  │
 │  ├───────────────────────────────────────────────┤  │
 │  │           DOC LENGTH ENTRIES                  │  │
-│  │  [doc_index (8B) | length (8B)]               │  │
-│  │  × doc_length_count                           │  │
+│  │  [doc_index (4B) | padding (4B) | length (8B)]│  │
+│  │  × doc_length_count (fixed 16B stride)        │  │
 │  │  (sorted by doc_index ascending)              │  │
 │  ├───────────────────────────────────────────────┤  │
 │  │             TOKEN ENTRIES                     │  │
 │  │  [frequency_count (8B) |                      │  │
 │  │   posting_list_index (8B) |                   │  │
 │  │   frequencies_index (8B) |                    │  │
-│  │   value_size (8B) | value_data (48B)]         │  │
+│  │   value_size (8B) | value_data (128B)]        │  │
 │  │  × token_count                                │  │
-│  │  (fixed 80B stride; sorted alphabetically)    │  │
+│  │  (fixed 152B stride; sorted alphabetically)   │  │
 │  └───────────────────────────────────────────────┘  │
 │  ...repeated for each field...                      │
 ├─────────────────────────────────────────────────────┤
@@ -37,21 +45,16 @@
 │  [bitmap_size (8B) | roaring bitmap bytes]          │
 │  × total_posting_lists                              │
 │  (indexed by posting_list_index)                    │
-├─────────────────────────────────────────────────────┤
-│           TOKEN FREQUENCIES REGION                  │
-│  [doc_index (8B) | frequency (8B)]                  │
-│  × total_token_frequencies                          │
-│  (indexed by frequencies_index + doc_freq as count) │
 └─────────────────────────────────────────────────────┘
 ```
 
 ## Invariants
 
-- Doc IDs and token values are stored as `RawValue`: an 8-byte length plus a fixed `MaxRawValueSize`-byte (currently **128**) inline buffer. Values longer than the cap are truncated to it. The fixed stride is what allows the doc ID table and each field's token table to be mapped directly over the file as native Go slices (`unsafe.Slice`) with zero allocation and zero deserialization.
+- Doc IDs and token values are stored as `RawValue`: an 8-byte length plus a fixed `MaxRawValueSize`-byte (currently **128**) inline buffer. The doc ID stride is therefore **136 B**; the token entry stride (3 × 8 B index fields + `RawValue`) is **152 B**. The fixed stride is what allows the doc ID table and each field's token table to be mapped directly over the file as native Go slices (`unsafe.Slice`) with zero allocation and zero deserialization.
 - Doc IDs are sorted alphabetically. A document's position in the table is its internal sequential ID used in posting lists and TF entries.
+- Token frequencies are written immediately after the doc ID table, before the field blocks. Each `TokenFrequencyEntry` is a fixed 16 B record: `doc_index (uint32, 4B) | padding (4B) | frequency (uint64, 8B)`. The `FrequenciesIndex` in a token entry is an absolute offset into this region; the relevant slice is `TokenFrequencies[FrequenciesIndex : FrequenciesIndex+FrequencyCount]`.
 - Doc length entries within each field block are sorted by doc_index ascending. This enables a merge scan during BM25 scoring instead of binary search.
 - Token entries within each field block are sorted alphabetically by token bytes, so they are binary-searched in place at query time — no btree is built at load. (A btree is used only as a transient accumulator during `BuildFrom`.)
-- TF entries for a given token occupy a contiguous slice: `TokenFrequencies[FrequenciesIndex : FrequenciesIndex+FrequencyCount]`. The writer must maintain this invariant.
 - Posting lists and TF entries within a field are written in the same alphabetical token order, enabling sequential page access during sorted query processing.
 
 ## Storage.Size contract

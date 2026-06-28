@@ -82,47 +82,53 @@ Boolean query benchmarks, same 1M-doc corpus (lower is better):
 ┌─────────────────────────────────────────────────────┐
 │                      HEADER                         │
 │  magic (8B) | version (2B) | padding (6B)           │
-│  total_docs (8B) | field_count (8B)                 │
+│  total_docs (4B) | padding (4B)                     │
+│  field_count (8B)                                   │
 │  total_posting_lists (8B)                           │
 │  total_token_frequencies (8B)                       │
 ├─────────────────────────────────────────────────────┤
 │                  DOC ID TABLE                       │
-│  [size (8B) | data (48B)] × total_docs              │
-│  (fixed 56B stride; sorted alphabetically;          │
+│  [size (8B) | data (128B)] × total_docs             │
+│  (fixed 136B stride; sorted alphabetically;         │
 │   position = internal doc ID; loaded zero-copy)     │
+├─────────────────────────────────────────────────────┤
+│           TOKEN FREQUENCIES REGION                  │
+│  [doc_index (4B) | padding (4B) | frequency (8B)]   │
+│  × total_token_frequencies                          │
+│  (fixed 16B stride)                                 │
 ├─────────────────────────────────────────────────────┤
 │                 FIELD BLOCKS                        │
 │  ┌───────────────────────────────────────────────┐  │
 │  │  hash (8B) | avgdl (8B f64)                   │  │
-│  │  token_count (8B) | doc_length_count (8B)     │  │
+│  │  total_docs_length (8B)                       │  │
+│  │  token_count (8B) | total_token_freqs (8B)    │  │
+│  │  doc_length_count (8B)                        │  │
 │  ├───────────────────────────────────────────────┤  │
 │  │           DOC LENGTH ENTRIES                  │  │
-│  │  [doc_index (8B) | length (8B)]               │  │
-│  │  × doc_length_count                           │  │
+│  │  [doc_index (4B) | padding (4B) | length (8B)]│  │
+│  │  × doc_length_count (fixed 16B stride)        │  │
 │  ├───────────────────────────────────────────────┤  │
 │  │             TOKEN ENTRIES                     │  │
 │  │  [frequency_count (8B) |                      │  │
 │  │   posting_list_index (8B) |                   │  │
 │  │   frequencies_index (8B) |                    │  │
-│  │   value_size (8B) | value_data (48B)]         │  │
+│  │   value_size (8B) | value_data (128B)]        │  │
 │  │  × token_count                                │  │
-│  │  (fixed 80B stride; sorted alphabetically;    │  │
+│  │  (fixed 152B stride; sorted alphabetically;   │  │
 │  │   binary-searchable in place, no btree)       │  │
 │  └───────────────────────────────────────────────┘  │
 ├─────────────────────────────────────────────────────┤
 │              POSTING LISTS REGION                   │
-│  [bitmap_size (8B) | roaring   bitmap bytes]        │
+│  [bitmap_size (8B) | roaring bitmap bytes]          │
 │  × total_posting_lists                              │
-├─────────────────────────────────────────────────────┤
-│           TOKEN FREQUENCIES REGION                  │
-│  [doc_index (8B) | frequency (8B)]                  │
-│  × total_token_frequencies                          │
 └─────────────────────────────────────────────────────┘
 ```
 
 ### Invariants
 
+- Doc IDs and token values are stored as `RawValue`: an 8-byte length plus a fixed `MaxRawValueSize`-byte (currently **128**) inline buffer. The doc ID stride is therefore **136 B**; the token entry stride (3 × 8 B index fields + `RawValue`) is **152 B**. Both allow the respective tables to be mapped directly over the mmap'd file as native Go slices with zero allocation and zero deserialization.
 - Doc IDs sorted alphabetically. Position in the table is the internal doc ID used in posting lists and TF entries.
+- Token frequencies are written immediately after the doc ID table, before the field blocks. The `FrequenciesIndex` field in each token entry is an absolute offset into this region.
 - Doc length entries within each field sorted by `doc_index` ascending, enabling merge-scan during BM25 scoring.
 - Token entries within each field sorted alphabetically, enabling binary search and range iteration.
 - TF entries for a token are contiguous: `TokenFrequencies[FrequenciesIndex : FrequenciesIndex+FrequencyCount]`.
@@ -166,7 +172,7 @@ for _, doc := range documents {
     totalSize := fields.TextField(nameField, tokenPool, "name", []byte(doc.Name), en.Tokenizer)
 
     idField := fieldPool.Get()
-    totalSize += fields.TextField(idField, tokenPool, "id", []byte(doc.ID), keyword.Tokenizer)
+    totalSize += fields.KeywordField(idField, tokenPool, "id", []byte(doc.ID))
 
     ageField := fieldPool.Get()
     totalSize += fields.IntegerField(ageField, tokenPool, "age", doc.Age)
@@ -187,7 +193,8 @@ The document ID passed to `batch.Insert` is what `Reader` returns at query time.
 |---|---|---|
 | `fields.TextField` | caller-supplied | natural language: names, addresses, descriptions |
 | `fields.KeywordField` | exact match, no stemming | IDs, codes, enum values, tags |
-| `fields.IntegerField` | numeric | ages, dates, rankings (enables field-sort) |
+| `fields.IntegerField` | numeric | integer ages, rankings, counts (enables field-sort) |
+| `fields.FloatField` | numeric | floating-point scores, prices, measurements (enables field-sort) |
 
 #### Flushing a batch
 
@@ -228,6 +235,11 @@ import (
 )
 
 reader := textiplex.Reader{
+    // When a query term has no explicit field (e.g. "+Alice"), AllField pins it
+    // to a specific field hash instead of searching across all fields.
+    // Set to xxh3.HashString("field-name") to restrict bare terms, or leave as
+    // zero (AllFieldNone) to keep the default cross-field behaviour.
+    AllField:         0, // dorks.AllFieldNone — cross-field search
     // Tokenizer used for any field not listed in FieldTokenizers
     DefaultTokenizer: en.Tokenizer,
     // Per-field tokenizer overrides, keyed by xxh3.HashString("field-name")
@@ -248,7 +260,7 @@ defer reader.Close()
 
 ```go
 // BM25-ranked results
-seq, err := reader.QueryString(textiplex.SortFieldBM25, "+Alice +USA")
+seq, err := reader.QueryString(0, textiplex.SortFieldBM25, false, "+Alice +USA")
 if err != nil {
     log.Fatal(err)
 }
@@ -259,6 +271,8 @@ for docId := range seq {
 ```
 
 `QueryString` returns an `iter.Seq[[]byte]` of raw document IDs in score order. The sequence is lazy: documents are scored on iteration, so breaking early is cheap.
+
+`skip` is a zero-based offset that skips the first N results — use it for pagination. `reverse` inverts the iteration order over the scored result set.
 
 #### Query syntax (Dorks DSL)
 
@@ -292,7 +306,7 @@ Field sort is useful for dates, numeric rankings, or any case where you want a d
 
 ```go
 byAge := textiplex.SortField(xxh3.HashString("age"))
-seq, err := reader.QueryString(byAge, "+country:Canada")
+seq, err := reader.QueryString(0, byAge, false, "+country:Canada")
 ```
 
 #### Tokenizer consistency
@@ -321,7 +335,7 @@ for _, p := range people {
     nameField := fieldPool.Get()
     sz := fields.TextField(nameField, tokenPool, "name", []byte(p.Name), en.Tokenizer)
     idField := fieldPool.Get()
-    sz += fields.TextField(idField, tokenPool, "id", []byte(p.ID), keyword.Tokenizer)
+    sz += fields.KeywordField(idField, tokenPool, "id", []byte(p.ID))
     countryField := fieldPool.Get()
     sz += fields.TextField(countryField, tokenPool, "country", []byte(p.Country), en.Tokenizer)
     ageField := fieldPool.Get()
@@ -341,6 +355,7 @@ if err := writer.Merge(); err != nil {
 // --- Query time ---
 
 reader := textiplex.Reader{
+    AllField:         0,
     DefaultTokenizer: en.Tokenizer,
     FieldTokenizers: map[uint64]tokenizer.Tokenizer{
         xxh3.HashString("id"): keyword.Tokenizer,
@@ -351,7 +366,7 @@ if err := reader.Reset("/var/lib/myapp/index"); err != nil {
 }
 defer reader.Close()
 
-seq, err := reader.QueryString(textiplex.SortFieldBM25, "+Grace +country:USA")
+seq, err := reader.QueryString(0, textiplex.SortFieldBM25, false, "+Grace +country:USA")
 if err != nil {
     log.Fatal(err)
 }

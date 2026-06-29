@@ -19,11 +19,20 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 
 		s.Storage.PostingLists[token.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
 
-		it := bitmapForPostingListRetrieval.ManyIterator()
+		var iterableBitmap, checkBitmap *roaring.Bitmap
+		if bitmapForPostingListRetrieval.GetCardinality() > ctx.Bitmap.GetCardinality() {
+			iterableBitmap = &ctx.Bitmap
+			checkBitmap = &bitmapForPostingListRetrieval
+		} else {
+			iterableBitmap = &bitmapForPostingListRetrieval
+			checkBitmap = &ctx.Bitmap
+		}
+
+		it := iterableBitmap.ManyIterator()
 		for {
 			n := it.NextMany(docIdxs[:])
 			for _, docIdx := range docIdxs[:n] {
-				if !ctx.Bitmap.Contains(docIdx) {
+				if !checkBitmap.Contains(docIdx) {
 					continue
 				}
 

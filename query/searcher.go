@@ -23,7 +23,7 @@ func New(s *storage.Storage) (searcher *Searcher) {
 	return searcher
 }
 
-const ManyIteratorBatchSize = 4
+const ManyIteratorBatchSize = 8
 
 // Once a filtering and scoring are done, next step of a searching algorithm
 // Resolves the ctx to an actual idx slice

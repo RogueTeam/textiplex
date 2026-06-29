@@ -28,14 +28,13 @@ func (s *Searcher) UpdateScoresWithBM25(ctx *QueryContext, state *ClauseState) {
 	docLengths := field.DocumentLengths
 	freqs := s.Storage.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
 
-	var docIdxs [9]uint32
+	var docIdxs [ManyIteratorBatchSize]uint32
 	it := ctx.Bitmap.ManyIterator()
 
 	for {
 		n := it.NextMany(docIdxs[:])
 
-		validIdxs := docIdxs[:n]
-		for _, docIdx := range validIdxs {
+		for _, docIdx := range docIdxs[:n] {
 			docLengthIdx, found := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
 			if !found {
 				continue

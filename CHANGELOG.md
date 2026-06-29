@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.6.2](https://github.com/RogueTeam/textiplex/compare/v1.6.1...v1.6.2) (2026-06-29)
+
+
+### Bug Fixes
+
+* iterate bitmap in batches of 32 uint32 ([6a19283](https://github.com/RogueTeam/textiplex/commit/6a19283393a01abc90ed7ae5f8c3ef50bdd3debd))
+* iterate over the the shortest bitmap and use the largest one for confirming it exists ([8abf989](https://github.com/RogueTeam/textiplex/commit/8abf989bfab2e337e3321431f0658edb48c4fcdb))
+* single source of truth for batch size ([77415a9](https://github.com/RogueTeam/textiplex/commit/77415a9945078d672a6d134a8a7c5e755ce815d1))
+* smaller batches for better performance ([bfd1d92](https://github.com/RogueTeam/textiplex/commit/bfd1d926bc305e2289e10e78fb2e1ab924916367))
+
 ### [1.6.1](https://github.com/RogueTeam/textiplex/compare/v1.6.0...v1.6.1) (2026-06-28)
 
 ## [1.6.0](https://github.com/RogueTeam/textiplex/compare/v1.5.0...v1.6.0) (2026-06-28)

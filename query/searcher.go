@@ -23,6 +23,8 @@ func New(s *storage.Storage) (searcher *Searcher) {
 	return searcher
 }
 
+const ManyIteratorBatchSize = 8
+
 // Once a filtering and scoring are done, next step of a searching algorithm
 // Resolves the ctx to an actual idx slice
 func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint32) {
@@ -33,19 +35,25 @@ func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint32) {
 
 	scores := make([]scoreEntry, 0, ctx.Bitmap.GetCardinality())
 
-	it := ctx.Bitmap.Iterator()
-	for it.HasNext() {
-		doxIdx := it.Next()
+	var docIdxs [ManyIteratorBatchSize]uint32
+	it := ctx.Bitmap.ManyIterator()
+	for {
+		n := it.NextMany(docIdxs[:])
+		for _, docIdx := range docIdxs[:n] {
+			score := ctx.Scores[docIdx]
+			if score == 0 {
+				continue
+			}
 
-		score := ctx.Scores[doxIdx]
-		if score == 0 {
-			continue
+			scores = append(scores, scoreEntry{
+				score:  score,
+				docIdx: docIdx,
+			})
 		}
 
-		scores = append(scores, scoreEntry{
-			score:  score,
-			docIdx: doxIdx,
-		})
+		if n < len(docIdxs) {
+			break
+		}
 	}
 
 	slices.SortFunc(

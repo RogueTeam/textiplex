@@ -85,17 +85,23 @@ func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *Cla
 	freqDense := len(freqs) == len(s.Storage.DocumentsIds)
 	dlDense := len(docLengths) == len(s.Storage.DocumentsIds)
 
+	// Hoist boost check: when boost==1 the multiply is a no-op, so we use a
+	// dedicated idf-only multiplier and skip the extra float64 op in the hot path.
+	idfBoost := idf
+	noBoost := boost == 1
+	if !noBoost {
+		idfBoost = idf * boost
+	}
+
 	switch {
 	case freqDense && dlDense:
 		for i, docIdx := range candidates {
-			// Inlined NormalizedTF: identical operations, identical grouping.
 			tf := float64(freqs[docIdx].Frequency)
 			dl := float64(docLengths[docIdx].Length)
 			lengthRatio := dl / avgDocLength
 			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
-
-			acc[i] += boost * (idf * tfnorm)
+			acc[i] += idfBoost * tfnorm
 		}
 	case freqDense && !dlDense:
 		for i, docIdx := range candidates {
@@ -111,12 +117,10 @@ func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *Cla
 			dl := float64(docLengths[docLengthIdx].Length)
 			docLengths = docLengths[1+docLengthIdx:]
 
-			// Inlined NormalizedTF: identical operations, identical grouping.
 			lengthRatio := dl / avgDocLength
 			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
-
-			acc[i] += boost * (idf * tfnorm)
+			acc[i] += idfBoost * tfnorm
 		}
 	case !freqDense && dlDense:
 		for i, docIdx := range candidates {
@@ -130,15 +134,13 @@ func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *Cla
 			tf := float64(freqs[freqIdx].Frequency)
 			freqs = freqs[1+freqIdx:]
 
-			// Inlined NormalizedTF: identical operations, identical grouping.
 			dl := float64(docLengths[docIdx].Length)
 			lengthRatio := dl / avgDocLength
 			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
-
-			acc[i] += boost * (idf * tfnorm)
+			acc[i] += idfBoost * tfnorm
 		}
-	default: // !freqDense && !dlDense:
+	default: // !freqDense && !dlDense
 		for i, docIdx := range candidates {
 			freqIdx, found := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
 			if !found && freqIdx < len(freqs) {
@@ -160,13 +162,10 @@ func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *Cla
 			dl := float64(docLengths[docLengthIdx].Length)
 			docLengths = docLengths[1+docLengthIdx:]
 
-			// Inlined NormalizedTF: identical operations, identical grouping.
 			lengthRatio := dl / avgDocLength
 			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
-
-			acc[i] += boost * (idf * tfnorm)
+			acc[i] += idfBoost * tfnorm
 		}
 	}
-
 }

@@ -87,10 +87,11 @@ func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *Cla
 
 	// Hoist boost check: when boost==1 the multiply is a no-op, so we use a
 	// dedicated idf-only multiplier and skip the extra float64 op in the hot path.
-	idfBoost := idf
-	noBoost := boost == 1
-	if !noBoost {
+	var idfBoost float64
+	if boost != 1 {
 		idfBoost = idf * boost
+	} else {
+		idfBoost = idf
 	}
 
 	switch {

@@ -76,15 +76,14 @@ func (c *Clause) FieldRange(field uint64, lo, hi []byte, mode RangeCaptureMode, 
 }
 
 type ClauseState struct {
+	Boost float64
+	// Field references
+	Field *storage.Field
+	// Token references
+	Token *storage.Token
 	// Used to check if something was actuall found or not
 	// Should always be handled first by caller
 	Found bool
-	Boost float64
-	// Field references
-	Field     *storage.Field
-	FieldHash uint64
-	// Token references
-	Token *storage.Token
 }
 
 type HandleClauseFunc func(state *ClauseState)
@@ -92,11 +91,12 @@ type HandleClauseFunc func(state *ClauseState)
 func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 	var state ClauseState
 
+	var fieldHash uint64
 	for _, kw := range c.Keywords {
 		state.Boost = kw.Boost
 
 		var found bool
-		for state.FieldHash, state.Field = range s.Storage.Fields {
+		for fieldHash, state.Field = range s.Storage.Fields {
 			state.Token, state.Found = state.Field.Tokens.GetBytes(kw.Value)
 			if state.Found {
 				handle(&state)
@@ -136,7 +136,7 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 
 fieldKwLoop:
 	for _, entry := range c.FieldKeywords {
-		state.FieldHash = entry.FieldHash
+		fieldHash = entry.FieldHash
 		state.Boost = entry.Value.Boost
 
 		state.Field, state.Found = s.Storage.Fields[entry.FieldHash]
@@ -170,10 +170,10 @@ fieldKwLoop:
 	}
 
 	for _, entry := range c.FieldRanges {
-		state.FieldHash = entry.FieldHash
+		fieldHash = entry.FieldHash
 		state.Boost = entry.Value.Boost
 
-		state.Field, state.Found = s.Storage.Fields[state.FieldHash]
+		state.Field, state.Found = s.Storage.Fields[fieldHash]
 		if !state.Found {
 			handle(&state)
 			continue

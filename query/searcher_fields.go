@@ -17,7 +17,7 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 	for tokenIdx := range field.Tokens {
 		token := &field.Tokens[tokenIdx]
 
-		s.Storage.PostingLists[token.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
+		s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&bitmapForPostingListRetrieval)
 
 		var iterableBitmap, checkBitmap *roaring.Bitmap
 		if bitmapForPostingListRetrieval.GetCardinality() > ctx.Bitmap.GetCardinality() {

@@ -108,7 +108,7 @@ type PostingList struct {
 }
 
 // Clears the destination and loads the bitmap into it
-func (l *PostingList) Bitmap(dst *roaring.Bitmap) {
+func (l *PostingList) UnsafeBitmap(dst *roaring.Bitmap) {
 	dst.Clear()
 	if len(l.Data) > 0 {
 		_, err := dst.FromUnsafeBytes(l.Data)

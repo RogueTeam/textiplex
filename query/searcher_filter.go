@@ -20,7 +20,7 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 				return
 			}
 
-			s.Storage.PostingLists[state.Token.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
+			s.Storage.PostingLists[state.Token.PostingListIndex].UnsafeBitmap(&bitmapForPostingListRetrieval)
 			if !firstMust {
 				ctx.Bitmap.Or(&bitmapForPostingListRetrieval)
 				firstMust = true
@@ -35,7 +35,7 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 				return
 			}
 
-			s.Storage.PostingLists[state.Token.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
+			s.Storage.PostingLists[state.Token.PostingListIndex].UnsafeBitmap(&bitmapForPostingListRetrieval)
 			ctx.Bitmap.Or(&bitmapForPostingListRetrieval)
 		})
 	}
@@ -47,7 +47,7 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 				return
 			}
 
-			s.Storage.PostingLists[state.Token.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
+			s.Storage.PostingLists[state.Token.PostingListIndex].UnsafeBitmap(&bitmapForPostingListRetrieval)
 			ctx.Bitmap.AndNot(&bitmapForPostingListRetrieval)
 		})
 	}

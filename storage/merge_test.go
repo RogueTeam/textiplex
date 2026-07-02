@@ -37,7 +37,7 @@ func mergeAndLoad(t *testing.T, a, b *storage.Storage) *storage.Storage {
 // postingDocIDs returns the doc indices contained in a token's posting list.
 func postingDocIDs(s *storage.Storage, tok *storage.Token) []uint32 {
 	var bitmapForPostingListRetrieval roaring.Bitmap
-	s.PostingLists[tok.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
+	s.PostingLists[tok.PostingListIndex].UnsafeBitmap(&bitmapForPostingListRetrieval)
 
 	return bitmapForPostingListRetrieval.ToArray()
 }

@@ -712,10 +712,10 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			rawB := &b.PostingLists[pending.IndexB]
 
 			ctx.ReusableBitmap.Clear()
-			rawA.Bitmap(&ctx.BitmapForPostingListRetrieval)
+			rawA.UnsafeBitmap(&ctx.BitmapForPostingListRetrieval)
 			ctx.ReusableBitmap.Or(&ctx.BitmapForPostingListRetrieval)
 
-			rawB.Bitmap(&ctx.BitmapForPostingListRetrieval)
+			rawB.UnsafeBitmap(&ctx.BitmapForPostingListRetrieval)
 			addOffsetFrom(&ctx, &ctx.ReusableBitmap, &ctx.BitmapForPostingListRetrieval)
 
 			size := ctx.ReusableBitmap.GetSerializedSizeInBytes()
@@ -746,7 +746,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			rawB := &b.PostingLists[pending.IndexB]
 
 			ctx.ReusableBitmap.Clear()
-			rawB.Bitmap(&ctx.BitmapForPostingListRetrieval)
+			rawB.UnsafeBitmap(&ctx.BitmapForPostingListRetrieval)
 
 			addOffsetFrom(&ctx, &ctx.ReusableBitmap, &ctx.BitmapForPostingListRetrieval)
 

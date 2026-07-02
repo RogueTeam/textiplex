@@ -11,18 +11,24 @@ import (
 // ctx.Bitmap. Musts are scored first, then Shoulds, matching the original
 // summation order so the floating point result is bit-for-bit identical.
 //
-// The hot path accumulates into a dense []float64 keyed by the bitmap's
-// ascending iteration position rather than writing the score map on every
-// term-document pair. roaring's ManyIterator yields document indexes in
-// ascending order and the bitmap is immutable during scoring, so the i-th
-// document visited is the same document across every term walk. That makes the
-// compact index a stable alias for the document index, lets every per-term
-// write land on a slice instead of a hashed map, and collapses the map writes
-// into one final pass.
+// The hot path materializes the bitmap once into an ascending candidates
+// slice and accumulates into a dense []float64 aligned to it, rather than
+// writing the score map on every term-document pair. The bitmap is immutable
+// during scoring, so position i in candidates is the same document across
+// every term walk. That single ToArray call replaces one iterator allocation
+// and one heap batch buffer per term walk, turns every walk into a plain
+// slice range, lets every per-term write land on a slice instead of a hashed
+// map, and collapses the map writes into one final pass.
 func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
 	cardinality := ctx.Bitmap.GetCardinality()
 	ctx.Scores = make(map[uint32]float64, cardinality)
 	if cardinality == 0 {
+		return
+	}
+
+	mustsCount := q.Musts.Count()
+	shouldsCount := q.Shoulds.Count()
+	if mustsCount == 0 && shouldsCount == 0 {
 		return
 	}
 
@@ -39,37 +45,28 @@ func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
 		lengthPenalty = DefaultLengthPenalty
 	}
 
-	acc := make([]float64, cardinality)
+	candidates := ctx.Bitmap.ToArray()
+	acc := make([]float64, len(candidates))
 
-	if q.Musts.Count() > 0 {
-		s.Iter(&q.Musts, func(state *ClauseState) { s.accumulateBM25(ctx, acc, state, saturation, lengthPenalty) })
+	if mustsCount > 0 {
+		s.Iter(&q.Musts, func(state *ClauseState) { s.accumulateBM25(candidates, acc, state, saturation, lengthPenalty) })
 	}
-	if q.Shoulds.Count() > 0 {
-		s.Iter(&q.Shoulds, func(state *ClauseState) { s.accumulateBM25(ctx, acc, state, saturation, lengthPenalty) })
+	if shouldsCount > 0 {
+		s.Iter(&q.Shoulds, func(state *ClauseState) { s.accumulateBM25(candidates, acc, state, saturation, lengthPenalty) })
 	}
 
 	// Materialize once. A position stays zero only when no term contributed or
 	// every contribution was scaled by a zero boost; both read back as the map's
 	// 0.0 default, and ResolveScores already discards score==0, so skipping the
 	// write is observationally identical to writing a 0.0 entry.
-	var docIdxs [ManyIteratorBatchSize]uint32
-	it := ctx.Bitmap.ManyIterator()
-	i := 0
-	for {
-		n := it.NextMany(docIdxs[:])
-		for _, docIdx := range docIdxs[:n] {
-			if acc[i] != 0 {
-				ctx.Scores[docIdx] = acc[i]
-			}
-			i++
-		}
-		if n < len(docIdxs) {
-			break
+	for i, docIdx := range candidates {
+		if acc[i] != 0 {
+			ctx.Scores[docIdx] = acc[i]
 		}
 	}
 }
 
-func (s *Searcher) accumulateBM25(ctx *QueryContext, acc []float64, state *ClauseState, saturation, lengthPenalty float64) {
+func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *ClauseState, saturation, lengthPenalty float64) {
 	if !state.Found {
 		return
 	}
@@ -88,59 +85,44 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, acc []float64, state *Claus
 	freqDense := len(freqs) == len(s.Storage.DocumentsIds)
 	dlDense := len(docLengths) == len(s.Storage.DocumentsIds)
 
-	var docIdxs [ManyIteratorBatchSize]uint32
-	it := ctx.Bitmap.ManyIterator()
-	i := 0
-loop:
-	for {
-		n := it.NextMany(docIdxs[:])
-
-		for _, docIdx := range docIdxs[:n] {
-			var freq uint64
-			if freqDense {
-				freq = freqs[docIdx].Frequency
-			} else {
-				freqIdx, found := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
-				if !found && freqIdx < len(freqs) {
-					freqs = freqs[freqIdx:]
-					i++
-					continue
-				} else if !found {
-					break loop
-				}
-				freq = freqs[freqIdx].Frequency
-				freqs = freqs[1+freqIdx:]
+	for i, docIdx := range candidates {
+		var freq uint64
+		if freqDense {
+			freq = freqs[docIdx].Frequency
+		} else {
+			freqIdx, found := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
+			if !found && freqIdx < len(freqs) {
+				freqs = freqs[freqIdx:]
+				continue
+			} else if !found {
+				break
 			}
-
-			var docLength uint64
-			if dlDense {
-				docLength = docLengths[docIdx].Length
-			} else {
-				docLengthIdx, found := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
-				if !found && docLengthIdx < len(docLengths) {
-					docLengths = docLengths[docLengthIdx:]
-					i++
-					continue
-				} else if !found {
-					break loop
-				}
-				docLength = docLengths[docLengthIdx].Length
-				docLengths = docLengths[1+docLengthIdx:]
-			}
-
-			// Inlined NormalizedTF: identical operations, identical grouping.
-			tf := float64(freq)
-			dl := float64(docLength)
-			lengthRatio := dl / avgDocLength
-			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
-			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
-
-			acc[i] += boost * (idf * tfnorm)
-			i++
+			freq = freqs[freqIdx].Frequency
+			freqs = freqs[1+freqIdx:]
 		}
 
-		if n < len(docIdxs) {
-			break
+		var docLength uint64
+		if dlDense {
+			docLength = docLengths[docIdx].Length
+		} else {
+			docLengthIdx, found := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
+			if !found && docLengthIdx < len(docLengths) {
+				docLengths = docLengths[docLengthIdx:]
+				continue
+			} else if !found {
+				break
+			}
+			docLength = docLengths[docLengthIdx].Length
+			docLengths = docLengths[1+docLengthIdx:]
 		}
+
+		// Inlined NormalizedTF: identical operations, identical grouping.
+		tf := float64(freq)
+		dl := float64(docLength)
+		lengthRatio := dl / avgDocLength
+		lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
+		tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
+
+		acc[i] += boost * (idf * tfnorm)
 	}
 }

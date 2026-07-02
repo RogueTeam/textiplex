@@ -69,25 +69,6 @@ func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
 	}
 }
 
-// accumulateBM25 adds one term's BM25 contribution to every matching document
-// in acc. It is the per-term body of BM25Score, split out so the Musts and
-// Shoulds Iter callbacks share it.
-//
-// Two things make it faster than the previous per-document ScoreTermBM25 call
-// without changing any result bit:
-//
-//  1. The inverse document frequency depends only on the field's document count
-//     and the token's document frequency, so it is computed once per term here
-//     instead of once per document. Same function, same inputs, same bits.
-//  2. NormalizedTF is inlined verbatim, keeping the exact operation order and
-//     grouping, which avoids a function call per document and lets the loop
-//     invariants (saturation+1, 1-lengthPenalty, avgDocLength, boost) hoist.
-//
-// The dense/sparse classification of the frequency and length slices is an
-// invariant of the whole walk: the dense branch indexes by document index and
-// never mutates the slice, while the sparse branch only ever shrinks it, so it
-// can never grow into the dense case. Computing it once is therefore identical
-// to the original per-iteration recheck.
 func (s *Searcher) accumulateBM25(ctx *QueryContext, acc []float64, state *ClauseState, saturation, lengthPenalty float64) {
 	if !state.Found {
 		return

@@ -59,9 +59,9 @@ func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
 	// every contribution was scaled by a zero boost; both read back as the map's
 	// 0.0 default, and ResolveScores already discards score==0, so skipping the
 	// write is observationally identical to writing a 0.0 entry.
-	for i, docIdx := range candidates {
-		if acc[i] != 0 {
-			ctx.Scores[docIdx] = acc[i]
+	for i, score := range acc {
+		if score > 0 {
+			ctx.Scores[candidates[i]] = score
 		}
 	}
 }
@@ -88,12 +88,9 @@ func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *Cla
 	switch {
 	case freqDense && dlDense:
 		for i, docIdx := range candidates {
-			var freq = freqs[docIdx].Frequency
-			var docLength = docLengths[docIdx].Length
-
 			// Inlined NormalizedTF: identical operations, identical grouping.
-			tf := float64(freq)
-			dl := float64(docLength)
+			tf := float64(freqs[docIdx].Frequency)
+			dl := float64(docLengths[docIdx].Length)
 			lengthRatio := dl / avgDocLength
 			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
@@ -102,7 +99,7 @@ func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *Cla
 		}
 	case freqDense && !dlDense:
 		for i, docIdx := range candidates {
-			var freq = freqs[docIdx].Frequency
+			tf := float64(freqs[docIdx].Frequency)
 
 			docLengthIdx, found := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
 			if !found && docLengthIdx < len(docLengths) {
@@ -111,12 +108,10 @@ func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *Cla
 			} else if !found {
 				break
 			}
-			docLength := docLengths[docLengthIdx].Length
+			dl := float64(docLengths[docLengthIdx].Length)
 			docLengths = docLengths[1+docLengthIdx:]
 
 			// Inlined NormalizedTF: identical operations, identical grouping.
-			tf := float64(freq)
-			dl := float64(docLength)
 			lengthRatio := dl / avgDocLength
 			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
@@ -132,14 +127,11 @@ func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *Cla
 			} else if !found {
 				break
 			}
-			freq := freqs[freqIdx].Frequency
+			tf := float64(freqs[freqIdx].Frequency)
 			freqs = freqs[1+freqIdx:]
 
-			var docLength = docLengths[docIdx].Length
-
 			// Inlined NormalizedTF: identical operations, identical grouping.
-			tf := float64(freq)
-			dl := float64(docLength)
+			dl := float64(docLengths[docIdx].Length)
 			lengthRatio := dl / avgDocLength
 			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
@@ -155,7 +147,7 @@ func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *Cla
 			} else if !found {
 				break
 			}
-			freq := freqs[freqIdx].Frequency
+			tf := float64(freqs[freqIdx].Frequency)
 			freqs = freqs[1+freqIdx:]
 
 			docLengthIdx, found := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
@@ -165,12 +157,10 @@ func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *Cla
 			} else if !found {
 				break
 			}
-			docLength := docLengths[docLengthIdx].Length
+			dl := float64(docLengths[docLengthIdx].Length)
 			docLengths = docLengths[1+docLengthIdx:]
 
 			// Inlined NormalizedTF: identical operations, identical grouping.
-			tf := float64(freq)
-			dl := float64(docLength)
 			lengthRatio := dl / avgDocLength
 			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)

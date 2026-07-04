@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.6.5](https://github.com/RogueTeam/textiplex/compare/v1.6.4...v1.6.5) (2026-07-04)
+
+
+### Bug Fixes
+
+* posting list size set to uint32 ([3d05875](https://github.com/RogueTeam/textiplex/commit/3d0587567334c5e438057a1c9b89e348b26b3620))
+* support for fixed frequency size in 32 bit uint ([95f7cb1](https://github.com/RogueTeam/textiplex/commit/95f7cb1cc3c4bb294594f3dfb50ce1a6381d353e))
+* updated readmes with new api ([6088542](https://github.com/RogueTeam/textiplex/commit/60885425f5f16526c6460fb17b454ce32e7a4e84))
+
 ### [1.6.4](https://github.com/RogueTeam/textiplex/compare/v1.6.3...v1.6.4) (2026-07-04)
 
 

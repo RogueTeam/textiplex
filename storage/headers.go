@@ -58,10 +58,9 @@ type TokenFrequencyEntry struct {
 	// Mapping this to a human readable key consist in
 	// indexing the document id on the document id table
 	DocumentIndex uint32
-	_/*Padding */ [4]byte
 	// Token frequency on this document
 	// this value is used by BM25
-	Frequency uint64
+	Frequency uint32
 }
 
 const TokenSize = unsafe.Sizeof(Token{})

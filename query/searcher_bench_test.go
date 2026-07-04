@@ -31,7 +31,7 @@ func prepareSearchCorpus() (s *storage.Storage) {
 		// Common pool: each common term appears with a frequency that varies by
 		// doc, giving a realistic TF distribution to score over.
 		for v := range benchVocabCommon {
-			freq := uint64(1 + (i+v)%5)
+			freq := uint32(1 + (i+v)%5)
 			tokens = append(tokens, testsuite.MakeToken(fmt.Sprintf("term-%d", v), freq))
 		}
 		// One unique, highly selective token per doc.

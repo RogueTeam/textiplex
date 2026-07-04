@@ -5,7 +5,7 @@ type TokenDefinition struct {
 	// The caller is responsible for normalization before insertion
 	Value []byte
 	// How many times this token appears in this field of this document
-	Frequency uint64
+	Frequency uint32
 }
 
 type FieldDefinition struct {

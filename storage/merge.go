@@ -105,8 +105,8 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 			for index := range freqs {
 				freq := &freqs[index]
 
-				binary.NativeEndian.PutUint32(ctx.Buffer[:], ctx.DocumentOffset+freq.DocumentIndex)
-				_, err = ctx.DstW.Write(ctx.Buffer[:])
+				binary.NativeEndian.PutUint32(ctx.Buffer[:4], ctx.DocumentOffset+freq.DocumentIndex)
+				_, err = ctx.DstW.Write(ctx.Buffer[:4])
 				if err != nil {
 					return fmt.Errorf("failed to write B's token frequency index: %w", err)
 				}
@@ -138,8 +138,8 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 					for index := range freqsB {
 						freq := &freqsB[index]
 
-						binary.NativeEndian.PutUint32(ctx.Buffer[:], ctx.DocumentOffset+freq.DocumentIndex)
-						_, err = ctx.DstW.Write(ctx.Buffer[:])
+						binary.NativeEndian.PutUint32(ctx.Buffer[:4], ctx.DocumentOffset+freq.DocumentIndex)
+						_, err = ctx.DstW.Write(ctx.Buffer[:4])
 						if err != nil {
 							return fmt.Errorf("failed to write B's token frequency index: %w", err)
 						}
@@ -181,8 +181,8 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 						for index := range freqsB {
 							freq := &freqsB[index]
 
-							binary.NativeEndian.PutUint32(ctx.Buffer[:], ctx.DocumentOffset+freq.DocumentIndex)
-							_, err = ctx.DstW.Write(ctx.Buffer[:])
+							binary.NativeEndian.PutUint32(ctx.Buffer[:4], ctx.DocumentOffset+freq.DocumentIndex)
+							_, err = ctx.DstW.Write(ctx.Buffer[:4])
 							if err != nil {
 								return fmt.Errorf("failed to write B's token frequency index: %w", err)
 							}
@@ -214,8 +214,8 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 						for index := range freqsB {
 							freq := &freqsB[index]
 
-							binary.NativeEndian.PutUint32(ctx.Buffer[:], ctx.DocumentOffset+freq.DocumentIndex)
-							_, err = ctx.DstW.Write(ctx.Buffer[:])
+							binary.NativeEndian.PutUint32(ctx.Buffer[:4], ctx.DocumentOffset+freq.DocumentIndex)
+							_, err = ctx.DstW.Write(ctx.Buffer[:4])
 							if err != nil {
 								return fmt.Errorf("failed to write B's token frequency index: %w", err)
 							}

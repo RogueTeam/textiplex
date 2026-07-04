@@ -9,7 +9,7 @@ import (
 
 // MakeToken creates a TokenDefinition with the given normalized value and frequency.
 // The caller is responsible for normalization before passing the value.
-func MakeToken[T ~string | []byte](value T, freq uint64) *storage.TokenDefinition {
+func MakeToken[T ~string | []byte](value T, freq uint32) *storage.TokenDefinition {
 	return &storage.TokenDefinition{Value: []byte(value), Frequency: freq}
 }
 

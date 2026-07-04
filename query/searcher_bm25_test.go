@@ -1045,7 +1045,7 @@ func TestPropertyResultsSortedByScore(t *testing.T) {
 		docs = append(docs, testsuite.MakeDoc(
 			fmt.Sprintf("doc-%03d", i),
 			testsuite.MakeField(fieldBody, uint64(fieldLen),
-				testsuite.MakeToken("contrato", uint64(tf)),
+				testsuite.MakeToken("contrato", uint32(tf)),
 				testsuite.MakeToken(fmt.Sprintf("uniq%03d", i), 1)),
 		))
 	}
@@ -2195,7 +2195,7 @@ func TestPropertyInvariantsExtended(t *testing.T) {
 			r := rand.New(rand.NewSource(303))
 			docs := make([]*storage.Document, 0, n)
 			for i := range n {
-				tf := uint64(1 + r.Intn(4))
+				tf := uint32(1 + r.Intn(4))
 				docs = append(docs, testsuite.MakeDoc(
 					fmt.Sprintf("doc-%03d", i),
 					testsuite.MakeField(fieldBody, 8, testsuite.MakeToken("contrato", tf))))
@@ -2225,7 +2225,7 @@ func TestPropertyInvariantsExtended(t *testing.T) {
 		for i := range n {
 			titleLen := uint64(1 + rng.Intn(3))
 			bodyLen := uint64(5 + rng.Intn(20))
-			tf := uint64(1 + rng.Intn(int(bodyLen)))
+			tf := uint32(1 + rng.Intn(int(bodyLen)))
 			docs = append(docs, testsuite.MakeDoc(
 				fmt.Sprintf("doc-%03d", i),
 				testsuite.MakeField(fieldTitle, titleLen, testsuite.MakeToken("titulo", 1)),
@@ -2255,7 +2255,7 @@ func TestPropertyInvariantsExtended(t *testing.T) {
 		const n = 22
 		base := make([]*storage.Document, 0, n)
 		for i := range n {
-			tf := uint64(1 + rng.Intn(5))
+			tf := uint32(1 + rng.Intn(5))
 			base = append(base, testsuite.MakeDoc(
 				fmt.Sprintf("doc-%03d", i),
 				testsuite.MakeField(fieldBody, 12, testsuite.MakeToken("contrato", tf))))

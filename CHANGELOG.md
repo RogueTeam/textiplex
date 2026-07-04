@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.6.3](https://github.com/RogueTeam/textiplex/compare/v1.6.2...v1.6.3) (2026-07-04)
+
+
+### Bug Fixes
+
+* multiple performance improvements for query engine ([#5](https://github.com/RogueTeam/textiplex/issues/5)) ([b0df7d9](https://github.com/RogueTeam/textiplex/commit/b0df7d9259c28f07ee68ed4f90621973fdfe63ab))
+
 ### [1.6.2](https://github.com/RogueTeam/textiplex/compare/v1.6.1...v1.6.2) (2026-06-29)
 
 

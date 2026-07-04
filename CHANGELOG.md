@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.6.6](https://github.com/RogueTeam/textiplex/compare/v1.6.5...v1.6.6) (2026-07-04)
+
+
+### Bug Fixes
+
+* improved test to summarize memory usage ([3ce19eb](https://github.com/RogueTeam/textiplex/commit/3ce19ebf4a0df1a6c12387e1eb9df7cbfb4a3e5c))
+* optimize size by using less memory per dl struct ([99ccf5e](https://github.com/RogueTeam/textiplex/commit/99ccf5e9f86729568e274f2ae4d9c756fb92c3d2))
+* reduce memory usage in buildfrom calls ([00007a4](https://github.com/RogueTeam/textiplex/commit/00007a49a557a4eb455279a1a6340ee8adec6075))
+
 ### [1.6.5](https://github.com/RogueTeam/textiplex/compare/v1.6.4...v1.6.5) (2026-07-04)
 
 

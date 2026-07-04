@@ -33,27 +33,21 @@ func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint32) {
 		score  float64
 	}
 
-	scores := make([]scoreEntry, 0, ctx.Bitmap.GetCardinality())
+	// ToArray is a per-container bulk fill, far cheaper than draining a
+	// ManyIterator in fixed-size batches, and the ascending order is the same.
+	candidates := ctx.Bitmap.ToArray()
+	scores := make([]scoreEntry, 0, len(candidates))
 
-	var docIdxs [ManyIteratorBatchSize]uint32
-	it := ctx.Bitmap.ManyIterator()
-	for {
-		n := it.NextMany(docIdxs[:])
-		for _, docIdx := range docIdxs[:n] {
-			score := ctx.Scores[docIdx]
-			if score == 0 {
-				continue
-			}
-
-			scores = append(scores, scoreEntry{
-				score:  score,
-				docIdx: docIdx,
-			})
+	for _, docIdx := range candidates {
+		score := ctx.Scores[docIdx]
+		if score == 0 {
+			continue
 		}
 
-		if n < len(docIdxs) {
-			break
-		}
+		scores = append(scores, scoreEntry{
+			score:  score,
+			docIdx: docIdx,
+		})
 	}
 
 	slices.SortFunc(

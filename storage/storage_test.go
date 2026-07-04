@@ -246,7 +246,7 @@ func TestPostingLists(t *testing.T) {
 
 			assertions.Equal(tc.wantDocFreq, tok.FrequencyCount)
 
-			s.PostingLists[tok.PostingListIndex].Bitmap(&bitmapForPostingListRetrieval)
+			s.PostingLists[tok.PostingListIndex].UnsafeBitmap(&bitmapForPostingListRetrieval)
 			assertions.Equal(tc.wantDocIndices, bitmapForPostingListRetrieval.ToArray())
 		})
 	}
@@ -433,8 +433,8 @@ func TestRoundTrip(t *testing.T) {
 							assertions.Equal(origTok.FrequencyCount, loadedTok.FrequencyCount)
 							assertions.Equal(origTok.Value, loadedTok.Value)
 
-							original.PostingLists[origTok.PostingListIndex].Bitmap(&origBitmapForPostingListRetrieval)
-							loaded.PostingLists[loadedTok.PostingListIndex].Bitmap(&loadedBitmapForPostingListRetrieval)
+							original.PostingLists[origTok.PostingListIndex].UnsafeBitmap(&origBitmapForPostingListRetrieval)
+							loaded.PostingLists[loadedTok.PostingListIndex].UnsafeBitmap(&loadedBitmapForPostingListRetrieval)
 
 							assertions.Equal(origBitmapForPostingListRetrieval.GetCardinality(), loadedBitmapForPostingListRetrieval.GetCardinality())
 

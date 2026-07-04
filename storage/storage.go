@@ -169,9 +169,8 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 	s.Size = uint64(HeaderSize)
 
 	type PostingData struct {
-		Value  []byte
-		Bitmap *roaring.Bitmap
-		Freqs  []TokenFrequencyEntry
+		Value []byte
+		Freqs []TokenFrequencyEntry
 	}
 	type FieldAccumulator struct {
 		TotalLength                uint64
@@ -186,7 +185,6 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 
 	fieldAccPool := pool.New[FieldAccumulator](20)
 	pdPool := pool.New[PostingData](20)
-	bitmapPool := pool.New[roaring.Bitmap](20)
 
 	for docIndex, doc := range docs {
 		s.DocumentsIds[docIndex] = doc.Id
@@ -235,12 +233,11 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 				if !found {
 					postingListsCounter++
 					pd = pdPool.Get()
-					*pd = PostingData{Value: tokenDef.Value, Bitmap: bitmapPool.Get()}
+					*pd = PostingData{Value: tokenDef.Value}
 					fieldAccumulator.Tokens.Set(pd)
 					s.Size += uint64(TokenSize)
 				}
 
-				pd.Bitmap.Add(internalID)
 				pd.Freqs = append(pd.Freqs, TokenFrequencyEntry{
 					DocumentIndex: internalID,
 					Frequency:     tokenDef.Frequency,
@@ -255,7 +252,14 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 	s.PostingLists = make([]PostingList, 0, postingListsCounter)
 	s.TokenFrequencies = make([]TokenFrequencyEntry, 0, tokensFreqsCounter)
 
-	var fieldsPool = pool.New[Field](20)
+	// A single reused bitmap plus a reused scratch buffer. Posting lists are
+	// serialized one token at a time from that token's frequency entries (which
+	// are ascending by construction), so at most one roaring bitmap is live for
+	// the entire pass instead of one per token.
+	var workBitmap roaring.Bitmap
+	var docIDs []uint32
+
+	var fieldsPool = pool.New[Field](len(fieldsAccumulators))
 	for fieldHash, acc := range fieldsAccumulators {
 		field := fieldsPool.Get()
 
@@ -275,9 +279,19 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 		for valid := it.First(); valid; valid = it.Next() {
 			pd := it.Item()
 
-			size := int(pd.Bitmap.GetSerializedSizeInBytes())
+			// Rebuild the token's document set into the reused bitmap.
+			workBitmap.Clear()
+			if cap(docIDs) < len(pd.Freqs) {
+				docIDs = make([]uint32, 0, len(pd.Freqs))
+			}
+			docIDs = docIDs[:0]
+			for i := range pd.Freqs {
+				docIDs = append(docIDs, pd.Freqs[i].DocumentIndex)
+			}
+			workBitmap.AddMany(docIDs)
 
-			pdBytes, _ := pd.Bitmap.MarshalBinary()
+			size := int(workBitmap.GetSerializedSizeInBytes())
+			pdBytes, _ := workBitmap.MarshalBinary()
 
 			s.Size += uint64(PostingListHeaderSize)
 			s.Size += uint64(size)
@@ -291,18 +305,26 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 			token := &field.Tokens[tokenIdx]
 			tokenIdx++
 			*token = Token{
-				FrequencyCount:   pd.Bitmap.GetCardinality(),
+				FrequencyCount:   workBitmap.GetCardinality(),
 				PostingListIndex: plIndex,
 				FrequenciesIndex: freqIndex,
 				Value:            RawValueFrom(pd.Value),
 			}
+
+			// The frequency slice is now copied into the contiguous region; drop
+			// the per-token backing array so the GC can reclaim it during the
+			// pass rather than all at once at the end.
+			pd.Freqs = nil
 		}
 		it.Release()
 
 		s.Fields[fieldHash] = field
-	}
 
-	clear(fieldsAccumulators)
+		// Release this field's accumulator before moving on, bounding the live
+		// working set to roughly a single field.
+		acc.Tokens = nil
+		delete(fieldsAccumulators, fieldHash)
+	}
 }
 
 // Saves the file to the target file

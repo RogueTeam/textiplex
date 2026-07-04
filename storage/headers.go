@@ -112,9 +112,8 @@ const DocumentLengthEntrySize = unsafe.Sizeof(DocumentLengthEntry{})
 type DocumentLengthEntry struct {
 	// Index of the document referenced
 	Index uint32
-	_/*Padding */ [4]byte
 	// Actual length of the document in number of tokens
-	Length uint64
+	Length uint32
 }
 
 type DocumentId struct {

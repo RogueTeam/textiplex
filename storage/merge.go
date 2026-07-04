@@ -545,8 +545,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		for index := range field.DocumentLengths {
 			dl := &field.DocumentLengths[index]
 
-			binary.NativeEndian.PutUint32(ctx.Buffer[:], ctx.DocumentOffset+dl.Index)
-			_, err = ctx.DstW.Write(ctx.Buffer[:])
+			binary.NativeEndian.PutUint32(ctx.Buffer[:4], ctx.DocumentOffset+dl.Index)
+			_, err = ctx.DstW.Write(ctx.Buffer[:4])
 			if err != nil {
 				return fmt.Errorf("failed to write B's document length index: %w: %d:%d", err, fieldHash, dl.Index)
 			}
@@ -643,8 +643,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 		for index := range fieldB.DocumentLengths {
 			dl := &fieldB.DocumentLengths[index]
-			binary.NativeEndian.PutUint32(ctx.Buffer[:], ctx.DocumentOffset+dl.Index)
-			_, err = ctx.DstW.Write(ctx.Buffer[:])
+			binary.NativeEndian.PutUint32(ctx.Buffer[:4], ctx.DocumentOffset+dl.Index)
+			_, err = ctx.DstW.Write(ctx.Buffer[:4])
 			if err != nil {
 				return fmt.Errorf("failed to write Collision document length: %w: %d:%d", err, fieldHash, dl.Index)
 			}

@@ -188,7 +188,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 
 	for docIndex, doc := range docs {
 		s.DocumentsIds[docIndex] = doc.Id
-		internalID := uint32(docIndex)
+		docIdxUi32 := uint32(docIndex)
 
 		// doc id header + doc id bytes
 		s.Size += uint64(DocumentIdSize)
@@ -213,10 +213,10 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 
 			if fieldDef.Length > 0 {
 				fieldAccumulator.DocumentsLengths = append(fieldAccumulator.DocumentsLengths, DocumentLengthEntry{
-					Index:  internalID,
+					Index:  docIdxUi32,
 					Length: fieldDef.Length,
 				})
-				fieldAccumulator.TotalLength += fieldDef.Length
+				fieldAccumulator.TotalLength += uint64(fieldDef.Length)
 				fieldAccumulator.DocumentsCount++
 
 				// doc length entry
@@ -239,7 +239,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 				}
 
 				pd.Freqs = append(pd.Freqs, TokenFrequencyEntry{
-					DocumentIndex: internalID,
+					DocumentIndex: docIdxUi32,
 					Frequency:     tokenDef.Frequency,
 				})
 				tokensFreqsCounter++
@@ -399,8 +399,7 @@ func (s *Storage) SaveTo(name string) (err error) {
 			docLength := &field.DocumentLengths[index]
 
 			out = binary.NativeEndian.AppendUint32(out, docLength.Index)
-			out = append(out, 0, 0, 0, 0) // Padding
-			out = binary.NativeEndian.AppendUint64(out, docLength.Length)
+			out = binary.NativeEndian.AppendUint32(out, docLength.Length)
 		}
 
 		for tokenIdx := range field.Tokens {

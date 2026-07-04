@@ -11,13 +11,13 @@ type TokenDefinition struct {
 type FieldDefinition struct {
 	// xxh3 hash of the field name
 	Hash uint64
-	// Total number of tokens in this field for this document
-	// Used to update avgdl and store as DocumentLengthEntry
-	Length uint64
 	// Tokens found in this field for this document
 	// Caller must deduplicate — one entry per unique token
 	// Frequency carries the count of occurrences
 	Tokens []*TokenDefinition
+	// Total number of tokens in this field for this document
+	// Used to update avgdl and store as DocumentLengthEntry
+	Length uint32
 }
 
 type Document struct {

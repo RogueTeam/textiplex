@@ -15,7 +15,7 @@ func MakeToken[T ~string | []byte](value T, freq uint32) *storage.TokenDefinitio
 
 // MakeField creates a FieldDefinition with the given xxh3 field hash, total token
 // length for this document, and the list of token definitions.
-func MakeField(hash uint64, length uint64, tokens ...*storage.TokenDefinition) *storage.FieldDefinition {
+func MakeField(hash uint64, length uint32, tokens ...*storage.TokenDefinition) *storage.FieldDefinition {
 	return &storage.FieldDefinition{Hash: hash, Length: length, Tokens: tokens}
 }
 

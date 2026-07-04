@@ -48,7 +48,7 @@ type FieldHeader struct {
 const PostingListHeaderSize = unsafe.Sizeof(PostingListHeader{})
 
 type PostingListHeader struct {
-	Size uint64
+	Size uint32
 }
 
 const TokenFrequencyEntrySize = unsafe.Sizeof(TokenFrequencyEntry{})

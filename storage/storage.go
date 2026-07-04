@@ -396,7 +396,7 @@ func (s *Storage) SaveTo(name string) (err error) {
 	for index := range s.PostingLists {
 		pl := &s.PostingLists[index]
 
-		out = binary.NativeEndian.AppendUint64(out, uint64(len(pl.Data)))
+		out = binary.NativeEndian.AppendUint32(out, uint32(len(pl.Data)))
 		out = append(out, pl.Data...)
 	}
 
@@ -566,7 +566,7 @@ func (s *Storage) Load(name string) (err error) {
 		pHeader := (*PostingListHeader)(unsafe.Pointer(&inUseBuffer[0]))
 		inUseBuffer = inUseBuffer[PostingListHeaderSize:]
 
-		if uint64(len(inUseBuffer)) < pHeader.Size {
+		if uint32(len(inUseBuffer)) < pHeader.Size {
 			return fmt.Errorf("not enough space for loading posting list %d from buffer", index)
 		}
 

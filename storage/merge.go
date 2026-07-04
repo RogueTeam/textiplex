@@ -719,8 +719,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			addOffsetFrom(&ctx, &ctx.ReusableBitmap, &ctx.BitmapForPostingListRetrieval)
 
 			size := ctx.ReusableBitmap.GetSerializedSizeInBytes()
-			binary.NativeEndian.PutUint64(ctx.Buffer[:], size)
-			_, err = ctx.DstW.Write(ctx.Buffer[:])
+			binary.NativeEndian.PutUint32(ctx.Buffer[:4], uint32(size))
+			_, err = ctx.DstW.Write(ctx.Buffer[:4])
 			if err != nil {
 				return fmt.Errorf("failed to write length of posting list A&B: %w", err)
 			}
@@ -732,8 +732,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		case pending.IndexA != -1:
 			rawA := &a.PostingLists[pending.IndexA]
 
-			binary.NativeEndian.PutUint64(ctx.Buffer[:], uint64(len(rawA.Data)))
-			_, err = ctx.DstW.Write(ctx.Buffer[:])
+			binary.NativeEndian.PutUint32(ctx.Buffer[:4], uint32(len(rawA.Data)))
+			_, err = ctx.DstW.Write(ctx.Buffer[:4])
 			if err != nil {
 				return fmt.Errorf("failed to write length of posting list A: %w", err)
 			}
@@ -751,8 +751,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			addOffsetFrom(&ctx, &ctx.ReusableBitmap, &ctx.BitmapForPostingListRetrieval)
 
 			size := ctx.ReusableBitmap.GetSerializedSizeInBytes()
-			binary.NativeEndian.PutUint64(ctx.Buffer[:], size)
-			_, err = ctx.DstW.Write(ctx.Buffer[:])
+			binary.NativeEndian.PutUint32(ctx.Buffer[:4], uint32(size))
+			_, err = ctx.DstW.Write(ctx.Buffer[:4])
 			if err != nil {
 				return fmt.Errorf("failed to write length of posting list A&B: %w", err)
 			}

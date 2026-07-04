@@ -566,7 +566,7 @@ func (s *Storage) Load(name string) (err error) {
 		pHeader := (*PostingListHeader)(unsafe.Pointer(&inUseBuffer[0]))
 		inUseBuffer = inUseBuffer[PostingListHeaderSize:]
 
-		if uint32(len(inUseBuffer)) < pHeader.Size {
+		if uint64(len(inUseBuffer)) < uint64(pHeader.Size) {
 			return fmt.Errorf("not enough space for loading posting list %d from buffer", index)
 		}
 

@@ -16,7 +16,7 @@ Most search engines in Go are ports or wrappers of JVM-era architectures — Luc
 
 **Fixed-size records.** Doc IDs and token entries are fixed-stride records (a `RawValue` is an 8-byte length plus a 128-byte inline buffer). Because every record has the same size, the doc ID table and each field's token table are mapped directly over the mmap'd file as native Go slices with zero allocation and zero deserialization — no per-record length prefixes to walk, no btree to rebuild at load time. Sorted token tables are binary-searched in place. This single decision is what moved Wikipedia from "OOM at 5%" to "fully indexed".
 
-**Ownership-aware bitmaps.** A posting list loaded from disk is just a `[]byte` slice pointing into the kernel page cache. Decoding it into a roaring bitmap (`PostingList.Bitmap`) is zero-copy via `FromUnsafeBytes`; any code path that needs to mutate clones first, while read-only paths skip the clone entirely.
+**Ownership-aware bitmaps.** A posting list loaded from disk is just a `[]byte` slice pointing into the kernel page cache. Decoding it into a roaring bitmap (`PostingList.UnsafeBitmap`) is zero-copy via `FromUnsafeBytes`; any code path that needs to mutate clones first, while read-only paths skip the clone entirely.
 
 ## Benchmarks
 
@@ -52,7 +52,7 @@ The entire run stayed inside a bounded memory envelope on a consumer desktop CPU
 |---|---|---|---|---|
 | **textiplex** `BuildFrom` | **2.84s** | — | **2.12 GB** | **33.5M** |
 | **textiplex** `Merge` 2×500K→1M | **1.35s** | **375 MB/s** | **0.71 GB** | **19.5M** |
-| **textiplex** `LoadBytes` | **0.63s** | **804 MB/s** | **0.78 GB** | **27.0M** |
+| **textiplex** `Load` | **0.63s** | **804 MB/s** | **0.78 GB** | **27.0M** |
 | Bluge fork (offline) | 5.47s | — | 6.34 GB | 104.9M |
 | Bluge upstream (offline) | 12.28s | — | 8.20 GB | 131.0M |
 | Bleve (offline) | 24.28s | — | 10.07 GB | 146.5M |
@@ -93,9 +93,9 @@ Boolean query benchmarks, same 1M-doc corpus (lower is better):
 │   position = internal doc ID; loaded zero-copy)     │
 ├─────────────────────────────────────────────────────┤
 │           TOKEN FREQUENCIES REGION                  │
-│  [doc_index (4B) | padding (4B) | frequency (8B)]   │
+│  [doc_index (4B) | frequency (4B)]                  │
 │  × total_token_frequencies                          │
-│  (fixed 16B stride)                                 │
+│  (fixed 8B stride)                                  │
 ├─────────────────────────────────────────────────────┤
 │                 FIELD BLOCKS                        │
 │  ┌───────────────────────────────────────────────┐  │
@@ -114,21 +114,21 @@ Boolean query benchmarks, same 1M-doc corpus (lower is better):
 │  │   frequencies_index (8B) |                    │  │
 │  │   value_size (8B) | value_data (128B)]        │  │
 │  │  × token_count                                │  │
-│  │  (fixed 152B stride; sorted alphabetically;   │  │
+│  │  (fixed 160B stride; sorted alphabetically;   │  │
 │  │   binary-searchable in place, no btree)       │  │
 │  └───────────────────────────────────────────────┘  │
 ├─────────────────────────────────────────────────────┤
 │              POSTING LISTS REGION                   │
-│  [bitmap_size (8B) | roaring bitmap bytes]          │
+│  [bitmap_size (4B) | roaring bitmap bytes]          │
 │  × total_posting_lists                              │
 └─────────────────────────────────────────────────────┘
 ```
 
 ### Invariants
 
-- Doc IDs and token values are stored as `RawValue`: an 8-byte length plus a fixed `MaxRawValueSize`-byte (currently **128**) inline buffer. The doc ID stride is therefore **136 B**; the token entry stride (3 × 8 B index fields + `RawValue`) is **152 B**. Both allow the respective tables to be mapped directly over the mmap'd file as native Go slices with zero allocation and zero deserialization.
+- Doc IDs and token values are stored as `RawValue`: an 8-byte length plus a fixed `MaxRawValueSize`-byte (currently **128**) inline buffer. The doc ID stride is therefore **136 B**; the token entry stride (3 × 8 B index fields + `RawValue`) is **160 B**. Both allow the respective tables to be mapped directly over the mmap'd file as native Go slices with zero allocation and zero deserialization.
 - Doc IDs sorted alphabetically. Position in the table is the internal doc ID used in posting lists and TF entries.
-- Token frequencies are written immediately after the doc ID table, before the field blocks. The `FrequenciesIndex` field in each token entry is an absolute offset into this region.
+- Token frequencies are written immediately after the doc ID table, before the field blocks. Each entry is a packed 8 B record (`doc_index uint32 | frequency uint32`, no padding); the `FrequenciesIndex` field in each token entry is an absolute offset into this region.
 - Doc length entries within each field sorted by `doc_index` ascending, enabling merge-scan during BM25 scoring.
 - Token entries within each field sorted alphabetically, enabling binary search and range iteration.
 - TF entries for a token are contiguous: `TokenFrequencies[FrequenciesIndex : FrequenciesIndex+FrequencyCount]`.

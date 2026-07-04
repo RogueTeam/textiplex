@@ -3,6 +3,7 @@ package query
 import (
 	"cmp"
 	"slices"
+	"strings"
 
 	"github.com/RogueTeam/textiplex/storage"
 )
@@ -55,7 +56,7 @@ func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint32) {
 		func(a, b scoreEntry) int {
 			scoreCmp := cmp.Compare(b.score, a.score)
 			if scoreCmp == 0 {
-				return cmp.Compare(b.docIdx, a.docIdx)
+				return strings.Compare(s.Storage.DocumentsIds[b.docIdx].Value.UnsafeString(), s.Storage.DocumentsIds[a.docIdx].Value.UnsafeString())
 			}
 			return scoreCmp
 		},

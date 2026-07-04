@@ -27,7 +27,7 @@ func verbatim(in []byte) iter.Seq[*tokenizer.Token] {
 
 func BuildStorageFromDocs(docs ...*storage.Document) *storage.Storage {
 	s := &storage.Storage{}
-	s.SortAndBuildFrom(docs...)
+	s.BuildFrom(docs...)
 	return s
 }
 

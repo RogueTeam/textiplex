@@ -66,7 +66,7 @@ func TestShouldSingleTerm(t *testing.T) {
 			assertions := assert.New(t)
 
 			var s storage.Storage
-			s.SortAndBuildFrom(tc.docs...)
+			s.BuildFrom(tc.docs...)
 
 			q := &query.SimpleQuery{}
 			q.Shoulds.Keyword([]byte(tc.term), 1.0, 0)
@@ -100,7 +100,7 @@ func TestRankingByTermFrequency(t *testing.T) {
 	// Both docs have identical length, so only raw TF separates them.
 	// doc-hi mentions the term 5 times, doc-lo once.
 	var s storage.Storage
-	s.SortAndBuildFrom(
+	s.BuildFrom(
 		testsuite.MakeDoc("doc-lo", testsuite.MakeField(fieldBody, 10, testsuite.MakeToken("contrato", 1))),
 		testsuite.MakeDoc("doc-hi", testsuite.MakeField(fieldBody, 10, testsuite.MakeToken("contrato", 5))),
 	)
@@ -126,7 +126,7 @@ func TestRankingByDocumentLength(t *testing.T) {
 	// Same TF (1) but different field length. The shorter doc is denser in the
 	// term and must score higher under BM25 length normalization.
 	var s storage.Storage
-	s.SortAndBuildFrom(
+	s.BuildFrom(
 		testsuite.MakeDoc("doc-long", testsuite.MakeField(fieldBody, 100, testsuite.MakeToken("contrato", 1))),
 		testsuite.MakeDoc("doc-short", testsuite.MakeField(fieldBody, 2, testsuite.MakeToken("contrato", 1))),
 	)
@@ -149,7 +149,7 @@ func TestRankingByInverseDocumentFrequency(t *testing.T) {
 	// the rare term should outscore a doc matched only by the common term, all
 	// else equal (same length, same TF).
 	var s storage.Storage
-	s.SortAndBuildFrom(
+	s.BuildFrom(
 		testsuite.MakeDoc("doc-rare", testsuite.MakeField(fieldBody, 4, testsuite.MakeToken("rare", 1))),
 		testsuite.MakeDoc("doc-common", testsuite.MakeField(fieldBody, 4, testsuite.MakeToken("common", 1))),
 		testsuite.MakeDoc("doc-pad1", testsuite.MakeField(fieldBody, 4, testsuite.MakeToken("common", 1))),
@@ -175,7 +175,7 @@ func TestMustIntersection(t *testing.T) {
 
 	// Only doc-ab contains BOTH terms; Must clauses must intersect.
 	var s storage.Storage
-	s.SortAndBuildFrom(
+	s.BuildFrom(
 		testsuite.MakeDoc("doc-a", testsuite.MakeField(fieldBody, 2,
 			testsuite.MakeToken("contrato", 1), testsuite.MakeToken("solo", 1))),
 		testsuite.MakeDoc("doc-ab", testsuite.MakeField(fieldBody, 2,
@@ -200,7 +200,7 @@ func TestMustNotExclusion(t *testing.T) {
 	assertions := assert.New(t)
 
 	var s storage.Storage
-	s.SortAndBuildFrom(
+	s.BuildFrom(
 		testsuite.MakeDoc("doc-keep", testsuite.MakeField(fieldBody, 2,
 			testsuite.MakeToken("contrato", 1), testsuite.MakeToken("limpio", 1))),
 		testsuite.MakeDoc("doc-drop", testsuite.MakeField(fieldBody, 2,
@@ -227,7 +227,7 @@ func TestCombinedClauses(t *testing.T) {
 
 	// Must: "contrato". Should: "bogota" (boosts ranking). MustNot: "anulado".
 	var s storage.Storage
-	s.SortAndBuildFrom(
+	s.BuildFrom(
 		// has contrato + bogota, no anulado -> matches, boosted
 		testsuite.MakeDoc("doc-best", testsuite.MakeField(fieldBody, 3,
 			testsuite.MakeToken("contrato", 1), testsuite.MakeToken("bogota", 1))),
@@ -261,7 +261,7 @@ func TestFieldScopedKeyword(t *testing.T) {
 	// "alerta" lives in the title of doc-title and in the body of doc-body.
 	// A FieldKeyword scoped to fieldTitle must match only doc-title.
 	var s storage.Storage
-	s.SortAndBuildFrom(
+	s.BuildFrom(
 		testsuite.MakeDoc("doc-title",
 			testsuite.MakeField(fieldTitle, 1, testsuite.MakeToken("alerta", 1)),
 			testsuite.MakeField(fieldBody, 2, testsuite.MakeToken("relleno", 1)),
@@ -288,7 +288,7 @@ func TestBoostAffectsScore(t *testing.T) {
 
 	build := func() *storage.Storage {
 		s := &storage.Storage{}
-		s.SortAndBuildFrom(
+		s.BuildFrom(
 			testsuite.MakeDoc("doc-a", testsuite.MakeField(fieldBody, 4, testsuite.MakeToken("contrato", 1))),
 		)
 		return s
@@ -316,7 +316,7 @@ func TestEmptyQuery(t *testing.T) {
 	assertions := assert.New(t)
 
 	var s storage.Storage
-	s.SortAndBuildFrom(
+	s.BuildFrom(
 		testsuite.MakeDoc("doc-a", testsuite.MakeField(fieldBody, 1, testsuite.MakeToken("contrato", 1))),
 	)
 
@@ -373,7 +373,7 @@ func TestBM25Primitives(t *testing.T) {
 // buildStorage sorts and indexes docs, returning a ready *storage.Storage.
 func buildStorage(docs ...*storage.Document) *storage.Storage {
 	s := &storage.Storage{}
-	s.SortAndBuildFrom(docs...)
+	s.BuildFrom(docs...)
 	return s
 }
 
@@ -2065,7 +2065,7 @@ func TestStructuralInvariantsExtended(t *testing.T) {
 		idxR, ctxR := testsuite.RunQuery(mk(), reverse)
 
 		assertions.Equal(testsuite.ResolveDocumentIndexes(forward, idxF), testsuite.ResolveDocumentIndexes(reverse, idxR),
-			"SortAndBuildFrom must canonicalize input order")
+			"BuildFrom must canonicalize input order")
 		for _, id := range []string{"doc-a", "doc-b", "doc-c"} {
 			assertions.InDelta(scoreByID(forward, ctxF, id), scoreByID(reverse, ctxR, id), 1e-12)
 		}

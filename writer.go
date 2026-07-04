@@ -29,7 +29,7 @@ type Writer struct {
 // Thread safe handler for indexing data into textiplex
 func (w *Writer) Batch(batch *fields.Batch) (err error) {
 	var stg storage.Storage
-	stg.SortAndBuildFrom(batch.Documents...)
+	stg.BuildFrom(batch.Documents...)
 
 	filename := path.Join(w.Directory, fmt.Sprintf("%016X.seg", w.SegmentCounter.Add(1)))
 	err = stg.SaveTo(filename)

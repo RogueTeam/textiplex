@@ -24,7 +24,7 @@ func RunQuery(q *query.SimpleQuery, s *storage.Storage) (idxs []uint32, ctx *que
 }
 
 // IndexOfDocument returns the internal index assigned to an external doc id after
-// the alphabetical sort performed by SortAndBuildFrom.
+// the alphabetical sort performed by BuildFrom.
 func IndexOfDocument(s *storage.Storage, id string) (uint32, bool) {
 	asBytes := []byte(id)
 	for i := range s.DocumentsIds {

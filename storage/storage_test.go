@@ -1,9 +1,7 @@
 package storage_test
 
 import (
-	"bytes"
 	"os"
-	"slices"
 	"testing"
 
 	"github.com/RoaringBitmap/roaring"
@@ -12,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// ── SortAndBuildFrom / BuildFrom ───────────────────────────────────────────────
+// ── BuildFrom / BuildFrom ───────────────────────────────────────────────
 
 func TestBuildFrom(t *testing.T) {
 	type Test struct {
@@ -36,13 +34,13 @@ func TestBuildFrom(t *testing.T) {
 			wantDocIDs: []string{"doc-a"},
 		},
 		{
-			name: "documents sorted alphabetically by id",
+			name: "documents ignored sorted alphabetically by id",
 			docs: []*storage.Document{
 				testsuite.MakeDoc("zzz"),
 				testsuite.MakeDoc("aaa"),
 				testsuite.MakeDoc("mmm"),
 			},
-			wantDocIDs: []string{"aaa", "mmm", "zzz"},
+			wantDocIDs: []string{"zzz", "aaa", "mmm"},
 		},
 		{
 			name: "multiple documents multiple fields",
@@ -64,7 +62,7 @@ func TestBuildFrom(t *testing.T) {
 			assertions := assert.New(t)
 
 			var s storage.Storage
-			s.SortAndBuildFrom(tc.docs...)
+			s.BuildFrom(tc.docs...)
 
 			if !assertions.True(s.Initialized) {
 				return
@@ -79,14 +77,6 @@ func TestBuildFrom(t *testing.T) {
 					assertions.Equal(wantID, s.DocumentsIds[i].Value.UnsafeString(), "document id doesn't match")
 				})
 			}
-
-			sorted := slices.IsSortedFunc(
-				s.DocumentsIds,
-				func(a, b storage.DocumentId) int {
-					return bytes.Compare(a.Value.Bytes(), b.Value.Bytes())
-				},
-			)
-			assertions.True(sorted, "DocumentsIds must be sorted alphabetically")
 		})
 	}
 }
@@ -150,7 +140,7 @@ func TestFieldStructure(t *testing.T) {
 			assertions := assert.New(t)
 
 			var s storage.Storage
-			s.SortAndBuildFrom(tc.docs...)
+			s.BuildFrom(tc.docs...)
 
 			field, ok := s.Fields[tc.fieldHash]
 			if !assertions.True(ok, "field %d must exist", tc.fieldHash) {
@@ -232,7 +222,7 @@ func TestPostingLists(t *testing.T) {
 			assertions := assert.New(t)
 
 			var s storage.Storage
-			s.SortAndBuildFrom(tc.docs...)
+			s.BuildFrom(tc.docs...)
 
 			field, ok := s.Fields[tc.fieldHash]
 			if !assertions.True(ok) {
@@ -302,7 +292,7 @@ func TestTokenFrequencies(t *testing.T) {
 			assertions := assert.New(t)
 
 			var s storage.Storage
-			s.SortAndBuildFrom(tc.docs...)
+			s.BuildFrom(tc.docs...)
 
 			field, ok := s.Fields[tc.fieldHash]
 			if !assertions.True(ok) {
@@ -391,7 +381,7 @@ func TestRoundTrip(t *testing.T) {
 			assertions := assert.New(t)
 
 			var original storage.Storage
-			original.SortAndBuildFrom(tc.docs...)
+			original.BuildFrom(tc.docs...)
 
 			loaded := testsuite.RoundTrip(t, &original)
 
@@ -474,7 +464,7 @@ func TestReset(t *testing.T) {
 			assertions := assert.New(t)
 
 			var s storage.Storage
-			s.SortAndBuildFrom(tc.docs...)
+			s.BuildFrom(tc.docs...)
 			if !assertions.True(s.Initialized) {
 				return
 			}
@@ -489,7 +479,7 @@ func TestReset(t *testing.T) {
 			assertions.Nil(s.PostingLists)
 			assertions.Nil(s.TokenFrequencies)
 
-			s.SortAndBuildFrom(tc.docs...)
+			s.BuildFrom(tc.docs...)
 			assertions.True(s.Initialized)
 			assertions.Len(s.DocumentsIds, len(tc.docs))
 		})

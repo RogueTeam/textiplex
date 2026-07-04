@@ -24,7 +24,7 @@ import (
 //   - first token  → highest score, last token → lowest score
 //   - exact scores are cardinality, cardinality-1, ... down to 1
 //   - ties (same token value) break by internal doc index ascending, which is
-//     alphabetical-by-id ascending after SortAndBuildFrom
+//     alphabetical-by-id ascending after BuildFrom
 //   - the candidate bitmap is honored: only docs in it are scored, and
 //     cardinality is the bitmap's cardinality, not the corpus size
 //   - a multi-valued field ranks a doc by its SMALLEST token
@@ -36,9 +36,9 @@ import (
 // Field hashes local to these tests. They must not collide with fieldBody(1),
 // fieldTitle(2) or fieldNotes(3) declared in searcher_bm25_test.go.
 const (
-	fieldAmount = uint64(10) // numeric sort field
-	fieldPrice  = uint64(11) // second numeric sort field (floats)
-	fieldKind   = uint64(12) // keyword field used to build candidate sets
+	fieldHash  = uint64(10) // numeric sort field
+	fieldPrice = uint64(11) // second numeric sort field (floats)
+	fieldKind  = uint64(12) // keyword field used to build candidate sets
 )
 
 // ── Core mechanism: first token wins, exact scores ───────────────────────────
@@ -109,13 +109,13 @@ func TestFieldScoreIntegerAscending(t *testing.T) {
 			for _, d := range tc.docs {
 				docs = append(docs,
 					testsuite.MakeDoc(d.id,
-						testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(d.val), 1)),
+						testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(d.val), 1)),
 					),
 				)
 			}
 			s := buildStorage(docs...)
 
-			idxs, ctx := testsuite.RunFieldScore(s, fieldAmount, nil)
+			idxs, ctx := testsuite.RunFieldScore(s, fieldHash, nil)
 
 			assertions.Equal(tc.want, testsuite.ResolveDocumentIndexes(s, idxs), "must be ascending by integer value")
 			assertSortedDescByScore(assertions, ctx, idxs)
@@ -149,22 +149,22 @@ func TestFieldScoreFloatAscending(t *testing.T) {
 func TestFieldScoreTiesBrokenByDocIndex(t *testing.T) {
 	assertions := assert.New(t)
 
-	// "a-doc" and "b-doc" share value 10. SortAndBuildFrom assigns indices
+	// "a-doc" and "b-doc" share value 10. BuildFrom assigns indices
 	// alphabetically (a-doc=0, b-doc=1, c-doc=2), and within a single token's
 	// posting list FieldScore walks indices ascending — so a-doc is reached
 	// before b-doc and scores higher.
 	s := buildStorage(
-		testsuite.MakeDoc("b-doc", testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(10), 1))),
-		testsuite.MakeDoc("a-doc", testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(10), 1))),
-		testsuite.MakeDoc("c-doc", testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(20), 1))),
+		testsuite.MakeDoc("c-doc", testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(20), 1))),
+		testsuite.MakeDoc("b-doc", testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(10), 1))),
+		testsuite.MakeDoc("a-doc", testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(10), 1))),
 	)
 
-	idxs, ctx := testsuite.RunFieldScore(s, fieldAmount, nil)
+	idxs, ctx := testsuite.RunFieldScore(s, fieldHash, nil)
 
-	assertions.Equal([]string{"a-doc", "b-doc", "c-doc"}, testsuite.ResolveDocumentIndexes(s, idxs))
-	assertions.Equal(3.0, scoreByID(s, ctx, "a-doc"))
-	assertions.Equal(2.0, scoreByID(s, ctx, "b-doc"))
-	assertions.Equal(1.0, scoreByID(s, ctx, "c-doc"))
+	assertions.Equal([]string{"b-doc", "a-doc", "c-doc"}, testsuite.ResolveDocumentIndexes(s, idxs))
+	assertions.Equal(3.0, scoreByID(s, ctx, "b-doc"), "document b-doc")
+	assertions.Equal(2.0, scoreByID(s, ctx, "a-doc"), "document a-doc")
+	assertions.Equal(1.0, scoreByID(s, ctx, "c-doc"), "document c-doc")
 }
 
 // ── Candidate bitmap is honored, cardinality is the bitmap's ──────────────────
@@ -173,17 +173,17 @@ func TestFieldScoreHonorsCandidateBitmap(t *testing.T) {
 	assertions := assert.New(t)
 
 	s := buildStorage(
-		testsuite.MakeDoc("p10", testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(10), 1))),
-		testsuite.MakeDoc("p20", testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(20), 1))),
-		testsuite.MakeDoc("p30", testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(30), 1))),
-		testsuite.MakeDoc("p40", testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(40), 1))),
+		testsuite.MakeDoc("p10", testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(10), 1))),
+		testsuite.MakeDoc("p20", testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(20), 1))),
+		testsuite.MakeDoc("p30", testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(30), 1))),
+		testsuite.MakeDoc("p40", testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(40), 1))),
 	)
 
 	// Restrict the candidate set to just p10 and p30.
 	i10, _ := testsuite.IndexOfDocument(s, "p10")
 	i30, _ := testsuite.IndexOfDocument(s, "p30")
 
-	idxs, ctx := testsuite.RunFieldScore(s, fieldAmount, []uint32{i10, i30})
+	idxs, ctx := testsuite.RunFieldScore(s, fieldHash, []uint32{i10, i30})
 
 	got := testsuite.ResolveDocumentIndexes(s, idxs)
 	assertions.Equal([]string{"p10", "p30"}, got, "only candidate-set docs ranked, in ascending order")
@@ -229,16 +229,16 @@ func TestFieldScorePipelineFilterThenSort(t *testing.T) {
 	s := buildStorage(
 		testsuite.MakeDoc("c-big",
 			testsuite.MakeField(fieldKind, 1, testsuite.MakeToken("contrato", 1)),
-			testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(300), 1))),
+			testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(300), 1))),
 		testsuite.MakeDoc("c-small",
 			testsuite.MakeField(fieldKind, 1, testsuite.MakeToken("contrato", 1)),
-			testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(100), 1))),
+			testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(100), 1))),
 		testsuite.MakeDoc("c-mid",
 			testsuite.MakeField(fieldKind, 1, testsuite.MakeToken("contrato", 1)),
-			testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(200), 1))),
+			testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(200), 1))),
 		testsuite.MakeDoc("x-huge",
 			testsuite.MakeField(fieldKind, 1, testsuite.MakeToken("otro", 1)),
-			testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(999), 1))),
+			testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(999), 1))),
 	)
 
 	searcher := query.New(s)
@@ -250,7 +250,7 @@ func TestFieldScorePipelineFilterThenSort(t *testing.T) {
 	searcher.FilterDocuments(ctx, q)
 
 	// 2. Re-rank the survivors by the numeric amount field (ascending).
-	searcher.FieldScore(ctx, fieldAmount)
+	searcher.FieldScore(ctx, fieldHash)
 	idxs := searcher.ResolveScores(ctx)
 
 	assertions.Equal([]string{"c-small", "c-mid", "c-big"}, testsuite.ResolveDocumentIndexes(s, idxs),
@@ -273,12 +273,12 @@ func TestFieldScoreDocMissingSortFieldExcluded(t *testing.T) {
 	s := buildStorage(
 		testsuite.MakeDoc("has",
 			testsuite.MakeField(fieldKind, 1, testsuite.MakeToken("contrato", 1)),
-			testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(10), 1))),
+			testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(10), 1))),
 		testsuite.MakeDoc("lacks",
 			testsuite.MakeField(fieldKind, 1, testsuite.MakeToken("contrato", 1))),
 	)
 
-	idxs, ctx := testsuite.RunFieldScore(s, fieldAmount, nil)
+	idxs, ctx := testsuite.RunFieldScore(s, fieldHash, nil)
 
 	got := testsuite.ResolveDocumentIndexes(s, idxs)
 	assertions.Equal([]string{"has"}, got)
@@ -292,8 +292,8 @@ func TestFieldScoreUnknownFieldIsNoop(t *testing.T) {
 	assertions := assert.New(t)
 
 	s := buildStorage(
-		testsuite.MakeDoc("d-a", testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(10), 1))),
-		testsuite.MakeDoc("d-b", testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(20), 1))),
+		testsuite.MakeDoc("d-a", testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(10), 1))),
+		testsuite.MakeDoc("d-b", testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(20), 1))),
 	)
 
 	assertions.NotPanics(func() {
@@ -307,13 +307,13 @@ func TestFieldScoreEmptyCandidateSet(t *testing.T) {
 	assertions := assert.New(t)
 
 	s := buildStorage(
-		testsuite.MakeDoc("d-a", testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(10), 1))),
-		testsuite.MakeDoc("d-b", testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(20), 1))),
+		testsuite.MakeDoc("d-a", testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(10), 1))),
+		testsuite.MakeDoc("d-b", testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(20), 1))),
 	)
 
 	assertions.NotPanics(func() {
 		// Non-nil empty slice → empty candidate bitmap (cardinality 0).
-		idxs, ctx := testsuite.RunFieldScore(s, fieldAmount, []uint32{})
+		idxs, ctx := testsuite.RunFieldScore(s, fieldHash, []uint32{})
 		assertions.Empty(idxs)
 		assertions.Empty(ctx.Scores)
 	})
@@ -335,13 +335,13 @@ func TestFieldScoreScoreSequenceIsDense(t *testing.T) {
 			testsuite.MakeDoc(
 				// ids intentionally unrelated to value order
 				"doc-"+string(rune('a'+i)),
-				testsuite.MakeField(fieldAmount, 1, testsuite.MakeToken(testsuite.SortableInt64(int64((i*7)%n)), 1)),
+				testsuite.MakeField(fieldHash, 1, testsuite.MakeToken(testsuite.SortableInt64(int64((i*7)%n)), 1)),
 			),
 		)
 	}
 	s := buildStorage(docs...)
 
-	idxs, ctx := testsuite.RunFieldScore(s, fieldAmount, nil)
+	idxs, ctx := testsuite.RunFieldScore(s, fieldHash, nil)
 	assertions.Len(idxs, n)
 
 	got := make([]float64, 0, n)

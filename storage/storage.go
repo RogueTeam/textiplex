@@ -305,17 +305,6 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 	clear(fieldsAccumulators)
 }
 
-// This function will allocate a new batch and sort documents in the batch by their ID
-// if the batch in ensured to be in order already call directly BuildFrom
-func (s *Storage) SortAndBuildFrom(docs ...*Document) {
-	docs = slices.Clone(docs)
-	slices.SortFunc(docs, func(a, b *Document) int {
-		return bytes.Compare(a.Id.Value.Bytes(), b.Id.Value.Bytes())
-	})
-
-	s.BuildFrom(docs...)
-}
-
 // Saves the file to the target file
 func (s *Storage) SaveTo(name string) (err error) {
 	if !s.Initialized {

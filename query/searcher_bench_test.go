@@ -44,7 +44,7 @@ func prepareSearchCorpus() (s *storage.Storage) {
 	}
 
 	s = &storage.Storage{}
-	s.SortAndBuildFrom(docs...)
+	s.BuildFrom(docs...)
 	return s
 }
 

@@ -66,7 +66,7 @@ func buildMixedMerged(t *testing.T) *storage.Storage {
 	t.Helper()
 
 	var a storage.Storage
-	a.SortAndBuildFrom(
+	a.BuildFrom(
 		testsuite.MakeDoc("a-1",
 			testsuite.MakeField(1, 2, testsuite.MakeToken("alpha", 2)),                                   // A-only field
 			testsuite.MakeField(3, 2, testsuite.MakeToken("shared", 1), testsuite.MakeToken("aonly", 1)), // collision field
@@ -78,7 +78,7 @@ func buildMixedMerged(t *testing.T) *storage.Storage {
 	)
 
 	var b storage.Storage
-	b.SortAndBuildFrom(
+	b.BuildFrom(
 		testsuite.MakeDoc("b-1",
 			testsuite.MakeField(2, 1, testsuite.MakeToken("beta", 1)),                                    // B-only field
 			testsuite.MakeField(3, 2, testsuite.MakeToken("shared", 1), testsuite.MakeToken("bonly", 1)), // collision field
@@ -95,11 +95,11 @@ func TestMergeCollisionTokensInterleaved(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(testsuite.MakeDoc("a-1", testsuite.MakeField(1, 3,
+	a.BuildFrom(testsuite.MakeDoc("a-1", testsuite.MakeField(1, 3,
 		testsuite.MakeToken("apple", 1), testsuite.MakeToken("cat", 1), testsuite.MakeToken("dog", 1),
 	)))
 	var b storage.Storage
-	b.SortAndBuildFrom(testsuite.MakeDoc("b-1", testsuite.MakeField(1, 3,
+	b.BuildFrom(testsuite.MakeDoc("b-1", testsuite.MakeField(1, 3,
 		testsuite.MakeToken("ant", 1), testsuite.MakeToken("banana", 1), testsuite.MakeToken("cat", 1),
 	)))
 
@@ -120,11 +120,11 @@ func TestMergeCollisionAllATokensAfterB(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(testsuite.MakeDoc("a-1", testsuite.MakeField(1, 3,
+	a.BuildFrom(testsuite.MakeDoc("a-1", testsuite.MakeField(1, 3,
 		testsuite.MakeToken("x", 1), testsuite.MakeToken("y", 1), testsuite.MakeToken("z", 1),
 	)))
 	var b storage.Storage
-	b.SortAndBuildFrom(testsuite.MakeDoc("b-1", testsuite.MakeField(1, 3,
+	b.BuildFrom(testsuite.MakeDoc("b-1", testsuite.MakeField(1, 3,
 		testsuite.MakeToken("a", 1), testsuite.MakeToken("b", 1), testsuite.MakeToken("c", 1),
 	)))
 
@@ -141,11 +141,11 @@ func TestMergeCollisionAllBTokensAfterA(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(testsuite.MakeDoc("a-1", testsuite.MakeField(1, 3,
+	a.BuildFrom(testsuite.MakeDoc("a-1", testsuite.MakeField(1, 3,
 		testsuite.MakeToken("a", 1), testsuite.MakeToken("b", 1), testsuite.MakeToken("c", 1),
 	)))
 	var b storage.Storage
-	b.SortAndBuildFrom(testsuite.MakeDoc("b-1", testsuite.MakeField(1, 3,
+	b.BuildFrom(testsuite.MakeDoc("b-1", testsuite.MakeField(1, 3,
 		testsuite.MakeToken("x", 1), testsuite.MakeToken("y", 1), testsuite.MakeToken("z", 1),
 	)))
 
@@ -162,11 +162,11 @@ func TestMergeCollisionFullyShared(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(testsuite.MakeDoc("a-1", testsuite.MakeField(1, 5,
+	a.BuildFrom(testsuite.MakeDoc("a-1", testsuite.MakeField(1, 5,
 		testsuite.MakeToken("alpha", 2), testsuite.MakeToken("beta", 3),
 	)))
 	var b storage.Storage
-	b.SortAndBuildFrom(testsuite.MakeDoc("b-1", testsuite.MakeField(1, 12,
+	b.BuildFrom(testsuite.MakeDoc("b-1", testsuite.MakeField(1, 12,
 		testsuite.MakeToken("alpha", 5), testsuite.MakeToken("beta", 7),
 	)))
 
@@ -188,11 +188,11 @@ func TestMergeCollisionSharedPrefixes(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(testsuite.MakeDoc("a-1", testsuite.MakeField(1, 2,
+	a.BuildFrom(testsuite.MakeDoc("a-1", testsuite.MakeField(1, 2,
 		testsuite.MakeToken("a", 1), testsuite.MakeToken("abc", 1),
 	)))
 	var b storage.Storage
-	b.SortAndBuildFrom(testsuite.MakeDoc("b-1", testsuite.MakeField(1, 2,
+	b.BuildFrom(testsuite.MakeDoc("b-1", testsuite.MakeField(1, 2,
 		testsuite.MakeToken("ab", 1), testsuite.MakeToken("abcd", 1),
 	)))
 
@@ -207,11 +207,11 @@ func TestMergeCollisionTokensRemainSorted(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(testsuite.MakeDoc("a-1", testsuite.MakeField(1, 3,
+	a.BuildFrom(testsuite.MakeDoc("a-1", testsuite.MakeField(1, 3,
 		testsuite.MakeToken("c", 1), testsuite.MakeToken("a", 1), testsuite.MakeToken("e", 1),
 	)))
 	var b storage.Storage
-	b.SortAndBuildFrom(testsuite.MakeDoc("b-1", testsuite.MakeField(1, 3,
+	b.BuildFrom(testsuite.MakeDoc("b-1", testsuite.MakeField(1, 3,
 		testsuite.MakeToken("d", 1), testsuite.MakeToken("b", 1), testsuite.MakeToken("f", 1),
 	)))
 
@@ -226,11 +226,11 @@ func TestMergeCollisionASubsetOfB(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(testsuite.MakeDoc("a-1", testsuite.MakeField(1, 2,
+	a.BuildFrom(testsuite.MakeDoc("a-1", testsuite.MakeField(1, 2,
 		testsuite.MakeToken("b", 1), testsuite.MakeToken("d", 1),
 	)))
 	var b storage.Storage
-	b.SortAndBuildFrom(testsuite.MakeDoc("b-1", testsuite.MakeField(1, 5,
+	b.BuildFrom(testsuite.MakeDoc("b-1", testsuite.MakeField(1, 5,
 		testsuite.MakeToken("a", 1), testsuite.MakeToken("b", 1), testsuite.MakeToken("c", 1),
 		testsuite.MakeToken("d", 1), testsuite.MakeToken("e", 1),
 	)))
@@ -250,12 +250,12 @@ func TestMergeBOnlyFieldMultiDocOffset(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(
+	a.BuildFrom(
 		testsuite.MakeDoc("a-1", testsuite.MakeField(1, 1, testsuite.MakeToken("x", 1))),
 		testsuite.MakeDoc("a-2", testsuite.MakeField(1, 1, testsuite.MakeToken("x", 1))),
 	)
 	var b storage.Storage
-	b.SortAndBuildFrom(
+	b.BuildFrom(
 		testsuite.MakeDoc("b-1", testsuite.MakeField(2, 1, testsuite.MakeToken("y", 1))),
 		testsuite.MakeDoc("b-2", testsuite.MakeField(2, 1, testsuite.MakeToken("y", 1))),
 	)
@@ -271,11 +271,11 @@ func TestMergeCollisionBPostingOffset(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(
+	a.BuildFrom(
 		testsuite.MakeDoc("a-1", testsuite.MakeField(1, 1, testsuite.MakeToken("shared", 1))),
 	)
 	var b storage.Storage
-	b.SortAndBuildFrom(
+	b.BuildFrom(
 		testsuite.MakeDoc("b-1", testsuite.MakeField(1, 1, testsuite.MakeToken("shared", 1))),
 		testsuite.MakeDoc("b-2", testsuite.MakeField(1, 1, testsuite.MakeToken("shared", 1))),
 	)
@@ -292,14 +292,14 @@ func TestMergeLargeDocOffset(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(
+	a.BuildFrom(
 		testsuite.MakeDoc("a-1", testsuite.MakeField(1, 1, testsuite.MakeToken("x", 1))),
 		testsuite.MakeDoc("a-2", testsuite.MakeField(1, 1, testsuite.MakeToken("x", 1))),
 		testsuite.MakeDoc("a-3", testsuite.MakeField(1, 1, testsuite.MakeToken("x", 1))),
 		testsuite.MakeDoc("a-4", testsuite.MakeField(1, 1, testsuite.MakeToken("x", 1))),
 	)
 	var b storage.Storage
-	b.SortAndBuildFrom(
+	b.BuildFrom(
 		testsuite.MakeDoc("b-1", testsuite.MakeField(2, 1, testsuite.MakeToken("y", 1))),
 	)
 
@@ -315,11 +315,11 @@ func TestMergeCollisionDocLengthsOffset(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(
+	a.BuildFrom(
 		testsuite.MakeDoc("a-1", testsuite.MakeField(1, 5, testsuite.MakeToken("t", 5))),
 	)
 	var b storage.Storage
-	b.SortAndBuildFrom(
+	b.BuildFrom(
 		testsuite.MakeDoc("b-1", testsuite.MakeField(1, 2, testsuite.MakeToken("t", 2))),
 		testsuite.MakeDoc("b-2", testsuite.MakeField(1, 3, testsuite.MakeToken("t", 3))),
 	)
@@ -338,11 +338,11 @@ func TestMergeTFDocumentIndexOffset(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(
+	a.BuildFrom(
 		testsuite.MakeDoc("a-1", testsuite.MakeField(1, 9, testsuite.MakeToken("t", 9))),
 	)
 	var b storage.Storage
-	b.SortAndBuildFrom(
+	b.BuildFrom(
 		testsuite.MakeDoc("b-1", testsuite.MakeField(1, 4, testsuite.MakeToken("t", 4))),
 	)
 
@@ -361,13 +361,13 @@ func TestMergeSharedTokenSumsDocFrequency(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(
+	a.BuildFrom(
 		testsuite.MakeDoc("a-1", testsuite.MakeField(1, 1, testsuite.MakeToken("k", 1))),
 		testsuite.MakeDoc("a-2", testsuite.MakeField(1, 1, testsuite.MakeToken("k", 1))),
 		testsuite.MakeDoc("a-3", testsuite.MakeField(1, 1, testsuite.MakeToken("k", 1))),
 	)
 	var b storage.Storage
-	b.SortAndBuildFrom(
+	b.BuildFrom(
 		testsuite.MakeDoc("b-1", testsuite.MakeField(1, 1, testsuite.MakeToken("k", 1))),
 		testsuite.MakeDoc("b-2", testsuite.MakeField(1, 1, testsuite.MakeToken("k", 1))),
 	)
@@ -384,12 +384,12 @@ func TestMergeSharedTokenPreservesTermFrequencies(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(
+	a.BuildFrom(
 		testsuite.MakeDoc("a-1", testsuite.MakeField(1, 3, testsuite.MakeToken("w", 3))),
 		testsuite.MakeDoc("a-2", testsuite.MakeField(1, 7, testsuite.MakeToken("w", 7))),
 	)
 	var b storage.Storage
-	b.SortAndBuildFrom(
+	b.BuildFrom(
 		testsuite.MakeDoc("b-1", testsuite.MakeField(1, 5, testsuite.MakeToken("w", 5))),
 	)
 
@@ -411,11 +411,11 @@ func TestMergeTFOrderByDocNotFreq(t *testing.T) {
 
 	// A's doc has a small frequency, B's a large one. Order must still be A then B.
 	var a storage.Storage
-	a.SortAndBuildFrom(
+	a.BuildFrom(
 		testsuite.MakeDoc("a-1", testsuite.MakeField(1, 1, testsuite.MakeToken("t", 1))),
 	)
 	var b storage.Storage
-	b.SortAndBuildFrom(
+	b.BuildFrom(
 		testsuite.MakeDoc("b-1", testsuite.MakeField(1, 100, testsuite.MakeToken("t", 100))),
 	)
 
@@ -467,12 +467,12 @@ func TestMergeCollisionAvgdlRecomputed(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(
+	a.BuildFrom(
 		testsuite.MakeDoc("a-1", testsuite.MakeField(1, 1, testsuite.MakeToken("t", 1))),
 		testsuite.MakeDoc("a-2", testsuite.MakeField(1, 2, testsuite.MakeToken("t", 2))),
 	)
 	var b storage.Storage
-	b.SortAndBuildFrom(
+	b.BuildFrom(
 		testsuite.MakeDoc("b-1", testsuite.MakeField(1, 4, testsuite.MakeToken("t", 4))),
 	)
 
@@ -487,12 +487,12 @@ func TestMergeAOnlyFieldAvgdlPreserved(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(
+	a.BuildFrom(
 		testsuite.MakeDoc("a-1", testsuite.MakeField(1, 4, testsuite.MakeToken("t", 4))),
 		testsuite.MakeDoc("a-2", testsuite.MakeField(1, 2, testsuite.MakeToken("t", 2))),
 	)
 	var b storage.Storage
-	b.SortAndBuildFrom(
+	b.BuildFrom(
 		testsuite.MakeDoc("b-1", testsuite.MakeField(2, 1, testsuite.MakeToken("u", 1))),
 	)
 
@@ -506,11 +506,11 @@ func TestMergeBOnlyFieldAvgdlPreserved(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(
+	a.BuildFrom(
 		testsuite.MakeDoc("a-1", testsuite.MakeField(1, 1, testsuite.MakeToken("t", 1))),
 	)
 	var b storage.Storage
-	b.SortAndBuildFrom(
+	b.BuildFrom(
 		testsuite.MakeDoc("b-1", testsuite.MakeField(2, 6, testsuite.MakeToken("u", 6))),
 		testsuite.MakeDoc("b-2", testsuite.MakeField(2, 2, testsuite.MakeToken("u", 2))),
 	)
@@ -525,13 +525,13 @@ func TestMergeCollisionAvgdlMixedTokens(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(
+	a.BuildFrom(
 		testsuite.MakeDoc("a-1", testsuite.MakeField(1, 3,
 			testsuite.MakeToken("shared", 2), testsuite.MakeToken("aside", 1))),
 		testsuite.MakeDoc("a-2", testsuite.MakeField(1, 1, testsuite.MakeToken("shared", 1))),
 	)
 	var b storage.Storage
-	b.SortAndBuildFrom(
+	b.BuildFrom(
 		testsuite.MakeDoc("b-1", testsuite.MakeField(1, 2,
 			testsuite.MakeToken("shared", 1), testsuite.MakeToken("bside", 1))),
 	)
@@ -571,14 +571,14 @@ func TestMergeFieldsCountManyCollisions(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(testsuite.MakeDoc("a-1",
+	a.BuildFrom(testsuite.MakeDoc("a-1",
 		testsuite.MakeField(1, 1, testsuite.MakeToken("t", 1)),
 		testsuite.MakeField(2, 1, testsuite.MakeToken("t", 1)),
 		testsuite.MakeField(3, 1, testsuite.MakeToken("t", 1)),
 		testsuite.MakeField(4, 1, testsuite.MakeToken("t", 1)),
 	))
 	var b storage.Storage
-	b.SortAndBuildFrom(testsuite.MakeDoc("b-1",
+	b.BuildFrom(testsuite.MakeDoc("b-1",
 		testsuite.MakeField(3, 1, testsuite.MakeToken("t", 1)),
 		testsuite.MakeField(4, 1, testsuite.MakeToken("t", 1)),
 		testsuite.MakeField(5, 1, testsuite.MakeToken("t", 1)),
@@ -596,13 +596,13 @@ func TestMergeDocIDsOrderManyDocs(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(
+	a.BuildFrom(
 		testsuite.MakeDoc("a-1", testsuite.MakeField(1, 1, testsuite.MakeToken("t", 1))),
 		testsuite.MakeDoc("a-2", testsuite.MakeField(1, 1, testsuite.MakeToken("t", 1))),
 		testsuite.MakeDoc("a-3", testsuite.MakeField(1, 1, testsuite.MakeToken("t", 1))),
 	)
 	var b storage.Storage
-	b.SortAndBuildFrom(
+	b.BuildFrom(
 		testsuite.MakeDoc("b-1", testsuite.MakeField(1, 1, testsuite.MakeToken("t", 1))),
 		testsuite.MakeDoc("b-2", testsuite.MakeField(1, 1, testsuite.MakeToken("t", 1))),
 	)
@@ -633,12 +633,12 @@ func TestMergeCollisionDocLengthsContent(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(
+	a.BuildFrom(
 		testsuite.MakeDoc("a-1", testsuite.MakeField(1, 2, testsuite.MakeToken("t", 2))),
 		testsuite.MakeDoc("a-2", testsuite.MakeField(1, 3, testsuite.MakeToken("t", 3))),
 	)
 	var b storage.Storage
-	b.SortAndBuildFrom(
+	b.BuildFrom(
 		testsuite.MakeDoc("b-1", testsuite.MakeField(1, 4, testsuite.MakeToken("t", 4))),
 		testsuite.MakeDoc("b-2", testsuite.MakeField(1, 5, testsuite.MakeToken("t", 5))),
 	)
@@ -663,11 +663,11 @@ func TestMergeSameTokenValueDifferentFields(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(
+	a.BuildFrom(
 		testsuite.MakeDoc("a-1", testsuite.MakeField(1, 1, testsuite.MakeToken("dup", 1))),
 	)
 	var b storage.Storage
-	b.SortAndBuildFrom(
+	b.BuildFrom(
 		testsuite.MakeDoc("b-1", testsuite.MakeField(2, 1, testsuite.MakeToken("dup", 1))),
 	)
 
@@ -687,12 +687,12 @@ func TestMergeTokenValueCollidesAcrossFieldsNotMerged(t *testing.T) {
 	assertions := assert.New(t)
 
 	var a storage.Storage
-	a.SortAndBuildFrom(testsuite.MakeDoc("a-1",
+	a.BuildFrom(testsuite.MakeDoc("a-1",
 		testsuite.MakeField(3, 1, testsuite.MakeToken("x", 1)),
 		testsuite.MakeField(4, 1, testsuite.MakeToken("x", 1)),
 	))
 	var b storage.Storage
-	b.SortAndBuildFrom(testsuite.MakeDoc("b-1",
+	b.BuildFrom(testsuite.MakeDoc("b-1",
 		testsuite.MakeField(3, 1, testsuite.MakeToken("x", 1)),
 		testsuite.MakeField(4, 1, testsuite.MakeToken("x", 1)),
 	))

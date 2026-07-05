@@ -220,19 +220,18 @@ fieldKwLoop:
 				first = true
 
 				tokLoCmp := bytes.Compare(token.Value.Bytes(), lo)
+
+				// Only ignore the first element if it is equal to the lo end and capture mode is set to > or ><
 				if tokLoCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeRight || entry.Value.CaptureMode == RangeCaptureModeNone) {
 					continue
 				}
 			}
 
 			tokHiCmp := bytes.Compare(token.Value.Bytes(), hi)
-			if tokHiCmp > 0 {
+			if tokHiCmp == 1 || (tokHiCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeLeft || entry.Value.CaptureMode == RangeCaptureModeNone)) {
 				break
 			}
 
-			if tokHiCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeLeft || entry.Value.CaptureMode == RangeCaptureModeNone) {
-				break
-			}
 			state.Tokens = append(state.Tokens, token)
 		}
 

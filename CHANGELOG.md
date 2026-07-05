@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.7.0](https://github.com/RogueTeam/textiplex/compare/v1.6.11...v1.7.0) (2026-07-05)
+
+
+### Features
+
+* support for range must iteration ([ef1b3ea](https://github.com/RogueTeam/textiplex/commit/ef1b3ea7dc6c083e4d2d3b47ea1f07d742389705))
+
+
+### Bug Fixes
+
+* improved conditions for range queries ([5c6e139](https://github.com/RogueTeam/textiplex/commit/5c6e1391fc7685245077c978077e1662155e75f6))
+* improved filtering speed ([5858375](https://github.com/RogueTeam/textiplex/commit/5858375814e140afaf3bbda0d852bd9d82a681dc))
+* improvement iteration over accumulated bitmaps ([6fe11a1](https://github.com/RogueTeam/textiplex/commit/6fe11a1c89dd907e30e49a9cca99b8d9062ebba2))
+* support for aggregate near tokens each other ([ee92c60](https://github.com/RogueTeam/textiplex/commit/ee92c601585109c64b614735345f57ffd5587cd7))
+
 ### [1.6.11](https://github.com/RogueTeam/textiplex/compare/v1.6.10...v1.6.11) (2026-07-05)
 
 

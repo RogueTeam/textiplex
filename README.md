@@ -2,7 +2,7 @@
 
 A high-performance, low-memory full-text search engine written in Go. Built from first principles with zero OOP overhead, immutable mmap'd index files, and a streaming merge pipeline that outperforms every Go FTS engine benchmarked to date.
 
-**textiplex is the only Go full-text search engine able to fully index English Wikipedia.** On a single desktop CPU it indexed the complete 120 GB export — 25.65M documents — into a 70 GB index inside a bounded memory envelope (27 GB peak during indexing, 12 GB during merge). Bluge (both upstream and a heavily optimized fork) and Bleve all ran out of memory and crashed during the merge, well before finishing. See [Benchmarks](#benchmarks).
+**textiplex is the only Go full-text search engine able to fully index English Wikipedia.** On a single desktop CPU it indexed the complete 120 GB export — 25.65M documents — into a 70 GB index inside a bounded memory envelope (14 GB peak during indexing) in about 1 h 5 min of wall time. Bluge (both upstream and a heavily optimized fork) and Bleve all ran out of memory and crashed during the merge, well before finishing. See [Benchmarks](#benchmarks).
 
 ## Design philosophy
 
@@ -12,7 +12,7 @@ Most search engines in Go are ports or wrappers of JVM-era architectures — Luc
 
 **Immutable files.** An index segment is a single mmap'd file. Once written it is never modified in place. Queries read directly from OS-managed pages with zero deserialization cost. The page cache is your cache.
 
-**Streaming merge.** Two segments are merged by streaming through temp files, rewriting doc ID offsets as bytes flow through. The merge pipeline never holds both input segments plus the output in memory simultaneously, so peak memory tracks the working set, not the corpus size. This is what lets textiplex merge a 70 GB index inside 12 GB of RAM.
+**Streaming merge.** Two segments are merged by streaming through temp files, rewriting doc ID offsets as bytes flow through. The merge pipeline never holds both input segments plus the output in memory simultaneously, so peak memory tracks the working set, not the corpus size. This is what lets textiplex merge a 70 GB index within a bounded memory envelope that tracks the working set rather than the corpus size.
 
 **Fixed-size records.** Doc IDs and token entries are fixed-stride records (a `RawValue` is an 8-byte length plus a 128-byte inline buffer). Because every record has the same size, the doc ID table and each field's token table are mapped directly over the mmap'd file as native Go slices with zero allocation and zero deserialization — no per-record length prefixes to walk, no btree to rebuild at load time. Sorted token tables are binary-searched in place. This single decision is what moved Wikipedia from "OOM at 5%" to "fully indexed".
 
@@ -33,14 +33,16 @@ The corpus is prepared as a single newline-delimited JSON file where each record
 | Documents indexed | **25,653,263** |
 | Source JSON | **120 GB** (jsonv2, streamed in ~1 GB batches) |
 | Output index | **70 GB** (single immutable file) |
-| Segment creation (indexing) | **35.1 min** — peak **27 GB** RAM |
-| Merge | **113.2 min** — peak **12 GB** RAM |
-| **Total wall time** | **2 h 28 min** |
-| Indexing throughput | **~205 GB/hour** (segment creation) |
-| End-to-end throughput | **~48.5 GB/hour** (including the full merge) |
-| Sustained rate | ~12,200 docs/s indexing · ~2,900 docs/s end-to-end |
+| Segment creation (indexing) | **33.6 min** (peak **14 GB** RAM) |
+| Merge (parallel) | **30.9 min** (peak RAM unmeasured, see note) |
+| **Total wall time** | **1 h 4.5 min** |
+| Indexing throughput | **~214 GB/hour** (segment creation) |
+| End-to-end throughput | **~112 GB/hour** (including the full merge) |
+| Sustained rate | ~12,700 docs/s indexing · ~6,600 docs/s end-to-end |
 
-The entire run stayed inside a bounded memory envelope on a consumer desktop CPU — segment creation never exceeded 27 GB and the merge never exceeded 12 GB, with no swap. This is the property the fixed-size record layout and zero-copy mmap merge were built for: memory use is a function of the working set, not the corpus size.
+Segment creation stayed inside a bounded memory envelope on a consumer desktop CPU, never exceeding 14 GB with no swap. This is the property the fixed-size record layout and zero-copy mmap merge were built for: memory use is a function of the working set, not the corpus size.
+
+> **Note on merge peak RAM.** The 30.9 min merge is the parallel bottom-up pipeline (up to 8 workers). Its peak resident set is expected to be higher than the older serial merge and has not been measured in this run, so no figure is quoted. `go test -benchmem` reports cumulative allocation traffic (`B/op`), not resident set size. Re-measure with `/usr/bin/time -v` (maxrss) before publishing a merge RAM number.
 
 > **Bluge and Bleve cannot index Wikipedia.** Both Bluge variants and Bleve OOM during segment combination far short of completion. Their memory use grows with the corpus, so the 120 GB dataset is simply out of reach on this hardware regardless of how long you are willing to wait.
 
@@ -105,8 +107,8 @@ Boolean query benchmarks, same 1M-doc corpus (lower is better):
 │  │  doc_length_count (8B)                        │  │
 │  ├───────────────────────────────────────────────┤  │
 │  │           DOC LENGTH ENTRIES                  │  │
-│  │  [doc_index (4B) | padding (4B) | length (8B)]│  │
-│  │  × doc_length_count (fixed 16B stride)        │  │
+│  │  [doc_index (4B) | length (4B)]               │  │
+│  │  × doc_length_count (fixed 8B stride)         │  │
 │  ├───────────────────────────────────────────────┤  │
 │  │             TOKEN ENTRIES                     │  │
 │  │  [frequency_count (8B) |                      │  │
@@ -126,7 +128,7 @@ Boolean query benchmarks, same 1M-doc corpus (lower is better):
 
 ### Invariants
 
-- Doc IDs and token values are stored as `RawValue`: an 8-byte length plus a fixed `MaxRawValueSize`-byte (currently **128**) inline buffer. The doc ID stride is therefore **136 B**; the token entry stride (3 × 8 B index fields + `RawValue`) is **160 B**. Both allow the respective tables to be mapped directly over the mmap'd file as native Go slices with zero allocation and zero deserialization.
+- Doc IDs and token values are stored as `RawValue`: an 8-byte length plus a fixed `MaxRawValueSize`-byte (currently **128**) inline buffer. The doc ID stride is therefore **136 B**; the token entry stride (3 × 8 B index fields + `RawValue`) is **160 B**; the doc-length entry stride is **8 B** (two `uint32` fields, no padding). These fixed strides allow the respective tables to be mapped directly over the mmap'd file as native Go slices with zero allocation and zero deserialization.
 - Doc IDs sorted alphabetically. Position in the table is the internal doc ID used in posting lists and TF entries.
 - Token frequencies are written immediately after the doc ID table, before the field blocks. Each entry is a packed 8 B record (`doc_index uint32 | frequency uint32`, no padding); the `FrequenciesIndex` field in each token entry is an absolute offset into this region.
 - Doc length entries within each field sorted by `doc_index` ascending, enabling merge-scan during BM25 scoring.

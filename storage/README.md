@@ -27,8 +27,8 @@
 │  │  doc_length_count (8B)                        │  │
 │  ├───────────────────────────────────────────────┤  │
 │  │           DOC LENGTH ENTRIES                  │  │
-│  │  [doc_index (4B) | padding (4B) | length (8B)]│  │
-│  │  × doc_length_count (fixed 16B stride)        │  │
+│  │  [doc_index (4B) | length (4B)]               │  │
+│  │  × doc_length_count (fixed 8B stride)         │  │
 │  │  (sorted by doc_index ascending)              │  │
 │  ├───────────────────────────────────────────────┤  │
 │  │             TOKEN ENTRIES                     │  │
@@ -50,7 +50,7 @@
 
 ## Invariants
 
-- Doc IDs and token values are stored as `RawValue`: an 8-byte length plus a fixed `MaxRawValueSize`-byte (currently **128**) inline buffer. The doc ID stride is therefore **136 B**; the token entry stride (3 × 8 B index fields + `RawValue`) is **160 B**. The fixed stride is what allows the doc ID table and each field's token table to be mapped directly over the file as native Go slices (`unsafe.Slice`) with zero allocation and zero deserialization.
+- Doc IDs and token values are stored as `RawValue`: an 8-byte length plus a fixed `MaxRawValueSize`-byte (currently **128**) inline buffer. The doc ID stride is therefore **136 B**; the token entry stride (3 × 8 B index fields + `RawValue`) is **160 B**; the doc-length entry stride is **8 B** (two `uint32` fields, no padding). The fixed stride is what allows the doc ID table and each field's token table to be mapped directly over the file as native Go slices (`unsafe.Slice`) with zero allocation and zero deserialization.
 - Doc IDs are sorted alphabetically. A document's position in the table is its internal sequential ID used in posting lists and TF entries.
 - Token frequencies are written immediately after the doc ID table, before the field blocks. Each `TokenFrequencyEntry` is a fixed 8 B record: `doc_index (uint32, 4B) | frequency (uint32, 4B)` — both fields are naturally aligned, so the struct carries no padding. The `FrequenciesIndex` in a token entry is an absolute offset into this region; the relevant slice is `TokenFrequencies[FrequenciesIndex : FrequenciesIndex+FrequencyCount]`.
 - Doc length entries within each field block are sorted by doc_index ascending. This enables a merge scan during BM25 scoring instead of binary search.
@@ -65,6 +65,7 @@ Several count/size fields are stored as 32-bit integers to keep the on-disk reco
 |---|---|---|---|
 | `Header.TotalDocuments` / internal doc index | `uint32` | 4,294,967,295 docs | Internal doc IDs, TF `DocumentIndex`, and `DocumentLengthEntry.Index` are all `uint32`. |
 | `TokenFrequencyEntry.Frequency` | `uint32` | 4.29B occurrences | Count of one token in one field of one document — never approached in practice. |
+| `DocumentLengthEntry.Length` | `uint32` | 4.29B tokens | Per-document field length in tokens, used as `docLen` in BM25. |
 | `PostingListHeader.Size` | `uint32` | 4 GiB per posting list | A roaring bitmap over a `uint32` doc-ID domain serializes to well under 1 GiB even fully dense, so this is not a practical limit. |
 
 Because the doc-ID domain is itself `uint32`, no single posting list can serialize past the `uint32` size field, and no token frequency can exceed `uint32` — the width reductions are safe for any corpus that fits the 4.29B-document ceiling. Fields that index the *whole file* (`FieldCount`, `TotalPostingLists`, `TotalTokenFrequencies`, `FrequenciesIndex`, `PostingListIndex`, per-token `FrequencyCount`, and all byte offsets during load) remain 64-bit.
@@ -183,11 +184,11 @@ for len(segments) > 1 {
 
 With ~2 GB of heap per 1M-doc segment build and a merge that holds only the
 working set (not the whole corpus), ingestion scales to arbitrarily large
-corpora within a bounded memory envelope. This is not a projection — textiplex
+corpora within a bounded memory envelope. This is not a projection: textiplex
 indexed the **full 120 GB English Wikipedia export (25.65M documents)** into a
-**70 GB index** on a single i9-10900K: ~35 min of segment creation (peak 27 GB
-RAM) followed by ~113 min of merge (peak 12 GB RAM), ~2 h 28 min total. Bluge
-and Bleve cannot complete this corpus — they OOM during segment combination.
+**70 GB index** on a single i9-10900K in **~33.6 min of segment creation** followed
+by **~30.9 min of merge**, **~1 h 4.5 min total**. Bluge and Bleve cannot complete
+this corpus; they OOM during segment combination.
 
 ## BM25 scoring formula
 
@@ -235,10 +236,18 @@ export — 25,653,263 documents** (id + `title` + `content`, parsed with
 
 | Phase | Time | Peak RAM |
 |---|---|---|
-| Segment creation (indexing) | 35.1 min | 27 GB |
-| Merge | 113.2 min | 12 GB |
-| **Total** | **2 h 28 min** | — |
+| Segment creation (indexing) | 33.6 min | 14 GB |
+| Merge (parallel) | 30.9 min | see note below |
+| **Total** | **1 h 4.5 min** | — |
 
-~205 GB/hour during segment creation, ~48.5 GB/hour end-to-end. **Bluge
+> **Merge peak RAM is unmeasured in this run.** The 30.9 min figure comes from
+> the parallel bottom-up merge (up to 8 workers). Because multiple pairwise
+> merges run concurrently, peak resident memory is expected to exceed the
+> 12 GB of the older serial merge and must be re-measured (e.g. `/usr/bin/time
+> -v` maxrss) before quoting a number here. The `B/op` reported by `go test
+> -benchmem` is cumulative allocation traffic, not resident set size, and is
+> not a substitute.
+
+~214 GB/hour during segment creation, ~112 GB/hour end-to-end. **Bluge
 (upstream and fork) and Bleve all OOM during the merge and never finish** —
 textiplex is the only Go FTS engine able to fully index Wikipedia.

@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.7.1](https://github.com/RogueTeam/textiplex/compare/v1.7.0...v1.7.1) (2026-07-05)
+
+
+### Bug Fixes
+
+* go mod tidy ([0fcba24](https://github.com/RogueTeam/textiplex/commit/0fcba247c23a68e31389747d63bcbe15a8201309))
+
 ## [1.7.0](https://github.com/RogueTeam/textiplex/compare/v1.6.11...v1.7.0) (2026-07-05)
 
 

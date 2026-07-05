@@ -32,6 +32,6 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 			}
 		}
 
-		pending.Xor(&retrievalBitmap)
+		pending.AndNot(&retrievalBitmap)
 	}
 }

@@ -11,6 +11,7 @@ import (
 func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 	if q.Musts.Count() > 0 {
 		// Musts define the candidate set: intersection of all Must posting lists.
+		var retrievalBitmap roaring.Bitmap
 		var failed bool
 		bitmapPool := pool.New[roaring.Bitmap](20)
 		var bitmaps []*roaring.Bitmap
@@ -25,7 +26,10 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 			}
 
 			bitmap := bitmapPool.Get()
-			s.Storage.PostingLists[state.Token.PostingListIndex].UnsafeBitmap(bitmap)
+			for _, token := range state.Tokens {
+				s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&retrievalBitmap)
+				bitmap.Or(&retrievalBitmap)
+			}
 			bitmaps = append(bitmaps, bitmap)
 		})
 
@@ -40,8 +44,10 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 				return
 			}
 
-			s.Storage.PostingLists[state.Token.PostingListIndex].UnsafeBitmap(&retrievalBitmap)
-			ctx.Bitmap.Or(&retrievalBitmap)
+			for _, token := range state.Tokens {
+				s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&retrievalBitmap)
+				ctx.Bitmap.Or(&retrievalBitmap)
+			}
 		})
 	}
 
@@ -53,8 +59,10 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 				return
 			}
 
-			s.Storage.PostingLists[state.Token.PostingListIndex].UnsafeBitmap(&retrievalBitmap)
-			ctx.Bitmap.AndNot(&retrievalBitmap)
+			for _, token := range state.Tokens {
+				s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&retrievalBitmap)
+				ctx.Bitmap.AndNot(&retrievalBitmap)
+			}
 		})
 	}
 }

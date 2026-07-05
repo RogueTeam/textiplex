@@ -58,115 +58,116 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 	if !state.Found {
 		return
 	}
-	token := state.Token
-	field := state.Field
+	for _, token := range state.Tokens {
+		field := state.Field
 
-	var tokenPl roaring.Bitmap
-	s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&tokenPl)
+		var tokenPl roaring.Bitmap
+		s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&tokenPl)
 
-	resolved := roaring.FastAnd(&ctx.Bitmap, &tokenPl).ToArray()
+		resolved := roaring.FastAnd(&ctx.Bitmap, &tokenPl).ToArray()
 
-	docLengths := field.DocumentLengths
-	freqs := s.Storage.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
+		docLengths := field.DocumentLengths
+		freqs := s.Storage.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
 
-	idf := InverseDocumentFrequency(uint64(len(field.DocumentLengths)), token.FrequencyCount)
-	avgDocLength := field.AvgDocumentLength
-	boost := state.Boost
-	satPlus1 := saturation + 1
-	oneMinusLP := 1 - lengthPenalty
+		idf := InverseDocumentFrequency(uint64(len(field.DocumentLengths)), token.FrequencyCount)
+		avgDocLength := field.AvgDocumentLength
+		boost := state.Boost
+		satPlus1 := saturation + 1
+		oneMinusLP := 1 - lengthPenalty
 
-	freqDense := len(freqs) == len(s.Storage.DocumentsIds)
-	dlDense := len(docLengths) == len(s.Storage.DocumentsIds)
+		freqDense := len(freqs) == len(s.Storage.DocumentsIds)
+		dlDense := len(docLengths) == len(s.Storage.DocumentsIds)
 
-	// Hoist boost check: when boost==1 the multiply is a no-op, so we use a
-	// dedicated idf-only multiplier and skip the extra float64 op in the hot path.
-	var idfBoost float64
-	if boost != 1 {
-		idfBoost = idf * boost
-	} else {
-		idfBoost = idf
-	}
-
-	if idfBoost == 0 || satPlus1 == 0 {
-		return
-	}
-
-	switch {
-	case freqDense && dlDense:
-		for _, docIdx := range resolved {
-			tf := float64(freqs[docIdx].Frequency)
-			dl := float64(docLengths[docIdx].Length)
-			lengthRatio := dl / avgDocLength
-			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
-			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
-			ctx.Scores[docIdx] += idfBoost * tfnorm
+		// Hoist boost check: when boost==1 the multiply is a no-op, so we use a
+		// dedicated idf-only multiplier and skip the extra float64 op in the hot path.
+		var idfBoost float64
+		if boost != 1 {
+			idfBoost = idf * boost
+		} else {
+			idfBoost = idf
 		}
-	case freqDense && !dlDense:
-		for _, docIdx := range resolved {
-			tf := float64(freqs[docIdx].Frequency)
 
-			docLengthIdx, found := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
-			if !found && docLengthIdx < len(docLengths) {
-				docLengths = docLengths[docLengthIdx:]
-				continue
-			} else if !found {
-				break
-			}
-			dl := float64(docLengths[docLengthIdx].Length)
-			docLengths = docLengths[1+docLengthIdx:]
-
-			lengthRatio := dl / avgDocLength
-			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
-			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
-
-			ctx.Scores[docIdx] += idfBoost * tfnorm
+		if idfBoost == 0 || satPlus1 == 0 {
+			return
 		}
-	case !freqDense && dlDense:
-		for _, docIdx := range resolved {
-			freqIdx, found := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
-			if !found && freqIdx < len(freqs) {
-				freqs = freqs[freqIdx:]
-				continue
-			} else if !found {
-				break
+
+		switch {
+		case freqDense && dlDense:
+			for _, docIdx := range resolved {
+				tf := float64(freqs[docIdx].Frequency)
+				dl := float64(docLengths[docIdx].Length)
+				lengthRatio := dl / avgDocLength
+				lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
+				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
+				ctx.Scores[docIdx] += idfBoost * tfnorm
 			}
-			tf := float64(freqs[freqIdx].Frequency)
-			freqs = freqs[1+freqIdx:]
+		case freqDense && !dlDense:
+			for _, docIdx := range resolved {
+				tf := float64(freqs[docIdx].Frequency)
 
-			dl := float64(docLengths[docIdx].Length)
-			lengthRatio := dl / avgDocLength
-			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
-			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
+				docLengthIdx, found := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
+				if !found && docLengthIdx < len(docLengths) {
+					docLengths = docLengths[docLengthIdx:]
+					continue
+				} else if !found {
+					break
+				}
+				dl := float64(docLengths[docLengthIdx].Length)
+				docLengths = docLengths[1+docLengthIdx:]
 
-			ctx.Scores[docIdx] += idfBoost * tfnorm
-		}
-	default: // !freqDense && !dlDense
-		for _, docIdx := range resolved {
-			freqIdx, found := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
-			if !found && freqIdx < len(freqs) {
-				freqs = freqs[freqIdx:]
-				continue
-			} else if !found {
-				break
+				lengthRatio := dl / avgDocLength
+				lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
+				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
+
+				ctx.Scores[docIdx] += idfBoost * tfnorm
 			}
-			tf := float64(freqs[freqIdx].Frequency)
-			freqs = freqs[1+freqIdx:]
+		case !freqDense && dlDense:
+			for _, docIdx := range resolved {
+				freqIdx, found := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
+				if !found && freqIdx < len(freqs) {
+					freqs = freqs[freqIdx:]
+					continue
+				} else if !found {
+					break
+				}
+				tf := float64(freqs[freqIdx].Frequency)
+				freqs = freqs[1+freqIdx:]
 
-			docLengthIdx, found := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
-			if !found && docLengthIdx < len(docLengths) {
-				docLengths = docLengths[docLengthIdx:]
-				continue
-			} else if !found {
-				break
+				dl := float64(docLengths[docIdx].Length)
+				lengthRatio := dl / avgDocLength
+				lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
+				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
+
+				ctx.Scores[docIdx] += idfBoost * tfnorm
 			}
-			dl := float64(docLengths[docLengthIdx].Length)
-			docLengths = docLengths[1+docLengthIdx:]
+		default: // !freqDense && !dlDense
+			for _, docIdx := range resolved {
+				freqIdx, found := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
+				if !found && freqIdx < len(freqs) {
+					freqs = freqs[freqIdx:]
+					continue
+				} else if !found {
+					break
+				}
+				tf := float64(freqs[freqIdx].Frequency)
+				freqs = freqs[1+freqIdx:]
 
-			lengthRatio := dl / avgDocLength
-			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
-			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
+				docLengthIdx, found := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
+				if !found && docLengthIdx < len(docLengths) {
+					docLengths = docLengths[docLengthIdx:]
+					continue
+				} else if !found {
+					break
+				}
+				dl := float64(docLengths[docLengthIdx].Length)
+				docLengths = docLengths[1+docLengthIdx:]
 
-			ctx.Scores[docIdx] += idfBoost * tfnorm
+				lengthRatio := dl / avgDocLength
+				lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
+				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
+
+				ctx.Scores[docIdx] += idfBoost * tfnorm
+			}
 		}
 	}
 }

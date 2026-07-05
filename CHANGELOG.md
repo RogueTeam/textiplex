@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.6.8](https://github.com/RogueTeam/textiplex/compare/v1.6.7...v1.6.8) (2026-07-05)
+
+
+### Bug Fixes
+
+* use correct operation and not ([2803607](https://github.com/RogueTeam/textiplex/commit/2803607acc57c57d368bacec9afede26634e387f))
+
 ### [1.6.7](https://github.com/RogueTeam/textiplex/compare/v1.6.6...v1.6.7) (2026-07-05)
 
 

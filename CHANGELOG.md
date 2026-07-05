@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.6.9](https://github.com/RogueTeam/textiplex/compare/v1.6.8...v1.6.9) (2026-07-05)
+
+
+### Bug Fixes
+
+* support for skipping empty resolved ([2f3c3ce](https://github.com/RogueTeam/textiplex/commit/2f3c3ce6b93c0d9f795edef7663c35fcba971540))
+
 ### [1.6.8](https://github.com/RogueTeam/textiplex/compare/v1.6.7...v1.6.8) (2026-07-05)
 
 

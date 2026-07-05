@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.6.11](https://github.com/RogueTeam/textiplex/compare/v1.6.10...v1.6.11) (2026-07-05)
+
+
+### Bug Fixes
+
+* improved query performance by removing the full iteration over all candiates ([4c1ccb4](https://github.com/RogueTeam/textiplex/commit/4c1ccb47ce65bf86bde68de4f1037b2bf31955c1))
+
 ### [1.6.10](https://github.com/RogueTeam/textiplex/compare/v1.6.9...v1.6.10) (2026-07-05)
 
 

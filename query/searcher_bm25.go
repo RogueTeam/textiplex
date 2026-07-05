@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"slices"
 
+	"github.com/RoaringBitmap/roaring"
 	"github.com/RogueTeam/textiplex/storage"
 )
 
@@ -45,33 +46,25 @@ func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
 		lengthPenalty = DefaultLengthPenalty
 	}
 
-	candidates := ctx.Bitmap.ToArray()
-	acc := make([]float64, len(candidates))
-
 	if mustsCount > 0 {
-		s.Iter(&q.Musts, func(state *ClauseState) { s.accumulateBM25(candidates, acc, state, saturation, lengthPenalty) })
+		s.Iter(&q.Musts, func(state *ClauseState) { s.accumulateBM25(ctx, state, saturation, lengthPenalty) })
 	}
 	if shouldsCount > 0 {
-		s.Iter(&q.Shoulds, func(state *ClauseState) { s.accumulateBM25(candidates, acc, state, saturation, lengthPenalty) })
-	}
-
-	// Materialize once. A position stays zero only when no term contributed or
-	// every contribution was scaled by a zero boost; both read back as the map's
-	// 0.0 default, and ResolveScores already discards score==0, so skipping the
-	// write is observationally identical to writing a 0.0 entry.
-	for i, score := range acc {
-		if score > 0 {
-			ctx.Scores[candidates[i]] = score
-		}
+		s.Iter(&q.Shoulds, func(state *ClauseState) { s.accumulateBM25(ctx, state, saturation, lengthPenalty) })
 	}
 }
 
-func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *ClauseState, saturation, lengthPenalty float64) {
+func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturation, lengthPenalty float64) {
 	if !state.Found {
 		return
 	}
 	token := state.Token
 	field := state.Field
+
+	var tokenPl roaring.Bitmap
+	s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&tokenPl)
+
+	resolved := roaring.FastAnd(&ctx.Bitmap, &tokenPl).ToArray()
 
 	docLengths := field.DocumentLengths
 	freqs := s.Storage.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
@@ -94,18 +87,22 @@ func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *Cla
 		idfBoost = idf
 	}
 
+	if idfBoost == 0 || satPlus1 == 0 {
+		return
+	}
+
 	switch {
 	case freqDense && dlDense:
-		for i, docIdx := range candidates {
+		for _, docIdx := range resolved {
 			tf := float64(freqs[docIdx].Frequency)
 			dl := float64(docLengths[docIdx].Length)
 			lengthRatio := dl / avgDocLength
 			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
-			acc[i] += idfBoost * tfnorm
+			ctx.Scores[docIdx] += idfBoost * tfnorm
 		}
 	case freqDense && !dlDense:
-		for i, docIdx := range candidates {
+		for _, docIdx := range resolved {
 			tf := float64(freqs[docIdx].Frequency)
 
 			docLengthIdx, found := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
@@ -121,10 +118,11 @@ func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *Cla
 			lengthRatio := dl / avgDocLength
 			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
-			acc[i] += idfBoost * tfnorm
+
+			ctx.Scores[docIdx] += idfBoost * tfnorm
 		}
 	case !freqDense && dlDense:
-		for i, docIdx := range candidates {
+		for _, docIdx := range resolved {
 			freqIdx, found := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
 			if !found && freqIdx < len(freqs) {
 				freqs = freqs[freqIdx:]
@@ -139,10 +137,11 @@ func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *Cla
 			lengthRatio := dl / avgDocLength
 			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
-			acc[i] += idfBoost * tfnorm
+
+			ctx.Scores[docIdx] += idfBoost * tfnorm
 		}
 	default: // !freqDense && !dlDense
-		for i, docIdx := range candidates {
+		for _, docIdx := range resolved {
 			freqIdx, found := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
 			if !found && freqIdx < len(freqs) {
 				freqs = freqs[freqIdx:]
@@ -166,7 +165,8 @@ func (s *Searcher) accumulateBM25(candidates []uint32, acc []float64, state *Cla
 			lengthRatio := dl / avgDocLength
 			lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 			tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
-			acc[i] += idfBoost * tfnorm
+
+			ctx.Scores[docIdx] += idfBoost * tfnorm
 		}
 	}
 }

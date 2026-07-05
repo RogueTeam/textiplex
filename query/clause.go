@@ -219,20 +219,20 @@ fieldKwLoop:
 			if !first {
 				first = true
 
-				if entry.Value.CaptureMode == RangeCaptureModeRight || entry.Value.CaptureMode == RangeCaptureModeNone {
+				tokLoCmp := bytes.Compare(token.Value.Bytes(), lo)
+				if tokLoCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeRight || entry.Value.CaptureMode == RangeCaptureModeNone) {
 					continue
 				}
 			}
 
-			tokenCmp := bytes.Compare(token.Value.Bytes(), hi)
-			if tokenCmp > 0 {
+			tokHiCmp := bytes.Compare(token.Value.Bytes(), hi)
+			if tokHiCmp > 0 {
 				break
 			}
 
-			if tokenCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeLeft || entry.Value.CaptureMode == RangeCaptureModeNone) {
+			if tokHiCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeLeft || entry.Value.CaptureMode == RangeCaptureModeNone) {
 				break
 			}
-
 			state.Tokens = append(state.Tokens, token)
 		}
 

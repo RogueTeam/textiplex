@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.6.7](https://github.com/RogueTeam/textiplex/compare/v1.6.6...v1.6.7) (2026-07-05)
+
+
+### Bug Fixes
+
+* fields ordering done by consuming a pending bitmap ([a786f7f](https://github.com/RogueTeam/textiplex/commit/a786f7fc69d41d6419eb8e0fe0f530ed483bb8cb))
+
 ### [1.6.6](https://github.com/RogueTeam/textiplex/compare/v1.6.5...v1.6.6) (2026-07-04)
 
 

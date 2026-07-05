@@ -1,6 +1,6 @@
 {
   "name": "textiplex",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "description": "A high-performance, low-memory full-text search engine written in Go",
   "keywords": [
     "FTS",

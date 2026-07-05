@@ -33,7 +33,7 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 			bitmaps = append(bitmaps, bitmap)
 		})
 
-		if !failed {
+		if !failed && len(bitmaps) > 0 {
 			ctx.Bitmap = *roaring.FastAnd(bitmaps...)
 		}
 	} else if q.Shoulds.Count() > 0 {

@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.6.10](https://github.com/RogueTeam/textiplex/compare/v1.6.9...v1.6.10) (2026-07-05)
+
+
+### Bug Fixes
+
+* compute size as needed ([32865b5](https://github.com/RogueTeam/textiplex/commit/32865b5b9d571a9ea9370aff1ba78e198c0825e1))
+
 ### [1.6.9](https://github.com/RogueTeam/textiplex/compare/v1.6.8...v1.6.9) (2026-07-05)
 
 

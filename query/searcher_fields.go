@@ -25,7 +25,12 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 
 		s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&retrievalBitmap)
 
-		for _, docIdx := range roaring.FastAnd(pending, &retrievalBitmap).ToArray() {
+		resolved := roaring.FastAnd(pending, &retrievalBitmap)
+		if resolved.IsEmpty() {
+			continue
+		}
+
+		for _, docIdx := range resolved.ToArray() {
 			_, found := ctx.Scores[docIdx]
 			if !found {
 				ctx.Scores[docIdx] = float64(cardinality - uint64(len(ctx.Scores)))

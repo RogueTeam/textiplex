@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"iter"
 	"os"
-	"slices"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring"
+	"github.com/RogueTeam/textiplex/binarysearch"
 	"github.com/RogueTeam/textiplex/pool"
 	"github.com/tidwall/btree"
 	"golang.org/x/sys/unix"
@@ -18,7 +18,7 @@ import (
 type Tokens []Token
 
 func (s *Tokens) GetString(ss string) (token *Token, found bool) {
-	idx, found := slices.BinarySearchFunc(*s, ss, func(e Token, t string) int {
+	idx, found := binarysearch.PointerBinarySearchFunc(*s, ss, func(e *Token, t string) int {
 		return bytes.Compare(e.Value.Bytes(), unsafe.Slice(unsafe.StringData(t), len(t)))
 	})
 
@@ -29,7 +29,7 @@ func (s *Tokens) GetString(ss string) (token *Token, found bool) {
 }
 
 func (s *Tokens) GetBytes(b []byte) (token *Token, found bool) {
-	idx, found := slices.BinarySearchFunc(*s, b, func(e Token, t []byte) int {
+	idx, found := binarysearch.PointerBinarySearchFunc(*s, b, func(e *Token, t []byte) int {
 		return bytes.Compare(e.Value.Bytes(), b)
 	})
 
@@ -40,7 +40,7 @@ func (s *Tokens) GetBytes(b []byte) (token *Token, found bool) {
 }
 
 func (s *Tokens) GetBytesOrNear(b []byte) (token *Token, found bool) {
-	idx, found := slices.BinarySearchFunc(*s, b, func(e Token, t []byte) int {
+	idx, found := binarysearch.PointerBinarySearchFunc(*s, b, func(e *Token, t []byte) int {
 		return bytes.Compare(e.Value.Bytes(), b)
 	})
 
@@ -58,7 +58,7 @@ func (s *Tokens) IterBytes(lo, hi []byte) (seq iter.Seq[*Token]) {
 	var startIndex, endIndex int
 	if lo != nil {
 		var found bool
-		startIndex, found = slices.BinarySearchFunc(*s, lo, func(e Token, t []byte) int {
+		startIndex, found = binarysearch.PointerBinarySearchFunc(*s, lo, func(e *Token, t []byte) int {
 			return bytes.Compare(e.Value.Bytes(), t)
 		})
 		if !found && startIndex >= len(*s) {
@@ -70,7 +70,7 @@ func (s *Tokens) IterBytes(lo, hi []byte) (seq iter.Seq[*Token]) {
 		endIndex = len(*s) - 1
 	} else {
 		var found bool
-		endIndex, found = slices.BinarySearchFunc(*s, hi, func(e Token, t []byte) int {
+		endIndex, found = binarysearch.PointerBinarySearchFunc(*s, hi, func(e *Token, t []byte) int {
 			return bytes.Compare(e.Value.Bytes(), t)
 		})
 		if !found && endIndex >= len(*s) {

@@ -81,9 +81,6 @@ type ClauseState struct {
 	Field *storage.Field
 	// Token references
 	Tokens []*storage.Token
-	// Used to check if something was actuall found or not
-	// Should always be handled first by caller
-	Found bool
 }
 
 type HandleClauseFunc func(state *ClauseState)
@@ -98,8 +95,8 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 
 		var found bool
 		for _, state.Field = range s.Storage.Fields {
-			token, state.Found = state.Field.Tokens.GetBytes(kw.Value)
-			if state.Found {
+			token, tokenFound := state.Field.Tokens.GetBytes(kw.Value)
+			if tokenFound {
 				state.Tokens = state.Tokens[:0]
 				state.Tokens = append(state.Tokens, token)
 
@@ -124,7 +121,6 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 					state.Tokens = state.Tokens[:0]
 					state.Tokens = append(state.Tokens, token)
 
-					state.Found = true
 					if !found {
 						found = true
 					}
@@ -136,7 +132,7 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 
 		// For those that were not found we need to do something
 		if !found {
-			state.Found = false
+			state.Tokens = state.Tokens[:0]
 			handle(&state)
 		}
 	}
@@ -145,13 +141,18 @@ fieldKwLoop:
 	for _, entry := range c.FieldKeywords {
 		state.Boost = entry.Value.Boost
 
-		state.Field, state.Found = s.Storage.Fields[entry.FieldHash]
-		if state.Found {
-			token, state.Found = state.Field.Tokens.GetBytes(entry.Value.Value)
-			if state.Found {
-				state.Tokens = state.Tokens[:0]
-				state.Tokens = append(state.Tokens, token)
-			}
+		var fieldFound bool
+		state.Field, fieldFound = s.Storage.Fields[entry.FieldHash]
+		if !fieldFound {
+			state.Tokens = state.Tokens[:0]
+			handle(&state)
+			continue
+		}
+
+		token, found := state.Field.Tokens.GetBytes(entry.Value.Value)
+		if found {
+			state.Tokens = state.Tokens[:0]
+			state.Tokens = append(state.Tokens, token)
 			handle(&state)
 			continue
 		}
@@ -170,28 +171,23 @@ fieldKwLoop:
 				state.Tokens = state.Tokens[:0]
 				state.Tokens = append(state.Tokens, token)
 
-				state.Found = true
 				handle(&state)
 				continue fieldKwLoop
 			}
 		}
 
 		// If everything fail, send state with nothing
-		state.Found = false
+		state.Tokens = state.Tokens[:0]
 		handle(&state)
 	}
 
 	for _, entry := range c.FieldRanges {
 		state.Boost = entry.Value.Boost
 
-		state.Field, state.Found = s.Storage.Fields[entry.FieldHash]
-		if !state.Found {
-			handle(&state)
-			continue
-		}
-
-		if len(state.Field.Tokens) == 0 {
-			state.Found = false
+		var fieldFound bool
+		state.Field, fieldFound = s.Storage.Fields[entry.FieldHash]
+		if !fieldFound {
+			state.Tokens = state.Tokens[:0]
 			handle(&state)
 			continue
 		}
@@ -232,7 +228,6 @@ fieldKwLoop:
 			state.Tokens = append(state.Tokens, token)
 		}
 
-		state.Found = len(state.Tokens) > 0
 		handle(&state)
 	}
 }

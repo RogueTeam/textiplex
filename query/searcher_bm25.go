@@ -55,7 +55,7 @@ func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
 }
 
 func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturation, lengthPenalty float64) {
-	if !state.Found {
+	if len(state.Tokens) == 0 {
 		return
 	}
 	for _, token := range state.Tokens {

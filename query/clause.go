@@ -125,7 +125,6 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 						found = true
 					}
 					handle(&state)
-					break
 				}
 			}
 		}

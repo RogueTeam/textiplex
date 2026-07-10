@@ -88,8 +88,6 @@ type HandleClauseFunc func(state *ClauseState)
 func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 	var state ClauseState
 
-	var token *storage.Token
-
 	for _, kw := range c.Keywords {
 		state.Boost = kw.Boost
 
@@ -125,6 +123,7 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 						found = true
 					}
 					handle(&state)
+					break
 				}
 			}
 		}
@@ -207,7 +206,7 @@ fieldKwLoop:
 		var first bool
 
 		state.Tokens = state.Tokens[:0]
-		for token = range state.Field.Tokens.IterBytes(lo, hi) {
+		for token := range state.Field.Tokens.IterBytes(lo, hi) {
 			if !first {
 				first = true
 

@@ -93,12 +93,11 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 
 	var token *storage.Token
 
-	var fieldHash uint64
 	for _, kw := range c.Keywords {
 		state.Boost = kw.Boost
 
 		var found bool
-		for fieldHash, state.Field = range s.Storage.Fields {
+		for _, state.Field = range s.Storage.Fields {
 			token, state.Found = state.Field.Tokens.GetBytes(kw.Value)
 			if state.Found {
 				state.Tokens = state.Tokens[:0]
@@ -144,7 +143,6 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 
 fieldKwLoop:
 	for _, entry := range c.FieldKeywords {
-		fieldHash = entry.FieldHash
 		state.Boost = entry.Value.Boost
 
 		state.Field, state.Found = s.Storage.Fields[entry.FieldHash]
@@ -184,10 +182,9 @@ fieldKwLoop:
 	}
 
 	for _, entry := range c.FieldRanges {
-		fieldHash = entry.FieldHash
 		state.Boost = entry.Value.Boost
 
-		state.Field, state.Found = s.Storage.Fields[fieldHash]
+		state.Field, state.Found = s.Storage.Fields[entry.FieldHash]
 		if !state.Found {
 			handle(&state)
 			continue

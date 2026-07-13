@@ -11,7 +11,7 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 	}
 
 	cardinality := ctx.Bitmap.GetCardinality()
-	ctx.Scores = make(map[uint32]float64, cardinality)
+	ctx.Scores = make(map[uint32]float32, cardinality)
 
 	var pending = ctx.Bitmap.Clone()
 
@@ -33,7 +33,7 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 		for _, docIdx := range resolved.ToArray() {
 			_, found := ctx.Scores[docIdx]
 			if !found {
-				ctx.Scores[docIdx] = float64(cardinality - uint64(len(ctx.Scores)))
+				ctx.Scores[docIdx] = float32(cardinality - uint64(len(ctx.Scores)))
 			}
 		}
 

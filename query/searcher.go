@@ -10,8 +10,8 @@ import (
 
 type Searcher struct {
 	Storage           *storage.Storage
-	BM25Saturation    float64
-	BM25LengthPenalty float64
+	BM25Saturation    float32
+	BM25LengthPenalty float32
 	// Maximum amount of entries challenged against levenshtein fuzz algorithm
 	LevenshteinM    int
 	LevenshteinMaxK int
@@ -48,7 +48,7 @@ func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint32) {
 
 	zeroIdx, found := slices.BinarySearchFunc(
 		candidates, 0.0,
-		func(e uint32, t float64) int {
+		func(e uint32, t float32) int {
 			return cmp.Compare(t, ctx.Scores[e])
 		},
 	)

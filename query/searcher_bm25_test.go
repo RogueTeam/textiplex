@@ -2,7 +2,6 @@ package query_test
 
 import (
 	"fmt"
-	"math"
 	"math/rand"
 	"slices"
 	"testing"
@@ -86,7 +85,7 @@ func TestShouldSingleTerm(t *testing.T) {
 
 			// Every matched doc must carry a strictly positive score.
 			for _, idx := range idxs {
-				assertions.Greater(ctx.Scores[idx], 0.0, "doc %d must be scored", idx)
+				assertions.Greater(ctx.Scores[idx], float32(0.0), "doc %d must be scored", idx)
 			}
 		})
 	}
@@ -306,7 +305,7 @@ func TestBoostAffectsScore(t *testing.T) {
 	_, ctx2 := testsuite.RunQuery(q2, s2)
 	boosted := ctx2.Scores[0]
 
-	assertions.Greater(base, 0.0)
+	assertions.Greater(base, float32(0.0))
 	assertions.InDelta(2.0*base, boosted, 1e-9, "boost of 2.0 must double the term contribution")
 }
 
@@ -337,13 +336,13 @@ func TestBM25Primitives(t *testing.T) {
 		rare := query.InverseDocumentFrequency(1000, 1)
 		common := query.InverseDocumentFrequency(1000, 500)
 		assertions.Greater(rare, common, "rarer term must have higher idf")
-		assertions.Greater(common, 0.0)
+		assertions.Greater(common, float32(0.0))
 	})
 
 	t.Run("normalized tf saturates", func(t *testing.T) {
 		// As tf→∞ this formula approaches (saturation+1): the saturation*lengthNorm
 		// term in the denominator becomes negligible against tf.
-		ceiling := query.DefaultSaturation + 1.0 // 2.2
+		ceiling := float32(query.DefaultSaturation + 1.0) // 2.2
 		hi := query.NormalizedTF(1_000_000, 10, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
 		assertions.Less(hi, ceiling)
 		assertions.InDelta(ceiling, hi, 0.01, "huge tf should sit just under the ceiling")
@@ -363,8 +362,7 @@ func TestBM25Primitives(t *testing.T) {
 
 	t.Run("scores are finite", func(t *testing.T) {
 		score := query.ScoreTermBM25(1000, 3, 4, 12, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		assertions.False(math.IsNaN(score) || math.IsInf(score, 0))
-		assertions.Greater(score, 0.0)
+		assertions.Greater(score, float32(0.0))
 	})
 }
 
@@ -379,10 +377,10 @@ func buildStorage(docs ...*storage.Document) *storage.Storage {
 
 // scoreByID resolves an external id to its internal index and returns its score.
 // Returns NaN if the id is unknown so a misuse surfaces loudly in assertions.
-func scoreByID(s *storage.Storage, ctx *query.QueryContext, id string) float64 {
+func scoreByID(s *storage.Storage, ctx *query.QueryContext, id string) float32 {
 	idx, ok := testsuite.IndexOfDocument(s, id)
 	if !ok {
-		return math.NaN()
+		return 0
 	}
 	return ctx.Scores[idx]
 }
@@ -469,7 +467,7 @@ func TestShouldTermInAllDocs(t *testing.T) {
 
 	assertions.Len(idxs, 3, "every doc must match")
 	for _, idx := range idxs {
-		assertions.Greater(ctx.Scores[idx], 0.0, "smoothed idf keeps the score positive even at n==N")
+		assertions.Greater(ctx.Scores[idx], float32(0.0), "smoothed idf keeps the score positive even at n==N")
 	}
 }
 
@@ -772,8 +770,8 @@ func TestBoostScalesLinearly(t *testing.T) {
 
 	cases := []struct {
 		name  string
-		boost float64
-		want  float64
+		boost float32
+		want  float32
 	}{
 		{"half boost halves contribution", 0.5, 0.5 * base},
 		{"triple boost triples contribution", 3.0, 3.0 * base},
@@ -785,7 +783,7 @@ func TestBoostScalesLinearly(t *testing.T) {
 			q := &query.SimpleQuery{}
 			q.Shoulds.Keyword([]byte("contrato"), tc.boost, 0)
 			_, ctx := testsuite.RunQuery(q, build())
-			assertions.Greater(base, 0.0)
+			assertions.Greater(base, float32(0.0))
 			assertions.InDelta(tc.want, ctx.Scores[0], 1e-9)
 		})
 	}
@@ -938,7 +936,7 @@ func TestBM25IDFExtended(t *testing.T) {
 	t.Run("always positive even when present in every doc", func(t *testing.T) {
 		assertions := assert.New(t)
 		all := query.InverseDocumentFrequency(1000, 1000)
-		assertions.Greater(all, 0.0, "smoothed idf must stay positive at n==N")
+		assertions.Greater(all, float32(0.0), "smoothed idf must stay positive at n==N")
 	})
 
 	t.Run("rarer beats omnipresent", func(t *testing.T) {
@@ -967,15 +965,15 @@ func TestBM25NormalizedTFExtended(t *testing.T) {
 
 	t.Run("length penalty zero removes length dependence", func(t *testing.T) {
 		assertions := assert.New(t)
-		short := query.NormalizedTF(3, 5, 100, query.DefaultSaturation, 0.0)
-		long := query.NormalizedTF(3, 500, 100, query.DefaultSaturation, 0.0)
+		short := query.NormalizedTF(3, 5, 100, query.DefaultSaturation, float32(0.0))
+		long := query.NormalizedTF(3, 500, 100, query.DefaultSaturation, float32(0.0))
 		assertions.InDelta(short, long, 1e-12, "with b=0 doc length must not matter")
 	})
 
 	t.Run("invariant to penalty when docLen equals avgDocLen", func(t *testing.T) {
 		assertions := assert.New(t)
 		// factor (1 - b + b*docLen/avgDocLen) == 1 when docLen==avgDocLen, any b.
-		noPenalty := query.NormalizedTF(3, 10, 10, query.DefaultSaturation, 0.0)
+		noPenalty := query.NormalizedTF(3, 10, 10, query.DefaultSaturation, float32(0.0))
 		fullPenalty := query.NormalizedTF(3, 10, 10, query.DefaultSaturation, 1.0)
 		assertions.InDelta(noPenalty, fullPenalty, 1e-12)
 	})
@@ -1015,14 +1013,13 @@ func TestBM25ScoreExtended(t *testing.T) {
 
 	t.Run("finite and positive across a parameter spread", func(t *testing.T) {
 		assertions := assert.New(t)
-		scores := []float64{
+		scores := []float32{
 			query.ScoreTermBM25(10, 1, 1, 1, 1, query.DefaultSaturation, query.DefaultLengthPenalty),
 			query.ScoreTermBM25(1_000_000, 1, 50, 3, 200, query.DefaultSaturation, query.DefaultLengthPenalty),
 			query.ScoreTermBM25(1_000_000, 999_999, 1, 1000, 10, query.DefaultSaturation, query.DefaultLengthPenalty),
 		}
 		for i, sc := range scores {
-			assertions.False(math.IsNaN(sc) || math.IsInf(sc, 0), "score %d must be finite", i)
-			assertions.Greater(sc, 0.0, "score %d must be positive", i)
+			assertions.Greater(sc, float32(0.0), "score %d must be positive", i)
 		}
 	})
 }
@@ -1064,7 +1061,7 @@ func TestPropertyResultsSortedByScore(t *testing.T) {
 		assertions.False(seen[idx], "duplicate index %d", idx)
 		seen[idx] = true
 		assertions.True(ctx.Bitmap.Contains(idx))
-		assertions.Greater(ctx.Scores[idx], 0.0)
+		assertions.Greater(ctx.Scores[idx], float32(float32(0.0)))
 	}
 }
 
@@ -1212,7 +1209,7 @@ func TestMultiFieldScoring(t *testing.T) {
 
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-a"}, testsuite.ResolveDocumentIndexes(s, idxs))
-		assertions.Greater(ctx.Scores[idxs[0]], 0.0)
+		assertions.Greater(ctx.Scores[idxs[0]], float32(0.0))
 	})
 
 	t.Run("two docs same term different fields both match unscoped", func(t *testing.T) {
@@ -1228,7 +1225,7 @@ func TestMultiFieldScoring(t *testing.T) {
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Len(idxs, 2)
 		for _, idx := range idxs {
-			assertions.Greater(ctx.Scores[idx], 0.0)
+			assertions.Greater(ctx.Scores[idx], float32(0.0))
 		}
 	})
 }
@@ -1247,10 +1244,10 @@ func TestBoostEdgeCases(t *testing.T) {
 	t.Run("zero boost contributes nothing", func(t *testing.T) {
 		assertions := assert.New(t)
 		q := &query.SimpleQuery{}
-		q.Shoulds.Keyword([]byte("contrato"), 0.0, 0)
+		q.Shoulds.Keyword([]byte("contrato"), float32(0.0), 0)
 		_, ctx := testsuite.RunQuery(q, single())
 		// The clause matched but its contribution is scaled to zero.
-		assertions.InDelta(0.0, ctx.Scores[0], 1e-12, "a zero boost must add no score")
+		assertions.InDelta(float32(0.0), ctx.Scores[0], 1e-12, "a zero boost must add no score")
 	})
 
 	t.Run("boost on must term raises score", func(t *testing.T) {
@@ -1264,7 +1261,7 @@ func TestBoostEdgeCases(t *testing.T) {
 		boostQ.Musts.Keyword([]byte("contrato"), 4.0, 0)
 		_, boostCtx := testsuite.RunQuery(boostQ, single())
 
-		assertions.Greater(baseCtx.Scores[0], 0.0)
+		assertions.Greater(baseCtx.Scores[0], float32(0.0))
 		assertions.InDelta(4.0*baseCtx.Scores[0], boostCtx.Scores[0], 1e-9,
 			"must clauses are scored, so their boost scales linearly too")
 	})
@@ -1313,8 +1310,7 @@ func TestBoostEdgeCases(t *testing.T) {
 		q := &query.SimpleQuery{}
 		q.Shoulds.Keyword([]byte("contrato"), 1e9, 0)
 		_, ctx := testsuite.RunQuery(q, single())
-		assertions.False(math.IsNaN(ctx.Scores[0]) || math.IsInf(ctx.Scores[0], 0))
-		assertions.Greater(ctx.Scores[0], 0.0)
+		assertions.Greater(ctx.Scores[0], float32(0.0))
 	})
 
 	t.Run("boost on must-not has no scoring effect", func(t *testing.T) {
@@ -1690,7 +1686,7 @@ func TestRankingSubtleties(t *testing.T) {
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-huge", "doc-one"}, testsuite.ResolveDocumentIndexes(s, idxs))
 		for _, idx := range idxs {
-			assertions.False(math.IsInf(ctx.Scores[idx], 0), "saturated tf must keep the score finite")
+			assertions.Greater(ctx.Scores[idx], float32(0), "saturated tf must keep the score greater than zero")
 		}
 	})
 
@@ -1727,7 +1723,7 @@ func TestCorpusLevelIDF(t *testing.T) {
 		q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Len(idxs, 1)
-		assertions.Greater(ctx.Scores[0], 0.0, "smoothed idf must stay positive even at N==n==1")
+		assertions.Greater(ctx.Scores[0], float32(0.0), "smoothed idf must stay positive even at N==n==1")
 	})
 
 	t.Run("rare term dominates ranking in a large corpus", func(t *testing.T) {
@@ -1848,8 +1844,7 @@ func TestDegenerateInputs(t *testing.T) {
 		q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Len(idxs, 1)
-		assertions.False(math.IsNaN(ctx.Scores[0]) || math.IsInf(ctx.Scores[0], 0))
-		assertions.Greater(ctx.Scores[0], 0.0)
+		assertions.Greater(ctx.Scores[0], float32(0.0))
 	})
 
 	t.Run("several must-not clauses with nothing else is empty", func(t *testing.T) {
@@ -1920,7 +1915,7 @@ func TestBM25PrimitivesDeep(t *testing.T) {
 		none := query.InverseDocumentFrequency(1000, 0)
 		one := query.InverseDocumentFrequency(1000, 1)
 		assertions.Greater(none, one)
-		assertions.Greater(one, 0.0)
+		assertions.Greater(one, float32(0.0))
 	})
 
 	t.Run("idf strictly decreasing across a sampled sweep", func(t *testing.T) {
@@ -1936,13 +1931,13 @@ func TestBM25PrimitivesDeep(t *testing.T) {
 	t.Run("normalized tf with zero saturation equals one", func(t *testing.T) {
 		assertions := assert.New(t)
 		// With k1==0 the denominator collapses to tf, so the ratio is 1 for any tf>0.
-		got := query.NormalizedTF(7, 123, 10, 0.0, query.DefaultLengthPenalty)
+		got := query.NormalizedTF(7, 123, 10, float32(0.0), query.DefaultLengthPenalty)
 		assertions.InDelta(1.0, got, 1e-12)
 	})
 
 	t.Run("normalized tf approaches k1 plus one ceiling", func(t *testing.T) {
 		assertions := assert.New(t)
-		const k1 = 2.0
+		const k1 = float32(2.0)
 		got := query.NormalizedTF(1_000_000, 10, 10, k1, query.DefaultLengthPenalty)
 		assertions.Less(got, k1+1.0)
 		assertions.InDelta(k1+1.0, got, 0.01)
@@ -1968,21 +1963,20 @@ func TestBM25PrimitivesDeep(t *testing.T) {
 
 	t.Run("score length penalty zero ignores doc length", func(t *testing.T) {
 		assertions := assert.New(t)
-		short := query.ScoreTermBM25(1000, 7, 3, 5, 100, query.DefaultSaturation, 0.0)
-		long := query.ScoreTermBM25(1000, 7, 3, 500, 100, query.DefaultSaturation, 0.0)
+		short := query.ScoreTermBM25(1000, 7, 3, 5, 100, query.DefaultSaturation, float32(0.0))
+		long := query.ScoreTermBM25(1000, 7, 3, 500, 100, query.DefaultSaturation, float32(0.0))
 		assertions.InDelta(short, long, 1e-12)
 	})
 
 	t.Run("score finite and positive across extreme params", func(t *testing.T) {
 		assertions := assert.New(t)
-		scores := []float64{
+		scores := []float32{
 			query.ScoreTermBM25(1, 1, 1, 1, 1, query.DefaultSaturation, query.DefaultLengthPenalty),
 			query.ScoreTermBM25(10_000_000, 1, 1, 1, 1, query.DefaultSaturation, query.DefaultLengthPenalty),
 			query.ScoreTermBM25(10_000_000, 9_999_999, 5000, 1, 100000, query.DefaultSaturation, query.DefaultLengthPenalty),
 		}
 		for i, sc := range scores {
-			assertions.False(math.IsNaN(sc) || math.IsInf(sc, 0), "score %d must be finite", i)
-			assertions.Greater(sc, 0.0, "score %d must stay positive", i)
+			assertions.Greater(sc, float32(0.0), "score %d must stay positive", i)
 		}
 	})
 }
@@ -2244,8 +2238,7 @@ func TestPropertyInvariantsExtended(t *testing.T) {
 		assertSortedDescByScore(assertions, ctx, idxs)
 		for _, idx := range idxs {
 			sc := ctx.Scores[idx]
-			assertions.Greater(sc, 0.0)
-			assertions.False(math.IsNaN(sc) || math.IsInf(sc, 0))
+			assertions.Greater(sc, float32(0.0))
 		}
 	})
 

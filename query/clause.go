@@ -19,12 +19,12 @@ const (
 
 type Range struct {
 	CaptureMode RangeCaptureMode
-	Boost       float64
+	Boost       float32
 	Low, High   []byte
 }
 
 type Keyword struct {
-	Boost float64
+	Boost float32
 	Fuzzy int
 	Value []byte
 }
@@ -44,7 +44,7 @@ func (c *Clause) Count() (count int) {
 	return len(c.Keywords) + len(c.FieldKeywords) + len(c.FieldRanges)
 }
 
-func (c *Clause) Keyword(kw []byte, boost float64, fuzzy int) {
+func (c *Clause) Keyword(kw []byte, boost float32, fuzzy int) {
 	c.Keywords = append(c.Keywords, &Keyword{
 		Value: kw,
 		Boost: boost,
@@ -52,7 +52,7 @@ func (c *Clause) Keyword(kw []byte, boost float64, fuzzy int) {
 	})
 }
 
-func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float64, fuzzy int) {
+func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float32, fuzzy int) {
 	c.FieldKeywords = append(c.FieldKeywords, &ClauseEntry[Keyword]{
 		FieldHash: field,
 		Value: Keyword{
@@ -63,7 +63,7 @@ func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float64, fuzzy int)
 	})
 }
 
-func (c *Clause) FieldRange(field uint64, lo, hi []byte, mode RangeCaptureMode, boost float64) {
+func (c *Clause) FieldRange(field uint64, lo, hi []byte, mode RangeCaptureMode, boost float32) {
 	c.FieldRanges = append(c.FieldRanges, &ClauseEntry[Range]{
 		FieldHash: field,
 		Value: Range{
@@ -76,7 +76,7 @@ func (c *Clause) FieldRange(field uint64, lo, hi []byte, mode RangeCaptureMode, 
 }
 
 type ClauseState struct {
-	Boost float64
+	Boost float32
 	// Field references
 	Field *storage.Field
 	// Token references
@@ -214,5 +214,5 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 // Query context intended to be cached and reused by caller on each search
 type QueryContext struct {
 	Bitmap roaring.Bitmap
-	Scores map[uint32]float64
+	Scores map[uint32]float32
 }

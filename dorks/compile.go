@@ -53,7 +53,7 @@ func (q *Query) Compile(allField uint64, defTokenizer tokenizer.Tokenizer, field
 			targetClause = &sq.Shoulds
 		}
 
-		var boost float64
+		var boost float32
 		if dork.Boost != nil {
 			boost = *dork.Boost
 		} else {

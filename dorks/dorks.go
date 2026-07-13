@@ -85,7 +85,7 @@ type Dork struct {
 	Operator Operator       `parser:"@( '+' | '-')?" json:"operator,omitzero"`
 	Keyword  UnquotedString `parser:"@(Time | Float | Int | Phrase | Keyword | Phrase)" json:"keyword,omitzero"`
 	Match    *Match         `parser:"@@?" json:"match,omitzero"`
-	Boost    *float64       `parser:"(';' @(Float | Int))?" json:"boost,omitzero"`
+	Boost    *float32       `parser:"(';' @(Float | Int))?" json:"boost,omitzero"`
 	Fuzzy    *int           `parser:"('~' @Int)?" json:"fuzzy,omitzero"`
 }
 

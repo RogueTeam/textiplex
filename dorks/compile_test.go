@@ -375,7 +375,7 @@ func TestCompileBoostScalesScore(t *testing.T) {
 	}
 
 	base := plainCtx.Scores[idx]
-	assertions.Greater(base, 0.0, "unboosted match must score positive")
+	assertions.Greater(base, float32(0.0), "unboosted match must score positive")
 	// Boost multiplies the per-term contribution linearly (Boost * ScoreTermBM25).
 	assertions.InDelta(3.0*base, boostedCtx.Scores[idx], 1e-9,
 		"boost of 3.0 must triple the score of the field match")

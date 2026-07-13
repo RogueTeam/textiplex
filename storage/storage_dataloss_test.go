@@ -128,11 +128,11 @@ func verify(t *testing.T, label string, s *storage.Storage, tr *truth) {
 		if field.TotalTokenFrequenciesCount != tf.totalFreqs {
 			t.Fatalf("%s: field %d TotalTokenFrequenciesCount got %d want %d", label, hash, field.TotalTokenFrequenciesCount, tf.totalFreqs)
 		}
-		var wantAvg float64
+		var wantAvg float32
 		if len(tf.docLengths) > 0 {
-			wantAvg = float64(tf.totalLen) / float64(len(tf.docLengths))
+			wantAvg = float32(tf.totalLen) / float32(len(tf.docLengths))
 		}
-		if len(tf.docLengths) > 0 && math.Abs(field.AvgDocumentLength-wantAvg) > 1e-9 {
+		if len(tf.docLengths) > 0 && math.Abs(float64(field.AvgDocumentLength-wantAvg)) > 1e-9 {
 			t.Fatalf("%s: field %d avgdl got %v want %v", label, hash, field.AvgDocumentLength, wantAvg)
 		}
 

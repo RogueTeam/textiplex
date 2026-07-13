@@ -22,12 +22,12 @@ import (
 // map, and collapses the map writes into one final pass.
 func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
 	cardinality := ctx.Bitmap.GetCardinality()
-	ctx.Scores = make(map[uint32]float64, cardinality)
+	ctx.Scores = make(map[uint32]float32, cardinality)
 	if cardinality == 0 {
 		return
 	}
 
-	var saturation, lengthPenalty float64
+	var saturation, lengthPenalty float32
 	if s.BM25Saturation != 0 {
 		saturation = s.BM25Saturation
 	} else {
@@ -48,7 +48,7 @@ func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
 	}
 }
 
-func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturation, lengthPenalty float64) {
+func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturation, lengthPenalty float32) {
 	if len(state.Tokens) == 0 {
 		return
 	}
@@ -68,7 +68,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 		// Hoist boost check: when boost==1 the multiply is a no-op, so we use a
 		// dedicated idf-only multiplier and skip the extra float64 op in the hot path.
-		var idfBoost float64
+		var idfBoost float32
 		if boost != 1 {
 			idfBoost = idf * boost
 		} else {
@@ -88,8 +88,8 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 		switch {
 		case freqDense && dlDense:
 			for _, docIdx := range resolved {
-				tf := float64(freqs[docIdx].Frequency)
-				dl := float64(docLengths[docIdx].Length)
+				tf := float32(freqs[docIdx].Frequency)
+				dl := float32(docLengths[docIdx].Length)
 				lengthRatio := dl / avgDocLength
 				lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
@@ -101,11 +101,11 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 			}
 		case freqDense && !dlDense:
 			for _, docIdx := range resolved {
-				tf := float64(freqs[docIdx].Frequency)
+				tf := float32(freqs[docIdx].Frequency)
 
 				docLengthIdx, _ := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
 
-				dl := float64(docLengths[docLengthIdx].Length)
+				dl := float32(docLengths[docLengthIdx].Length)
 				docLengths = docLengths[1+docLengthIdx:]
 
 				lengthRatio := dl / avgDocLength
@@ -121,10 +121,10 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 			for _, docIdx := range resolved {
 				freqIdx, _ := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
 
-				tf := float64(freqs[freqIdx].Frequency)
+				tf := float32(freqs[freqIdx].Frequency)
 				freqs = freqs[1+freqIdx:]
 
-				dl := float64(docLengths[docIdx].Length)
+				dl := float32(docLengths[docIdx].Length)
 				lengthRatio := dl / avgDocLength
 				lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
@@ -138,12 +138,12 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 			for _, docIdx := range resolved {
 				freqIdx, _ := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
 
-				tf := float64(freqs[freqIdx].Frequency)
+				tf := float32(freqs[freqIdx].Frequency)
 				freqs = freqs[1+freqIdx:]
 
 				docLengthIdx, _ := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
 
-				dl := float64(docLengths[docLengthIdx].Length)
+				dl := float32(docLengths[docLengthIdx].Length)
 				docLengths = docLengths[1+docLengthIdx:]
 
 				lengthRatio := dl / avgDocLength

@@ -62,9 +62,9 @@ func TestFieldScoreOrdersByTokenAscending(t *testing.T) {
 	assertions.Equal([]string{"z-doc", "m-doc", "a-doc"}, testsuite.ResolveDocumentIndexes(s, idxs))
 
 	// Exact scores: cardinality, cardinality-1, ... down to 1.
-	assertions.Equal(3.0, scoreByID(s, ctx, "z-doc"), "first token must score == cardinality")
-	assertions.Equal(2.0, scoreByID(s, ctx, "m-doc"))
-	assertions.Equal(1.0, scoreByID(s, ctx, "a-doc"), "last token must score == 1")
+	assertions.Equal(float32(3.0), scoreByID(s, ctx, "z-doc"), "first token must score == cardinality")
+	assertions.Equal(float32(2.0), scoreByID(s, ctx, "m-doc"))
+	assertions.Equal(float32(1.0), scoreByID(s, ctx, "a-doc"), "last token must score == 1")
 
 	assertSortedDescByScore(assertions, ctx, idxs)
 }
@@ -120,7 +120,7 @@ func TestFieldScoreIntegerAscending(t *testing.T) {
 			assertions.Equal(tc.want, testsuite.ResolveDocumentIndexes(s, idxs), "must be ascending by integer value")
 			assertSortedDescByScore(assertions, ctx, idxs)
 			// Top result carries the full cardinality as its score.
-			assertions.Equal(float64(len(tc.docs)), ctx.Scores[idxs[0]])
+			assertions.Equal(float32(len(tc.docs)), ctx.Scores[idxs[0]])
 		})
 	}
 }
@@ -162,9 +162,9 @@ func TestFieldScoreTiesBrokenByDocIndex(t *testing.T) {
 	idxs, ctx := testsuite.RunFieldScore(s, fieldHash, nil)
 
 	assertions.Equal([]string{"b-doc", "a-doc", "c-doc"}, testsuite.ResolveDocumentIndexes(s, idxs))
-	assertions.Equal(3.0, scoreByID(s, ctx, "b-doc"), "document b-doc")
-	assertions.Equal(2.0, scoreByID(s, ctx, "a-doc"), "document a-doc")
-	assertions.Equal(1.0, scoreByID(s, ctx, "c-doc"), "document c-doc")
+	assertions.Equal(float32(3.0), scoreByID(s, ctx, "b-doc"), "document b-doc")
+	assertions.Equal(float32(2.0), scoreByID(s, ctx, "a-doc"), "document a-doc")
+	assertions.Equal(float32(1.0), scoreByID(s, ctx, "c-doc"), "document c-doc")
 }
 
 // ── Candidate bitmap is honored, cardinality is the bitmap's ──────────────────
@@ -189,8 +189,8 @@ func TestFieldScoreHonorsCandidateBitmap(t *testing.T) {
 	assertions.Equal([]string{"p10", "p30"}, got, "only candidate-set docs ranked, in ascending order")
 
 	// Cardinality is 2 (the bitmap), not 4 (the corpus): top score == 2.
-	assertions.Equal(2.0, scoreByID(s, ctx, "p10"))
-	assertions.Equal(1.0, scoreByID(s, ctx, "p30"))
+	assertions.Equal(float32(2.0), scoreByID(s, ctx, "p10"))
+	assertions.Equal(float32(1.0), scoreByID(s, ctx, "p30"))
 
 	// Excluded docs never appear.
 	assertions.NotContains(got, "p20")
@@ -216,8 +216,8 @@ func TestFieldScoreMultiValuedRanksBySmallestToken(t *testing.T) {
 
 	assertions.Equal([]string{"dx", "dy"}, testsuite.ResolveDocumentIndexes(s, idxs),
 		"dx must rank first because its smallest token sorts before dy's token")
-	assertions.Equal(2.0, scoreByID(s, ctx, "dx"), "dx scored once, at its smallest token")
-	assertions.Equal(1.0, scoreByID(s, ctx, "dy"))
+	assertions.Equal(float32(2.0), scoreByID(s, ctx, "dx"), "dx scored once, at its smallest token")
+	assertions.Equal(float32(1.0), scoreByID(s, ctx, "dy"))
 }
 
 // ── Pipeline: filter by keyword, then re-rank survivors by a numeric field ────
@@ -344,14 +344,14 @@ func TestFieldScoreScoreSequenceIsDense(t *testing.T) {
 	idxs, ctx := testsuite.RunFieldScore(s, fieldHash, nil)
 	assertions.Len(idxs, n)
 
-	got := make([]float64, 0, n)
+	got := make([]float32, 0, n)
 	for _, idx := range idxs {
 		got = append(got, ctx.Scores[idx])
 	}
 
-	want := make([]float64, 0, n)
+	want := make([]float32, 0, n)
 	for s := n; s >= 1; s-- {
-		want = append(want, float64(s))
+		want = append(want, float32(s))
 	}
 	assertions.Equal(want, got, "scores must be the dense descending run cardinality..1")
 

@@ -479,7 +479,7 @@ func TestMergeCollisionAvgdlRecomputed(t *testing.T) {
 	merged := mergeAndLoad(t, &a, &b)
 
 	// (1 + 2 + 4) / 3 == 7/3 ≈ 2.3333 — also exercises float bit round-trip.
-	assertions.InDelta(7.0/3.0, merged.Fields[1].AvgDocumentLength, 1e-9)
+	assertions.InDelta(7.0/3.0, merged.Fields[1].AvgDocumentLength, 1e-6)
 }
 
 // 19. An A-only field keeps its original avgdl.

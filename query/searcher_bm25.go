@@ -48,6 +48,8 @@ func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
 	}
 }
 
+const MinimumBM25Score = 0
+
 func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturation, lengthPenalty float32) {
 	if len(state.Tokens) == 0 {
 		return
@@ -95,7 +97,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
 
 				score := idfBoost * tfnorm
-				if score > 0 {
+				if score > MinimumBM25Score {
 					ctx.Scores[docIdx] += idfBoost * tfnorm
 				}
 			}
@@ -112,7 +114,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
 
 				score := idfBoost * tfnorm
-				if score > 0 {
+				if score > MinimumBM25Score {
 					ctx.Scores[docIdx] += idfBoost * tfnorm
 				}
 			}
@@ -129,7 +131,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
 
 				score := idfBoost * tfnorm
-				if score > 0 {
+				if score > MinimumBM25Score {
 					ctx.Scores[docIdx] += idfBoost * tfnorm
 				}
 			}
@@ -149,7 +151,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
 
 				score := idfBoost * tfnorm
-				if score > 0 {
+				if score > MinimumBM25Score {
 					ctx.Scores[docIdx] += idfBoost * tfnorm
 				}
 			}

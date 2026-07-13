@@ -29,6 +29,9 @@ const ManyIteratorBatchSize = 8
 // Once a filtering and scoring are done, next step of a searching algorithm
 // Resolves the ctx to an actual idx slice
 func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint32) {
+	if len(ctx.Scores) == 0 {
+		return nil
+	}
 	// ToArray is a per-container bulk fill, far cheaper than draining a
 	// ManyIterator in fixed-size batches, and the ascending order is the same.
 	candidates := ctx.Bitmap.ToArray()

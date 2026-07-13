@@ -103,13 +103,8 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 			for _, docIdx := range resolved {
 				tf := float64(freqs[docIdx].Frequency)
 
-				docLengthIdx, found := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
-				if !found && docLengthIdx < len(docLengths) {
-					docLengths = docLengths[docLengthIdx:]
-					continue
-				} else if !found {
-					break
-				}
+				docLengthIdx, _ := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
+
 				dl := float64(docLengths[docLengthIdx].Length)
 				docLengths = docLengths[1+docLengthIdx:]
 
@@ -124,13 +119,8 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 			}
 		case !freqDense && dlDense:
 			for _, docIdx := range resolved {
-				freqIdx, found := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
-				if !found && freqIdx < len(freqs) {
-					freqs = freqs[freqIdx:]
-					continue
-				} else if !found {
-					break
-				}
+				freqIdx, _ := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
+
 				tf := float64(freqs[freqIdx].Frequency)
 				freqs = freqs[1+freqIdx:]
 
@@ -146,23 +136,13 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 			}
 		default: // !freqDense && !dlDense
 			for _, docIdx := range resolved {
-				freqIdx, found := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
-				if !found && freqIdx < len(freqs) {
-					freqs = freqs[freqIdx:]
-					continue
-				} else if !found {
-					break
-				}
+				freqIdx, _ := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
+
 				tf := float64(freqs[freqIdx].Frequency)
 				freqs = freqs[1+freqIdx:]
 
-				docLengthIdx, found := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
-				if !found && docLengthIdx < len(docLengths) {
-					docLengths = docLengths[docLengthIdx:]
-					continue
-				} else if !found {
-					break
-				}
+				docLengthIdx, _ := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
+
 				dl := float64(docLengths[docLengthIdx].Length)
 				docLengths = docLengths[1+docLengthIdx:]
 

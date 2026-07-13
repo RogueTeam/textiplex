@@ -27,12 +27,6 @@ func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
 		return
 	}
 
-	mustsCount := q.Musts.Count()
-	shouldsCount := q.Shoulds.Count()
-	if mustsCount == 0 && shouldsCount == 0 {
-		return
-	}
-
 	var saturation, lengthPenalty float64
 	if s.BM25Saturation != 0 {
 		saturation = s.BM25Saturation
@@ -46,10 +40,10 @@ func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
 		lengthPenalty = DefaultLengthPenalty
 	}
 
-	if mustsCount > 0 {
+	if q.Musts.Count() > 0 {
 		s.Iter(&q.Musts, func(state *ClauseState) { s.accumulateBM25(ctx, state, saturation, lengthPenalty) })
 	}
-	if shouldsCount > 0 {
+	if q.Shoulds.Count() > 0 {
 		s.Iter(&q.Shoulds, func(state *ClauseState) { s.accumulateBM25(ctx, state, saturation, lengthPenalty) })
 	}
 }
@@ -58,19 +52,13 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 	if len(state.Tokens) == 0 {
 		return
 	}
+	var tokenPl roaring.Bitmap
 	for _, token := range state.Tokens {
-		field := state.Field
-
-		var tokenPl roaring.Bitmap
-		s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&tokenPl)
-
-		resolved := roaring.FastAnd(&ctx.Bitmap, &tokenPl).ToArray()
-
-		docLengths := field.DocumentLengths
+		docLengths := state.Field.DocumentLengths
 		freqs := s.Storage.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
 
-		idf := InverseDocumentFrequency(uint64(len(field.DocumentLengths)), token.FrequencyCount)
-		avgDocLength := field.AvgDocumentLength
+		idf := InverseDocumentFrequency(uint64(len(state.Field.DocumentLengths)), token.FrequencyCount)
+		avgDocLength := state.Field.AvgDocumentLength
 		boost := state.Boost
 		satPlus1 := saturation + 1
 		oneMinusLP := 1 - lengthPenalty
@@ -88,9 +76,15 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 		}
 
 		if idfBoost == 0 || satPlus1 == 0 {
-			return
+			continue
 		}
 
+		s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&tokenPl)
+		if tokenPl.IsEmpty() {
+			continue
+		}
+
+		resolved := roaring.FastAnd(&ctx.Bitmap, &tokenPl).ToArray()
 		switch {
 		case freqDense && dlDense:
 			for _, docIdx := range resolved {
@@ -99,7 +93,11 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				lengthRatio := dl / avgDocLength
 				lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
-				ctx.Scores[docIdx] += idfBoost * tfnorm
+
+				score := idfBoost * tfnorm
+				if score > 0 {
+					ctx.Scores[docIdx] += idfBoost * tfnorm
+				}
 			}
 		case freqDense && !dlDense:
 			for _, docIdx := range resolved {
@@ -119,7 +117,10 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
 
-				ctx.Scores[docIdx] += idfBoost * tfnorm
+				score := idfBoost * tfnorm
+				if score > 0 {
+					ctx.Scores[docIdx] += idfBoost * tfnorm
+				}
 			}
 		case !freqDense && dlDense:
 			for _, docIdx := range resolved {
@@ -138,7 +139,10 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
 
-				ctx.Scores[docIdx] += idfBoost * tfnorm
+				score := idfBoost * tfnorm
+				if score > 0 {
+					ctx.Scores[docIdx] += idfBoost * tfnorm
+				}
 			}
 		default: // !freqDense && !dlDense
 			for _, docIdx := range resolved {
@@ -166,7 +170,10 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
 				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
 
-				ctx.Scores[docIdx] += idfBoost * tfnorm
+				score := idfBoost * tfnorm
+				if score > 0 {
+					ctx.Scores[docIdx] += idfBoost * tfnorm
+				}
 			}
 		}
 	}

@@ -141,30 +141,25 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 
 		var fieldFound bool
 		state.Field, fieldFound = s.Storage.Fields[entry.FieldHash]
-		if !fieldFound {
-			handle(&state)
-			continue
-		}
-
-		token, found := state.Field.Tokens.GetBytes(entry.Value.Value)
-		if found {
-			state.Tokens = append(state.Tokens, token)
-			handle(&state)
-			continue
-		}
-
-		// Levenshtein use the fuzzyK of defined in the keyword
-		k := min(s.LevenshteinMaxK, entry.Value.Fuzzy)
-		var m int
-		if s.LevenshteinM != 0 {
-			m = s.LevenshteinM
-		} else {
-			m = levenshtein.DefaultM
-		}
-		if k > 0 && m > 0 {
-			automata := levenshtein.New(k, m, entry.Value.Value, state.Field.Tokens)
-			for token = range automata.Matches() {
+		if fieldFound {
+			token, found := state.Field.Tokens.GetBytes(entry.Value.Value)
+			if found {
 				state.Tokens = append(state.Tokens, token)
+			} else {
+				// Levenshtein use the fuzzyK of defined in the keyword
+				k := min(s.LevenshteinMaxK, entry.Value.Fuzzy)
+				var m int
+				if s.LevenshteinM != 0 {
+					m = s.LevenshteinM
+				} else {
+					m = levenshtein.DefaultM
+				}
+				if k > 0 && m > 0 {
+					automata := levenshtein.New(k, m, entry.Value.Value, state.Field.Tokens)
+					for token = range automata.Matches() {
+						state.Tokens = append(state.Tokens, token)
+					}
+				}
 			}
 		}
 
@@ -177,47 +172,44 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 
 		var fieldFound bool
 		state.Field, fieldFound = s.Storage.Fields[entry.FieldHash]
-		if !fieldFound {
-			handle(&state)
-			continue
-		}
+		if fieldFound {
+			var (
+				lo = entry.Value.Low
+				hi = entry.Value.High
+			)
+			if len(lo) == 0 {
+				tok := state.Field.Tokens[0]
+				lo = tok.Value.Bytes()
+			}
+			if len(hi) == 0 {
+				tok := state.Field.Tokens[len(state.Field.Tokens)-1]
+				hi = tok.Value.Bytes()
+			}
 
-		var (
-			lo = entry.Value.Low
-			hi = entry.Value.High
-		)
-		if len(lo) == 0 {
-			tok := state.Field.Tokens[0]
-			lo = tok.Value.Bytes()
-		}
-		if len(hi) == 0 {
-			tok := state.Field.Tokens[len(state.Field.Tokens)-1]
-			hi = tok.Value.Bytes()
-		}
+			var first bool
 
-		var first bool
+			for token := range state.Field.Tokens.IterBytes(lo, hi) {
+				if !first {
+					first = true
 
-		for token := range state.Field.Tokens.IterBytes(lo, hi) {
-			if !first {
-				first = true
+					tokLoCmp := bytes.Compare(token.Value.Bytes(), lo)
 
-				tokLoCmp := bytes.Compare(token.Value.Bytes(), lo)
-
-				// Only ignore the first element if it is equal to the lo end and capture mode is set to > or ><
-				if tokLoCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeRight || entry.Value.CaptureMode == RangeCaptureModeNone) {
-					continue
+					// Only ignore the first element if it is equal to the lo end and capture mode is set to > or ><
+					if tokLoCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeRight || entry.Value.CaptureMode == RangeCaptureModeNone) {
+						continue
+					}
 				}
-			}
 
-			tokHiCmp := bytes.Compare(token.Value.Bytes(), hi)
-			if tokHiCmp == 1 || (tokHiCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeLeft || entry.Value.CaptureMode == RangeCaptureModeNone)) {
-				break
-			}
+				tokHiCmp := bytes.Compare(token.Value.Bytes(), hi)
+				if tokHiCmp == 1 || (tokHiCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeLeft || entry.Value.CaptureMode == RangeCaptureModeNone)) {
+					break
+				}
 
-			state.Tokens = append(state.Tokens, token)
+				state.Tokens = append(state.Tokens, token)
+			}
 		}
-
 		handle(&state)
+
 	}
 }
 

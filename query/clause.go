@@ -135,21 +135,19 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 		}
 	}
 
-fieldKwLoop:
 	for _, entry := range c.FieldKeywords {
+		state.Tokens = state.Tokens[:0]
 		state.Boost = entry.Value.Boost
 
 		var fieldFound bool
 		state.Field, fieldFound = s.Storage.Fields[entry.FieldHash]
 		if !fieldFound {
-			state.Tokens = state.Tokens[:0]
 			handle(&state)
 			continue
 		}
 
 		token, found := state.Field.Tokens.GetBytes(entry.Value.Value)
 		if found {
-			state.Tokens = state.Tokens[:0]
 			state.Tokens = append(state.Tokens, token)
 			handle(&state)
 			continue
@@ -166,26 +164,20 @@ fieldKwLoop:
 		if k > 0 && m > 0 {
 			automata := levenshtein.New(k, m, entry.Value.Value, state.Field.Tokens)
 			for token = range automata.Matches() {
-				state.Tokens = state.Tokens[:0]
 				state.Tokens = append(state.Tokens, token)
-
-				handle(&state)
-				continue fieldKwLoop
 			}
 		}
 
-		// If everything fail, send state with nothing
-		state.Tokens = state.Tokens[:0]
 		handle(&state)
 	}
 
 	for _, entry := range c.FieldRanges {
+		state.Tokens = state.Tokens[:0]
 		state.Boost = entry.Value.Boost
 
 		var fieldFound bool
 		state.Field, fieldFound = s.Storage.Fields[entry.FieldHash]
 		if !fieldFound {
-			state.Tokens = state.Tokens[:0]
 			handle(&state)
 			continue
 		}
@@ -205,7 +197,6 @@ fieldKwLoop:
 
 		var first bool
 
-		state.Tokens = state.Tokens[:0]
 		for token := range state.Field.Tokens.IterBytes(lo, hi) {
 			if !first {
 				first = true

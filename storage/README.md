@@ -21,7 +21,7 @@
 ├─────────────────────────────────────────────────────┤
 │                 FIELD BLOCKS                        │
 │  ┌───────────────────────────────────────────────┐  │
-│  │  hash (8B) | avgdl (8B f64)                   │  │
+│  │  hash (8B) | avgdl (4B f32) | Padding (4B)    │  │
 │  │  total_docs_length (8B)                       │  │
 │  │  token_count (8B) | total_token_freqs (8B)    │  │
 │  │  doc_length_count (8B)                        │  │

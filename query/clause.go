@@ -93,43 +93,41 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 
 		var found bool
 		for _, state.Field = range s.Storage.Fields {
+			state.Tokens = state.Tokens[:0]
 			token, tokenFound := state.Field.Tokens.GetBytes(kw.Value)
-			if tokenFound {
-				state.Tokens = state.Tokens[:0]
-				state.Tokens = append(state.Tokens, token)
 
-				handle(&state)
-				if !found {
-					found = true
+			if tokenFound {
+				state.Tokens = append(state.Tokens, token)
+			} else {
+				// Levenshtein use the fuzzyK of defined in the keyword
+				k := min(s.LevenshteinMaxK, kw.Fuzzy)
+				var m int
+				if s.LevenshteinM != 0 {
+					m = s.LevenshteinM
+				} else {
+					m = levenshtein.DefaultM
 				}
+				if k > 0 && m > 0 {
+					automata := levenshtein.New(k, m, kw.Value, state.Field.Tokens)
+					for token = range automata.Matches() {
+						state.Tokens = append(state.Tokens, token)
+					}
+				}
+			}
+
+			if len(state.Tokens) == 0 {
 				continue
 			}
 
-			// Levenshtein use the fuzzyK of defined in the keyword
-			k := min(s.LevenshteinMaxK, kw.Fuzzy)
-			var m int
-			if s.LevenshteinM != 0 {
-				m = s.LevenshteinM
-			} else {
-				m = levenshtein.DefaultM
+			if !found {
+				found = true
 			}
-			if k > 0 && m > 0 {
-				automata := levenshtein.New(k, m, kw.Value, state.Field.Tokens)
-				for token = range automata.Matches() {
-					state.Tokens = state.Tokens[:0]
-					state.Tokens = append(state.Tokens, token)
-
-					if !found {
-						found = true
-					}
-					handle(&state)
-					break
-				}
-			}
+			handle(&state)
 		}
 
 		// For those that were not found we need to do something
 		if !found {
+			state.Field = nil
 			state.Tokens = state.Tokens[:0]
 			handle(&state)
 		}

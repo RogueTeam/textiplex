@@ -73,6 +73,9 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 		boost := state.Boost
 		satPlus1 := saturation + 1
 		oneMinusLP := 1 - lengthPenalty
+		satXOneMinuxLp := saturation * oneMinusLP
+
+		saturationXLengthPenaltyDivAvgDocLength := saturation * (lengthPenalty / avgDocLength)
 
 		freqDense := len(freqs) == len(s.Storage.DocumentsIds)
 		dlDense := len(docLengths) == len(s.Storage.DocumentsIds)
@@ -81,9 +84,9 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 		// dedicated idf-only multiplier and skip the extra float64 op in the hot path.
 		var idfBoost float32
 		if boost != 1 {
-			idfBoost = idf * boost
+			idfBoost = idf * boost * satPlus1
 		} else {
-			idfBoost = idf
+			idfBoost = idf * satPlus1
 		}
 
 		if idfBoost == 0 || satPlus1 == 0 {
@@ -101,9 +104,10 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 			for _, docIdx := range resolved {
 				tf := float32(freqs[docIdx].Frequency)
 				dl := float32(docLengths[docIdx].Length)
-				lengthRatio := dl / avgDocLength
-				lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
-				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
+
+				denominator1 := tf + satXOneMinuxLp
+				denominator2 := dl * saturationXLengthPenaltyDivAvgDocLength
+				tfnorm := (tf) / (denominator1 + denominator2)
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
@@ -118,9 +122,9 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				dl := float32(docLengths[docLengthIdx].Length)
 				docLengths = docLengths[1+docLengthIdx:]
 
-				lengthRatio := dl / avgDocLength
-				lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
-				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
+				denominator1 := tf + satXOneMinuxLp
+				denominator2 := dl * saturationXLengthPenaltyDivAvgDocLength
+				tfnorm := (tf) / (denominator1 + denominator2)
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
@@ -135,9 +139,9 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				tf := float32(freqs[freqIdx].Frequency)
 				freqs = freqs[1+freqIdx:]
 
-				lengthRatio := dl / avgDocLength
-				lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
-				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
+				denominator1 := tf + satXOneMinuxLp
+				denominator2 := dl * saturationXLengthPenaltyDivAvgDocLength
+				tfnorm := (tf) / (denominator1 + denominator2)
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
@@ -155,9 +159,9 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				dl := float32(docLengths[docLengthIdx].Length)
 				docLengths = docLengths[1+docLengthIdx:]
 
-				lengthRatio := dl / avgDocLength
-				lengthNorm := oneMinusLP + lengthPenalty*lengthRatio
-				tfnorm := (tf * satPlus1) / (tf + saturation*lengthNorm)
+				denominator1 := tf + satXOneMinuxLp
+				denominator2 := dl * saturationXLengthPenaltyDivAvgDocLength
+				tfnorm := (tf) / (denominator1 + denominator2)
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {

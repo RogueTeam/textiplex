@@ -1281,7 +1281,7 @@ func TestBoostEdgeCases(t *testing.T) {
 		boostQ.Shoulds.FieldKeyword(fieldTitle, []byte("alerta"), 2.5, 0)
 		_, boostCtx := testsuite.RunQuery(boostQ, build())
 
-		assertions.InDelta(2.5*baseCtx.Scores[0], boostCtx.Scores[0], 1e-4)
+		assertions.InDelta(2.5*baseCtx.Scores[0], boostCtx.Scores[0], 1e-9)
 	})
 
 	t.Run("boost does not change the matching set", func(t *testing.T) {

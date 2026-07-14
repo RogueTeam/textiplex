@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.7.4](https://github.com/RogueTeam/textiplex/compare/v1.7.3...v1.7.4) (2026-07-14)
+
+
+### Bug Fixes
+
+* allow flexible delta ([29c2881](https://github.com/RogueTeam/textiplex/commit/29c2881bd53f8b20d926dc44931e1c0c2c618027))
+* do io heavy operations near each other ([7958e04](https://github.com/RogueTeam/textiplex/commit/7958e04dec8b1412c7a6bd67061fdb74cb3271fe))
+* do not check bounds ([809d9d1](https://github.com/RogueTeam/textiplex/commit/809d9d1cb1ff3d77f17c7cd237f27f915006f1c4))
+* faster resolution of candidates ([81e9afa](https://github.com/RogueTeam/textiplex/commit/81e9afafba9938a374273ea747ecceab566ec38f))
+* fixed fastlog.Ln to safely handle bounds of float32 ([482d845](https://github.com/RogueTeam/textiplex/commit/482d845b714ec12e073548d0a9dae5bba03788c4))
+* improvement of performance by early checking the state is empty ([78d2c81](https://github.com/RogueTeam/textiplex/commit/78d2c819ef27f4527896797e3b6cd1c25f2a4673))
+* included original delta for comparison ([368e5ab](https://github.com/RogueTeam/textiplex/commit/368e5ab7b7a04192bd1ae91c4214ad390a95854d))
+* levenshtein for keyword conditions always apply ([6fd2c82](https://github.com/RogueTeam/textiplex/commit/6fd2c82c2344ad4b15c5e1b5ec6087ce4f910fc1))
+* localized token variable ([c43788f](https://github.com/RogueTeam/textiplex/commit/c43788f7bce54cd06ffe8e888eb2c5fdf021e4f1))
+* moved to float32 for faster calculation ([7cdad3d](https://github.com/RogueTeam/textiplex/commit/7cdad3de1f24b32207170a825ff5b8f99f3ccac1))
+* only include scores greater than zero ([6aec413](https://github.com/RogueTeam/textiplex/commit/6aec413810315f812113f3f168ff2590f90f8093))
+* only resolve when the bitmap is not empty ([1d6066c](https://github.com/RogueTeam/textiplex/commit/1d6066cd52d1d831aeda275e85520276c06f80b5))
+* pending is ensuring the arriving entries are always not set ([9774d0c](https://github.com/RogueTeam/textiplex/commit/9774d0ce37cb98400de47899f2048fe1169940ef))
+* pointer iteration for bigger values ([d85330f](https://github.com/RogueTeam/textiplex/commit/d85330fa7a8c55a370047dca80a3c7abf78f83a1))
+* reduced size of clause state ([8dc8c0e](https://github.com/RogueTeam/textiplex/commit/8dc8c0ebd30dd6646ba6fd5e227c1fdfca83b14a))
+* reduced the number of calls to handle per iteration ([790c6bf](https://github.com/RogueTeam/textiplex/commit/790c6bf1cc917e84d63a0622bfba65106aaf157b))
+* reduced the number of handle calls in keyword iteration ([231a650](https://github.com/RogueTeam/textiplex/commit/231a650f07144551905f9d1422b6607c3d6b8d9e))
+* remove fieldhash variable ([002a5cf](https://github.com/RogueTeam/textiplex/commit/002a5cf7416e7ff4e61d76af2a719cb3cde8a2ff))
+* score compared against contant instead ([808e240](https://github.com/RogueTeam/textiplex/commit/808e240700d62aea3d55551aae73612fb15b2f97))
+* simplified tokens reset on iterations ([a6c5424](https://github.com/RogueTeam/textiplex/commit/a6c5424e8db0f4c198bbaef5e68e731e7d04961c))
+* use of agner fog bucket grouping of math operations ([8d095ff](https://github.com/RogueTeam/textiplex/commit/8d095ff65977cb7af183a1d93758fa0928019866))
+
 ### [1.7.3](https://github.com/RogueTeam/textiplex/compare/v1.7.2...v1.7.3) (2026-07-05)
 
 ### [1.7.2](https://github.com/RogueTeam/textiplex/compare/v1.7.1...v1.7.2) (2026-07-05)

@@ -107,7 +107,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 				denominator1 := tf + satXOneMinuxLp
 				denominator2 := dl * saturationXLengthPenaltyDivAvgDocLength
-				tfnorm := (tf) / (denominator1 + denominator2)
+				tfnorm := tf / (denominator1 + denominator2)
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
@@ -124,7 +124,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 				denominator1 := tf + satXOneMinuxLp
 				denominator2 := dl * saturationXLengthPenaltyDivAvgDocLength
-				tfnorm := (tf) / (denominator1 + denominator2)
+				tfnorm := tf / (denominator1 + denominator2)
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
@@ -141,7 +141,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 				denominator1 := tf + satXOneMinuxLp
 				denominator2 := dl * saturationXLengthPenaltyDivAvgDocLength
-				tfnorm := (tf) / (denominator1 + denominator2)
+				tfnorm := tf / (denominator1 + denominator2)
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
@@ -161,7 +161,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 				denominator1 := tf + satXOneMinuxLp
 				denominator2 := dl * saturationXLengthPenaltyDivAvgDocLength
-				tfnorm := (tf) / (denominator1 + denominator2)
+				tfnorm := tf / (denominator1 + denominator2)
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {

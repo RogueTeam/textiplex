@@ -19,12 +19,12 @@ const (
 
 type Range struct {
 	CaptureMode RangeCaptureMode
-	Boost       float64
+	Boost       float32
 	Low, High   []byte
 }
 
 type Keyword struct {
-	Boost float64
+	Boost float32
 	Fuzzy int
 	Value []byte
 }
@@ -44,7 +44,7 @@ func (c *Clause) Count() (count int) {
 	return len(c.Keywords) + len(c.FieldKeywords) + len(c.FieldRanges)
 }
 
-func (c *Clause) Keyword(kw []byte, boost float64, fuzzy int) {
+func (c *Clause) Keyword(kw []byte, boost float32, fuzzy int) {
 	c.Keywords = append(c.Keywords, &Keyword{
 		Value: kw,
 		Boost: boost,
@@ -52,7 +52,7 @@ func (c *Clause) Keyword(kw []byte, boost float64, fuzzy int) {
 	})
 }
 
-func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float64, fuzzy int) {
+func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float32, fuzzy int) {
 	c.FieldKeywords = append(c.FieldKeywords, &ClauseEntry[Keyword]{
 		FieldHash: field,
 		Value: Keyword{
@@ -63,7 +63,7 @@ func (c *Clause) FieldKeyword(field uint64, kw []byte, boost float64, fuzzy int)
 	})
 }
 
-func (c *Clause) FieldRange(field uint64, lo, hi []byte, mode RangeCaptureMode, boost float64) {
+func (c *Clause) FieldRange(field uint64, lo, hi []byte, mode RangeCaptureMode, boost float32) {
 	c.FieldRanges = append(c.FieldRanges, &ClauseEntry[Range]{
 		FieldHash: field,
 		Value: Range{
@@ -76,14 +76,11 @@ func (c *Clause) FieldRange(field uint64, lo, hi []byte, mode RangeCaptureMode, 
 }
 
 type ClauseState struct {
-	Boost float64
+	Boost float32
 	// Field references
 	Field *storage.Field
 	// Token references
 	Tokens []*storage.Token
-	// Used to check if something was actuall found or not
-	// Should always be handled first by caller
-	Found bool
 }
 
 type HandleClauseFunc func(state *ClauseState)
@@ -91,157 +88,131 @@ type HandleClauseFunc func(state *ClauseState)
 func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 	var state ClauseState
 
-	var token *storage.Token
-
-	var fieldHash uint64
 	for _, kw := range c.Keywords {
 		state.Boost = kw.Boost
 
 		var found bool
-		for fieldHash, state.Field = range s.Storage.Fields {
-			token, state.Found = state.Field.Tokens.GetBytes(kw.Value)
-			if state.Found {
-				state.Tokens = state.Tokens[:0]
-				state.Tokens = append(state.Tokens, token)
+		for _, state.Field = range s.Storage.Fields {
+			state.Tokens = state.Tokens[:0]
+			token, tokenFound := state.Field.Tokens.GetBytes(kw.Value)
 
-				handle(&state)
-				if !found {
-					found = true
+			if tokenFound {
+				state.Tokens = append(state.Tokens, token)
+			} else {
+				// Levenshtein use the fuzzyK of defined in the keyword
+				k := min(s.LevenshteinMaxK, kw.Fuzzy)
+				var m int
+				if s.LevenshteinM != 0 {
+					m = s.LevenshteinM
+				} else {
+					m = levenshtein.DefaultM
 				}
+				if k > 0 && m > 0 {
+					automata := levenshtein.New(k, m, kw.Value, state.Field.Tokens)
+					for token = range automata.Matches() {
+						state.Tokens = append(state.Tokens, token)
+					}
+				}
+			}
+
+			if len(state.Tokens) == 0 {
 				continue
 			}
 
-			// Levenshtein use the fuzzyK of defined in the keyword
-			k := min(s.LevenshteinMaxK, kw.Fuzzy)
-			var m int
-			if s.LevenshteinM != 0 {
-				m = s.LevenshteinM
-			} else {
-				m = levenshtein.DefaultM
+			if !found {
+				found = true
 			}
-			if k > 0 && m > 0 {
-				automata := levenshtein.New(k, m, kw.Value, state.Field.Tokens)
-				for token = range automata.Matches() {
-					state.Tokens = state.Tokens[:0]
-					state.Tokens = append(state.Tokens, token)
-
-					state.Found = true
-					if !found {
-						found = true
-					}
-					handle(&state)
-					break
-				}
-			}
+			handle(&state)
 		}
 
 		// For those that were not found we need to do something
 		if !found {
-			state.Found = false
+			state.Field = nil
+			state.Tokens = state.Tokens[:0]
 			handle(&state)
 		}
 	}
 
-fieldKwLoop:
 	for _, entry := range c.FieldKeywords {
-		fieldHash = entry.FieldHash
+		state.Tokens = state.Tokens[:0]
 		state.Boost = entry.Value.Boost
 
-		state.Field, state.Found = s.Storage.Fields[entry.FieldHash]
-		if state.Found {
-			token, state.Found = state.Field.Tokens.GetBytes(entry.Value.Value)
-			if state.Found {
-				state.Tokens = state.Tokens[:0]
+		var fieldFound bool
+		state.Field, fieldFound = s.Storage.Fields[entry.FieldHash]
+		if fieldFound {
+			token, found := state.Field.Tokens.GetBytes(entry.Value.Value)
+			if found {
 				state.Tokens = append(state.Tokens, token)
-			}
-			handle(&state)
-			continue
-		}
-
-		// Levenshtein use the fuzzyK of defined in the keyword
-		k := min(s.LevenshteinMaxK, entry.Value.Fuzzy)
-		var m int
-		if s.LevenshteinM != 0 {
-			m = s.LevenshteinM
-		} else {
-			m = levenshtein.DefaultM
-		}
-		if k > 0 && m > 0 {
-			automata := levenshtein.New(k, m, entry.Value.Value, state.Field.Tokens)
-			for token = range automata.Matches() {
-				state.Tokens = state.Tokens[:0]
-				state.Tokens = append(state.Tokens, token)
-
-				state.Found = true
-				handle(&state)
-				continue fieldKwLoop
+			} else {
+				// Levenshtein use the fuzzyK of defined in the keyword
+				k := min(s.LevenshteinMaxK, entry.Value.Fuzzy)
+				var m int
+				if s.LevenshteinM != 0 {
+					m = s.LevenshteinM
+				} else {
+					m = levenshtein.DefaultM
+				}
+				if k > 0 && m > 0 {
+					automata := levenshtein.New(k, m, entry.Value.Value, state.Field.Tokens)
+					for token = range automata.Matches() {
+						state.Tokens = append(state.Tokens, token)
+					}
+				}
 			}
 		}
 
-		// If everything fail, send state with nothing
-		state.Found = false
 		handle(&state)
 	}
 
 	for _, entry := range c.FieldRanges {
-		fieldHash = entry.FieldHash
+		state.Tokens = state.Tokens[:0]
 		state.Boost = entry.Value.Boost
 
-		state.Field, state.Found = s.Storage.Fields[fieldHash]
-		if !state.Found {
-			handle(&state)
-			continue
-		}
+		var fieldFound bool
+		state.Field, fieldFound = s.Storage.Fields[entry.FieldHash]
+		if fieldFound {
+			var (
+				lo = entry.Value.Low
+				hi = entry.Value.High
+			)
+			if len(lo) == 0 {
+				tok := state.Field.Tokens[0]
+				lo = tok.Value.Bytes()
+			}
+			if len(hi) == 0 {
+				tok := state.Field.Tokens[len(state.Field.Tokens)-1]
+				hi = tok.Value.Bytes()
+			}
 
-		if len(state.Field.Tokens) == 0 {
-			state.Found = false
-			handle(&state)
-			continue
-		}
+			var first bool
 
-		var (
-			lo = entry.Value.Low
-			hi = entry.Value.High
-		)
-		if len(lo) == 0 {
-			tok := state.Field.Tokens[0]
-			lo = tok.Value.Bytes()
-		}
-		if len(hi) == 0 {
-			tok := state.Field.Tokens[len(state.Field.Tokens)-1]
-			hi = tok.Value.Bytes()
-		}
+			for token := range state.Field.Tokens.IterBytes(lo, hi) {
+				if !first {
+					first = true
 
-		var first bool
+					tokLoCmp := bytes.Compare(token.Value.Bytes(), lo)
 
-		state.Tokens = state.Tokens[:0]
-		for token = range state.Field.Tokens.IterBytes(lo, hi) {
-			if !first {
-				first = true
-
-				tokLoCmp := bytes.Compare(token.Value.Bytes(), lo)
-
-				// Only ignore the first element if it is equal to the lo end and capture mode is set to > or ><
-				if tokLoCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeRight || entry.Value.CaptureMode == RangeCaptureModeNone) {
-					continue
+					// Only ignore the first element if it is equal to the lo end and capture mode is set to > or ><
+					if tokLoCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeRight || entry.Value.CaptureMode == RangeCaptureModeNone) {
+						continue
+					}
 				}
-			}
 
-			tokHiCmp := bytes.Compare(token.Value.Bytes(), hi)
-			if tokHiCmp == 1 || (tokHiCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeLeft || entry.Value.CaptureMode == RangeCaptureModeNone)) {
-				break
-			}
+				tokHiCmp := bytes.Compare(token.Value.Bytes(), hi)
+				if tokHiCmp == 1 || (tokHiCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeLeft || entry.Value.CaptureMode == RangeCaptureModeNone)) {
+					break
+				}
 
-			state.Tokens = append(state.Tokens, token)
+				state.Tokens = append(state.Tokens, token)
+			}
 		}
-
-		state.Found = len(state.Tokens) > 0
 		handle(&state)
+
 	}
 }
 
 // Query context intended to be cached and reused by caller on each search
 type QueryContext struct {
 	Bitmap roaring.Bitmap
-	Scores map[uint32]float64
+	Scores map[uint32]float32
 }

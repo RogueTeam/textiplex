@@ -19,7 +19,7 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 			if failed {
 				return
 			}
-			if !state.Found {
+			if len(state.Tokens) == 0 {
 				failed = true
 				bitmaps = nil
 				return
@@ -40,7 +40,7 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 		var retrievalBitmap roaring.Bitmap
 		// No Musts: Shoulds define the set (union of Should posting lists).
 		s.Iter(&q.Shoulds, func(state *ClauseState) {
-			if !state.Found {
+			if len(state.Tokens) == 0 {
 				return
 			}
 
@@ -55,7 +55,7 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 		var retrievalBitmap roaring.Bitmap
 		// MustNots subtract from whatever the set is.
 		s.Iter(&q.MustNots, func(state *ClauseState) {
-			if !state.Found || ctx.Bitmap.IsEmpty() {
+			if len(state.Tokens) == 0 || ctx.Bitmap.IsEmpty() {
 				return
 			}
 

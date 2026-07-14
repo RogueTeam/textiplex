@@ -1,13 +1,16 @@
 package query
 
-import "math"
+import "github.com/RogueTeam/textiplex/fastlog"
 
 // IDF returns the Inverse Document Frequency for a single term.
 // It answers: "how surprising is it to see this term in a document?"
 // Document Count is the total number of documents indexed
 // Token Document Frequency is how many documents contains the supplied token at least once
-func InverseDocumentFrequency(docCount, tokenDocFreq uint64) (idf float64) {
-	return math.Log(1.0 + (float64(docCount-tokenDocFreq)+0.5)/(float64(tokenDocFreq)+0.5))
+func InverseDocumentFrequency(docCount, tokenDocFreq uint64) float32 {
+	if tokenDocFreq > docCount || docCount == 0 {
+		return 0
+	}
+	return fastlog.Ln(1.0 + (float32(docCount-tokenDocFreq)+0.5)/(float32(tokenDocFreq)+0.5))
 }
 
 const (
@@ -22,9 +25,9 @@ const (
 // avgDocLength   - average document length across all docs for this field
 // saturation     - saturation: how fast extra occurrences stop mattering (typically 1.2)
 // lengthPenalty  - length penalty: how hard to punish long documents (typically 0.75)
-func NormalizedTF(tokenFreq, documentLength uint64, avgDocLength, saturation, lengthPenalty float64) (normTf float64) {
-	tf := float64(tokenFreq)
-	dl := float64(documentLength)
+func NormalizedTF(tokenFreq, documentLength uint64, avgDocLength, saturation, lengthPenalty float32) (normTf float32) {
+	tf := float32(tokenFreq)
+	dl := float32(documentLength)
 
 	// How much longer/shorter is this doc vs the average.
 	// dl/avgDocLength == 1.0 for an average-length doc → no penalty.
@@ -41,7 +44,7 @@ func NormalizedTF(tokenFreq, documentLength uint64, avgDocLength, saturation, le
 	return (tf * (saturation + 1)) / (tf + saturation*lengthNorm)
 }
 
-func ScoreTermBM25(docCount, tokenDocFreq, tokenFreq, documentLength uint64, avgDocLength, saturation, lengthPenalty float64) (score float64) {
+func ScoreTermBM25(docCount, tokenDocFreq, tokenFreq, documentLength uint64, avgDocLength, saturation, lengthPenalty float32) (score float32) {
 	return InverseDocumentFrequency(docCount, tokenDocFreq) *
 		NormalizedTF(tokenFreq, documentLength, avgDocLength, saturation, lengthPenalty)
 }

@@ -187,7 +187,7 @@ func TestParse(t *testing.T) {
 					{
 						Keyword: "age",
 						Match:   &dorks.Match{Operator: dorks.MatchOperatorGreaterEqual, Value: "30"},
-						Boost:   new(30.0),
+						Boost:   new(float32(30.0)),
 					},
 				}}},
 			{Query: "+Antonio Donis age:<=30 +country:Colombia", Expect: dorks.Query{Dorks: []*dorks.Dork{

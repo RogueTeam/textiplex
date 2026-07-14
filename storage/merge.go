@@ -441,7 +441,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		if err != nil {
 			return fmt.Errorf("failed to write A's field hash: %w: %d", err, fieldHash)
 		}
-		_, err = ctx.DstW.Write(pointers.UnsafeSlice(&field.AvgDocumentLength))
+		copy(ctx.Buffer[:], pointers.UnsafeSlice(&field.AvgDocumentLength))
+		_, err = ctx.DstW.Write(ctx.Buffer[:])
 		if err != nil {
 			return fmt.Errorf("failed to write A's field avgdl: %w: %d", err, fieldHash)
 		}
@@ -519,7 +520,9 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		if err != nil {
 			return fmt.Errorf("failed to write B's field hash: %w: %d", err, fieldHash)
 		}
-		_, err = ctx.DstW.Write(pointers.UnsafeSlice(&field.AvgDocumentLength))
+
+		copy(ctx.Buffer[:], pointers.UnsafeSlice(&field.AvgDocumentLength))
+		_, err = ctx.DstW.Write(ctx.Buffer[:])
 		if err != nil {
 			return fmt.Errorf("failed to write B's field avgdl: %w: %d", err, fieldHash)
 		}
@@ -602,7 +605,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		fieldB := b.Fields[fieldHash]
 
 		var totalDocumentLengths = fieldA.TotalDocumentsLength + fieldB.TotalDocumentsLength
-		var avgDocumentLength = float64(totalDocumentLengths) / float64(len(fieldA.DocumentLengths)+len(fieldB.DocumentLengths))
+		var avgDocumentLength = float32(float64(totalDocumentLengths) / float64(len(fieldA.DocumentLengths)+len(fieldB.DocumentLengths)))
 		var tokensCount = CountTokensBetweenCollisionFields(fieldA, fieldB)
 
 		// Write the field header inmediatly
@@ -610,7 +613,9 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		if err != nil {
 			return fmt.Errorf("failed to write collision field field hash: %w: %d", err, fieldHash)
 		}
-		_, err = ctx.DstW.Write(pointers.UnsafeSlice(&avgDocumentLength))
+
+		copy(ctx.Buffer[:], pointers.UnsafeSlice(&avgDocumentLength))
+		_, err = ctx.DstW.Write(ctx.Buffer[:])
 		if err != nil {
 			return fmt.Errorf("failed to write collision field avgdl: %w: %d", err, fieldHash)
 		}

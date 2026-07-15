@@ -16,8 +16,8 @@ func InverseDocumentFrequency(docCount, tokenDocFreq uint64) float32 {
 }
 
 const (
-	DefaultSaturation    = 1.2
-	DefaultLengthPenalty = 0.75
+	DefaultSaturation    float32 = 1.2
+	DefaultLengthPenalty float32 = 0.75
 )
 
 // NormalizedTF returns the saturated, length-normalized term frequency
@@ -27,26 +27,22 @@ const (
 // avgDocLength   - average document length across all docs for this field
 // saturation     - saturation: how fast extra occurrences stop mattering (typically 1.2)
 // lengthPenalty  - length penalty: how hard to punish long documents (typically 0.75)
-func NormalizedTF(tokenFreq, documentLength uint64, avgDocLength, saturation, lengthPenalty float32) (normTf float32) {
+func NormalizedTF(tokenFreq, documentLength uint32, avgDocLength float32) (normTf float32) {
+
+	const (
+		oneMinusLP     = 1 - DefaultLengthPenalty
+		satXOneMinuxLp = DefaultSaturation * oneMinusLP
+	)
+
 	tf := float32(tokenFreq)
 	dl := float32(documentLength)
-
-	// How much longer/shorter is this doc vs the average.
-	// dl/avgDocLength == 1.0 for an average-length doc → no penalty.
-	lengthRatio := dl / avgDocLength
-
-	// The length normalization term.
-	// lengthPenalty=0 → always 1.0, doc length is ignored entirely.
-	// lengthPenalty=1 → full density normalization.
-	lengthNorm := 1 - lengthPenalty + lengthPenalty*lengthRatio
-
-	// Saturated TF. The ceiling as tf→∞ is (saturation+1)/saturation.
-	// For saturation=1.2 that ceiling is 1.833 — tf=100 and tf=1000
-	// produce nearly identical scores.
-	return (tf * (saturation + 1)) / (tf + saturation*lengthNorm)
+	saturationXLengthPenaltyDivAvgDocLength := DefaultSaturation * (DefaultLengthPenalty / avgDocLength)
+	denominator1 := tf + satXOneMinuxLp
+	denominator2 := dl * saturationXLengthPenaltyDivAvgDocLength
+	return tf / (denominator1 + denominator2)
 }
 
-func ScoreTermBM25(docCount, tokenDocFreq, tokenFreq, documentLength uint64, avgDocLength, saturation, lengthPenalty float32) (score float32) {
+func ScoreTermBM25(docCount, tokenDocFreq uint64, tokenFreq, documentLength uint32, avgDocLength float32) (score float32) {
 	return InverseDocumentFrequency(docCount, tokenDocFreq) *
-		NormalizedTF(tokenFreq, documentLength, avgDocLength, saturation, lengthPenalty)
+		NormalizedTF(tokenFreq, documentLength, avgDocLength)
 }

@@ -9,9 +9,7 @@ import (
 )
 
 type Searcher struct {
-	Storage           *storage.Storage
-	BM25Saturation    float32
-	BM25LengthPenalty float32
+	Storage *storage.Storage
 	// Maximum amount of entries challenged against levenshtein fuzz algorithm
 	LevenshteinM    int
 	LevenshteinMaxK int

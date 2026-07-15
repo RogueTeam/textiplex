@@ -207,7 +207,141 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 			}
 		}
 		handle(&state)
+	}
+}
 
+type HandleClauseCondFunc func(state *ClauseState) (next bool)
+
+func (s *Searcher) IterCond(c *Clause, handle HandleClauseCondFunc) {
+	var state ClauseState
+
+	for _, kw := range c.Keywords {
+		state.Boost = kw.Boost
+
+		var found bool
+		for _, state.Field = range s.Storage.Fields {
+			state.Tokens = state.Tokens[:0]
+			token, tokenFound := state.Field.Tokens.GetBytes(kw.Value)
+
+			if tokenFound {
+				state.Tokens = append(state.Tokens, token)
+			} else {
+				// Levenshtein use the fuzzyK of defined in the keyword
+				k := min(s.LevenshteinMaxK, kw.Fuzzy)
+				var m int
+				if s.LevenshteinM != 0 {
+					m = s.LevenshteinM
+				} else {
+					m = levenshtein.DefaultM
+				}
+				if k > 0 && m > 0 {
+					automata := levenshtein.New(k, m, kw.Value, state.Field.Tokens)
+					for token = range automata.Matches() {
+						state.Tokens = append(state.Tokens, token)
+					}
+				}
+			}
+
+			if len(state.Tokens) == 0 {
+				continue
+			}
+
+			if !found {
+				found = true
+			}
+			if !handle(&state) {
+				return
+			}
+		}
+
+		// For those that were not found we need to do something
+		if !found {
+			state.Field = nil
+			state.Tokens = state.Tokens[:0]
+			if !handle(&state) {
+				return
+			}
+		}
+	}
+
+	for _, entry := range c.FieldKeywords {
+		state.Tokens = state.Tokens[:0]
+		state.Boost = entry.Value.Boost
+
+		var fieldFound bool
+		state.Field, fieldFound = s.Storage.Fields[entry.FieldHash]
+		if fieldFound {
+			token, found := state.Field.Tokens.GetBytes(entry.Value.Value)
+			if found {
+				state.Tokens = append(state.Tokens, token)
+			} else {
+				// Levenshtein use the fuzzyK of defined in the keyword
+				k := min(s.LevenshteinMaxK, entry.Value.Fuzzy)
+				var m int
+				if s.LevenshteinM != 0 {
+					m = s.LevenshteinM
+				} else {
+					m = levenshtein.DefaultM
+				}
+				if k > 0 && m > 0 {
+					automata := levenshtein.New(k, m, entry.Value.Value, state.Field.Tokens)
+					for token = range automata.Matches() {
+						state.Tokens = append(state.Tokens, token)
+					}
+				}
+			}
+		}
+
+		if !handle(&state) {
+			return
+		}
+	}
+
+	for _, entry := range c.FieldRanges {
+		state.Tokens = state.Tokens[:0]
+		state.Boost = entry.Value.Boost
+
+		var fieldFound bool
+		state.Field, fieldFound = s.Storage.Fields[entry.FieldHash]
+		if fieldFound {
+			var (
+				lo = entry.Value.Low
+				hi = entry.Value.High
+			)
+			if len(lo) == 0 {
+				tok := state.Field.Tokens[0]
+				lo = tok.Value.Bytes()
+			}
+			if len(hi) == 0 {
+				tok := state.Field.Tokens[len(state.Field.Tokens)-1]
+				hi = tok.Value.Bytes()
+			}
+
+			var first bool
+
+			for token := range state.Field.Tokens.IterBytes(lo, hi) {
+				if !first {
+					first = true
+
+					tokLoCmp := bytes.Compare(token.Value.Bytes(), lo)
+
+					// Only ignore the first element if it is equal to the lo end and capture mode is set to > or ><
+					if tokLoCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeRight || entry.Value.CaptureMode == RangeCaptureModeNone) {
+						continue
+					}
+				}
+
+				tokHiCmp := bytes.Compare(token.Value.Bytes(), hi)
+				if tokHiCmp == 1 || (tokHiCmp == 0 && (entry.Value.CaptureMode == RangeCaptureModeLeft || entry.Value.CaptureMode == RangeCaptureModeNone)) {
+					break
+				}
+
+				state.Tokens = append(state.Tokens, token)
+			}
+		}
+		if !handle(&state) {
+			return
+		}
 	}
 }
 

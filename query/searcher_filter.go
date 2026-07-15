@@ -12,18 +12,13 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 	if mustsCount := q.Musts.Count(); mustsCount > 0 {
 		// Musts define the candidate set: intersection of all Must posting lists.
 		var retrievalBitmap roaring.Bitmap
-		var failed bool
 		bitmapPool := pool.New[roaring.Bitmap](mustsCount)
 		var bitmaps []*roaring.Bitmap
-		s.Iter(&q.Musts, func(state *ClauseState) {
-			if failed {
-				return
-			}
+		s.IterCond(&q.Musts, func(state *ClauseState) (next bool) {
 			if len(state.Tokens) == 0 {
-				failed = true
 				bitmaps = nil
 				bitmapPool = nil
-				return
+				return false
 			}
 
 			bitmap := bitmapPool.Get()
@@ -32,19 +27,16 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 				bitmap.Or(&retrievalBitmap)
 			}
 			bitmaps = append(bitmaps, bitmap)
+			return true
 		})
 
-		if !failed && len(bitmaps) > 0 {
+		if len(bitmaps) != 0 {
 			ctx.Bitmap = *roaring.FastAnd(bitmaps...)
 		}
 	} else if q.Shoulds.Count() > 0 {
 		var retrievalBitmap roaring.Bitmap
 		// No Musts: Shoulds define the set (union of Should posting lists).
 		s.Iter(&q.Shoulds, func(state *ClauseState) {
-			if len(state.Tokens) == 0 {
-				return
-			}
-
 			for _, token := range state.Tokens {
 				s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&retrievalBitmap)
 				ctx.Bitmap.Or(&retrievalBitmap)
@@ -55,15 +47,17 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 	if q.MustNots.Count() > 0 && ctx.Bitmap.GetCardinality() > 0 {
 		var retrievalBitmap roaring.Bitmap
 		// MustNots subtract from whatever the set is.
-		s.Iter(&q.MustNots, func(state *ClauseState) {
-			if len(state.Tokens) == 0 || ctx.Bitmap.IsEmpty() {
-				return
+		s.IterCond(&q.MustNots, func(state *ClauseState) (next bool) {
+			if ctx.Bitmap.IsEmpty() {
+				return false
 			}
 
 			for _, token := range state.Tokens {
 				s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&retrievalBitmap)
 				ctx.Bitmap.AndNot(&retrievalBitmap)
 			}
+
+			return true
 		})
 	}
 }

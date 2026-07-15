@@ -275,12 +275,13 @@ type MergeContext struct {
 	FieldsOrder FieldsOrder
 }
 
-func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA, tokenB *Token) (err error) {
+func (m *Merger) writeCollisionToken(ctx *MergeContext, tokensCount, fieldHash uint64, tokenA, tokenB *Token) (err error) {
 	var finalToken Token
 	switch {
 	case tokenA != nil && tokenB != nil: // Equal
 		finalToken = *tokenA
 		finalToken.FrequencyCount = tokenA.FrequencyCount + tokenB.FrequencyCount
+		finalToken.Idf = InverseDocumentFrequency(tokensCount, finalToken.FrequencyCount)
 		finalToken.PostingListIndex = ctx.PostingListCursor
 		ctx.PostingListCursor++
 		finalToken.FrequenciesIndex = ctx.FrequenciesCursor
@@ -292,6 +293,7 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 		})
 	case tokenA != nil:
 		finalToken = *tokenA
+		finalToken.Idf = InverseDocumentFrequency(tokensCount, finalToken.FrequencyCount)
 		finalToken.PostingListIndex = ctx.PostingListCursor
 		ctx.PostingListCursor++
 		finalToken.FrequenciesIndex = ctx.FrequenciesCursor
@@ -304,6 +306,7 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 		})
 	case tokenB != nil:
 		finalToken = *tokenB
+		finalToken.Idf = InverseDocumentFrequency(tokensCount, finalToken.FrequencyCount)
 		finalToken.PostingListIndex = ctx.PostingListCursor
 		ctx.PostingListCursor++
 		finalToken.FrequenciesIndex = ctx.FrequenciesCursor
@@ -481,6 +484,12 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				return fmt.Errorf("failed to write A's field token document frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
 			}
 
+			binary.NativeEndian.PutUint32(ctx.Buffer[:], *(*uint32)(unsafe.Pointer(&token.Idf)))
+			_, err = ctx.DstW.Write(ctx.Buffer[:])
+			if err != nil {
+				return fmt.Errorf("failed to write A's field token document frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
+			}
+
 			// Add posting list
 			binary.NativeEndian.PutUint64(ctx.Buffer[:], ctx.PostingListCursor)
 			ctx.PostingListCursor++
@@ -567,6 +576,12 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			_, err = ctx.DstW.Write(pointers.UnsafeSlice(&token.FrequencyCount))
 			if err != nil {
 				return fmt.Errorf("failed to write B's field token document frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
+			}
+
+			binary.NativeEndian.PutUint32(ctx.Buffer[:], *(*uint32)(unsafe.Pointer(&token.Idf)))
+			_, err = ctx.DstW.Write(ctx.Buffer[:])
+			if err != nil {
+				return fmt.Errorf("failed to write A's field token document frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
 			}
 
 			// Add posting list
@@ -667,22 +682,22 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			for aIdx, bIdx := 0, 0; aIdx < aLen || bIdx < bLen; {
 				switch {
 				case aIdx >= aLen:
-					err = m.writeCollisionToken(&ctx, fieldHash, nil, &fieldB.Tokens[bIdx])
+					err = m.writeCollisionToken(&ctx, tokensCount, fieldHash, nil, &fieldB.Tokens[bIdx])
 					bIdx++
 				case bIdx >= bLen:
-					err = m.writeCollisionToken(&ctx, fieldHash, &fieldA.Tokens[aIdx], nil)
+					err = m.writeCollisionToken(&ctx, tokensCount, fieldHash, &fieldA.Tokens[aIdx], nil)
 					aIdx++
 				default:
 					switch bytes.Compare(fieldA.Tokens[aIdx].Value.Bytes(), fieldB.Tokens[bIdx].Value.Bytes()) {
 					case 0:
-						err = m.writeCollisionToken(&ctx, fieldHash, &fieldA.Tokens[aIdx], &fieldB.Tokens[bIdx])
+						err = m.writeCollisionToken(&ctx, tokensCount, fieldHash, &fieldA.Tokens[aIdx], &fieldB.Tokens[bIdx])
 						aIdx++
 						bIdx++
 					case -1:
-						err = m.writeCollisionToken(&ctx, fieldHash, &fieldA.Tokens[aIdx], nil)
+						err = m.writeCollisionToken(&ctx, tokensCount, fieldHash, &fieldA.Tokens[aIdx], nil)
 						aIdx++
 					default:
-						err = m.writeCollisionToken(&ctx, fieldHash, nil, &fieldB.Tokens[bIdx])
+						err = m.writeCollisionToken(&ctx, tokensCount, fieldHash, nil, &fieldB.Tokens[bIdx])
 						bIdx++
 					}
 				}

@@ -1,6 +1,8 @@
-package query
+package storage
 
-import "github.com/RogueTeam/textiplex/fastlog"
+import (
+	"github.com/RogueTeam/textiplex/fastlog"
+)
 
 // IDF returns the Inverse Document Frequency for a single term.
 // It answers: "how surprising is it to see this term in a document?"

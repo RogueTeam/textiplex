@@ -31,13 +31,13 @@ func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
 	if s.BM25Saturation != 0 {
 		saturation = s.BM25Saturation
 	} else {
-		saturation = DefaultSaturation
+		saturation = storage.DefaultSaturation
 	}
 
 	if s.BM25LengthPenalty != 0 {
 		lengthPenalty = s.BM25LengthPenalty
 	} else {
-		lengthPenalty = DefaultLengthPenalty
+		lengthPenalty = storage.DefaultLengthPenalty
 	}
 
 	if q.Musts.Count() > 0 {
@@ -61,7 +61,6 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 		docLengths := state.Field.DocumentLengths
 		freqs := s.Storage.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
 
-		idf := InverseDocumentFrequency(uint64(len(state.Field.DocumentLengths)), token.FrequencyCount)
 		avgDocLength := state.Field.AvgDocumentLength
 		boost := state.Boost
 		satPlus1 := saturation + 1
@@ -77,9 +76,9 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 		// dedicated idf-only multiplier and skip the extra float64 op in the hot path.
 		var idfBoost float32
 		if boost != 1 {
-			idfBoost = idf * boost * satPlus1
+			idfBoost = token.Idf * boost * satPlus1
 		} else {
-			idfBoost = idf * satPlus1
+			idfBoost = token.Idf * satPlus1
 		}
 
 		if idfBoost == 0 || satPlus1 == 0 {

@@ -175,8 +175,11 @@ func MaxNormTf(avgDocsLength float32, dls []DocumentLengthEntry, freqs []TokenFr
 				maxNormTf = normTf
 			}
 		} else if idx < len(dls) {
-			dls = dls[1+idx:]
-		} else {
+			dls = dls[idx:]
+			if len(dls) == 0 {
+				break
+			}
+		} else { // Out of bounds there is nothing to check after this, we can safely skip everything else
 			break
 		}
 

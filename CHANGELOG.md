@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.7.5](https://github.com/RogueTeam/textiplex/compare/v1.7.3...v1.7.5) (2026-07-15)
+
+
+### Bug Fixes
+
+* fixed conditional iteration breaks ([8b9d239](https://github.com/RogueTeam/textiplex/commit/8b9d2394715ec6f8ede77c475db8398250cbb0b4))
+* only allocate the necessary musts ([3cf0a5a](https://github.com/RogueTeam/textiplex/commit/3cf0a5a6289bbcf5cc82ff8afe37cca21ffea035))
+* release memory as soon as failure happens ([2d54dd9](https://github.com/RogueTeam/textiplex/commit/2d54dd951d05263d0c86aab87c35ba02e960871c))
+* small loop optimizations ([6f2322f](https://github.com/RogueTeam/textiplex/commit/6f2322f3fe5cf53d6aa9cdf4b8bbd3fd55cb835b))
+
 ### [1.7.4](https://github.com/RogueTeam/textiplex/compare/v1.7.3...v1.7.4) (2026-07-14)
 
 

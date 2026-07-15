@@ -9,11 +9,11 @@ import (
 // the idea is to filter first the score results based on conditions
 // is caller's responsability to clear dst bitmap
 func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
-	if q.Musts.Count() > 0 {
+	if mustsCount := q.Musts.Count(); mustsCount > 0 {
 		// Musts define the candidate set: intersection of all Must posting lists.
 		var retrievalBitmap roaring.Bitmap
 		var failed bool
-		bitmapPool := pool.New[roaring.Bitmap](20)
+		bitmapPool := pool.New[roaring.Bitmap](mustsCount)
 		var bitmaps []*roaring.Bitmap
 		s.Iter(&q.Musts, func(state *ClauseState) {
 			if failed {

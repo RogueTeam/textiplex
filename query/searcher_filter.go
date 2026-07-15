@@ -22,6 +22,7 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 			if len(state.Tokens) == 0 {
 				failed = true
 				bitmaps = nil
+				bitmapPool = nil
 				return
 			}
 

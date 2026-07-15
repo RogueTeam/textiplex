@@ -164,18 +164,22 @@ func MaxNormTf(avgDocsLength float32, dls []DocumentLengthEntry, freqs []TokenFr
 		idx, found := slices.BinarySearchFunc(dls, freqs[i].DocumentIndex, func(e DocumentLengthEntry, t uint32) int {
 			return cmp.Compare(e.Index, t)
 		})
-		if !found {
-			continue
-		}
-		tf := freqs[i].Frequency
-		dl := dls[idx].Length
-		dls = dls[1+idx:]
+		if found {
+			tf := freqs[i].Frequency
+			dl := dls[idx].Length
+			dls = dls[1+idx:]
 
-		normTf := NormalizedTF(tf, dl, avgDocsLength)
+			normTf := NormalizedTF(tf, dl, avgDocsLength)
 
-		if normTf > maxNormTf {
-			maxNormTf = normTf
+			if normTf > maxNormTf {
+				maxNormTf = normTf
+			}
+		} else if idx < len(dls) {
+			dls = dls[1+idx:]
+		} else {
+			break
 		}
+
 	}
 	return maxNormTf
 }

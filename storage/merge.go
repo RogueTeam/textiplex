@@ -3,14 +3,12 @@ package storage
 import (
 	"bufio"
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
 	"runtime"
-	"slices"
 	"time"
 	"unsafe"
 
@@ -285,49 +283,10 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldA, fieldB *Field, t
 		finalToken.FrequencyCount = tokenA.FrequencyCount + tokenB.FrequencyCount
 		finalToken.Idf = InverseDocumentFrequency(tokensCount, finalToken.FrequencyCount)
 
-		var maxNorm float32
-		// A
-		dlsA := fieldA.DocumentLengths
-		freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
-		for i := range freqsA {
-			idx, found := slices.BinarySearchFunc(dlsA, freqsA[i].DocumentIndex, func(e DocumentLengthEntry, t uint32) int {
-				return cmp.Compare(e.Index, t)
-			})
-			if !found {
-				continue
-			}
-			tf := freqsA[i].Frequency
-			dl := dlsA[idx].Length
-			dlsA = dlsA[1+idx:]
-
-			normTf := NormalizedTF(tf, dl, fieldA.AvgDocumentLength)
-
-			if normTf > maxNorm {
-				maxNorm = normTf
-			}
-		}
-		// B
-		dlsB := fieldB.DocumentLengths
-		freqsB := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
-		for i := range freqsB {
-			idx, found := slices.BinarySearchFunc(dlsB, freqsB[i].DocumentIndex, func(e DocumentLengthEntry, t uint32) int {
-				return cmp.Compare(e.Index, t)
-			})
-			if !found {
-				continue
-			}
-			tf := freqsB[i].Frequency
-			dl := dlsB[idx].Length
-			dlsB = dlsB[1+idx:]
-
-			normTf := NormalizedTF(tf, dl, fieldB.AvgDocumentLength)
-
-			if normTf > maxNorm {
-				maxNorm = normTf
-			}
-		}
-
-		finalToken.TermUpperBound = finalToken.Idf * maxNorm
+		finalToken.TermUpperBound = finalToken.Idf * max(
+			MaxNormTf(fieldA, fieldA.DocumentLengths, ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex:tokenA.FrequenciesIndex+tokenA.FrequencyCount]),
+			MaxNormTf(fieldB, fieldB.DocumentLengths, ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex:tokenB.FrequenciesIndex+tokenB.FrequencyCount]),
+		)
 
 		finalToken.PostingListIndex = ctx.PostingListCursor
 		ctx.PostingListCursor++
@@ -342,27 +301,11 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldA, fieldB *Field, t
 		finalToken = *tokenA
 		finalToken.Idf = InverseDocumentFrequency(tokensCount, finalToken.FrequencyCount)
 
-		var maxNorm float32
-		dlsA := fieldA.DocumentLengths
-		freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
-		for i := range freqsA {
-			idx, found := slices.BinarySearchFunc(dlsA, freqsA[i].DocumentIndex, func(e DocumentLengthEntry, t uint32) int {
-				return cmp.Compare(e.Index, t)
-			})
-			if !found {
-				continue
-			}
-			tf := freqsA[i].Frequency
-			dl := dlsA[idx].Length
-			dlsA = dlsA[1+idx:]
-
-			normTf := NormalizedTF(tf, dl, fieldA.AvgDocumentLength)
-
-			if normTf > maxNorm {
-				maxNorm = normTf
-			}
-		}
-		finalToken.TermUpperBound = finalToken.Idf * maxNorm
+		finalToken.TermUpperBound = finalToken.Idf * MaxNormTf(
+			fieldA,
+			fieldA.DocumentLengths,
+			ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex:tokenA.FrequenciesIndex+tokenA.FrequencyCount],
+		)
 
 		finalToken.PostingListIndex = ctx.PostingListCursor
 		ctx.PostingListCursor++
@@ -378,27 +321,11 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldA, fieldB *Field, t
 		finalToken = *tokenB
 		finalToken.Idf = InverseDocumentFrequency(tokensCount, finalToken.FrequencyCount)
 
-		var maxNorm float32
-		dlsB := fieldB.DocumentLengths
-		freqsB := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
-		for i := range freqsB {
-			idx, found := slices.BinarySearchFunc(dlsB, freqsB[i].DocumentIndex, func(e DocumentLengthEntry, t uint32) int {
-				return cmp.Compare(e.Index, t)
-			})
-			if !found {
-				continue
-			}
-			tf := freqsB[i].Frequency
-			dl := dlsB[idx].Length
-			dlsB = dlsB[1+idx:]
-
-			normTf := NormalizedTF(tf, dl, fieldB.AvgDocumentLength)
-
-			if normTf > maxNorm {
-				maxNorm = normTf
-			}
-		}
-		finalToken.TermUpperBound = finalToken.Idf * maxNorm
+		finalToken.TermUpperBound = finalToken.Idf * MaxNormTf(
+			fieldB,
+			fieldB.DocumentLengths,
+			ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex:tokenB.FrequenciesIndex+tokenB.FrequencyCount],
+		)
 
 		finalToken.PostingListIndex = ctx.PostingListCursor
 		ctx.PostingListCursor++

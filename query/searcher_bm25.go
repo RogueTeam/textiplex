@@ -42,19 +42,11 @@ func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
 
 	if q.Musts.Count() > 0 {
 		s.Iter(&q.Musts, func(state *ClauseState) {
-			if len(state.Tokens) == 0 {
-				return
-			}
-
 			s.accumulateBM25(ctx, state, saturation, lengthPenalty)
 		})
 	}
 	if q.Shoulds.Count() > 0 {
 		s.Iter(&q.Shoulds, func(state *ClauseState) {
-			if len(state.Tokens) == 0 {
-				return
-			}
-
 			s.accumulateBM25(ctx, state, saturation, lengthPenalty)
 		})
 	}
@@ -64,6 +56,7 @@ const MinimumBM25Score = 0
 
 func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturation, lengthPenalty float32) {
 	var tokenPl roaring.Bitmap
+
 	for _, token := range state.Tokens {
 		docLengths := state.Field.DocumentLengths
 		freqs := s.Storage.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]

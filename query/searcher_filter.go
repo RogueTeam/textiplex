@@ -22,11 +22,11 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 			}
 
 			bitmap := bitmapPool.Get()
+			bitmaps = append(bitmaps, bitmap)
 			for _, token := range state.Tokens {
 				s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&retrievalBitmap)
 				bitmap.Or(&retrievalBitmap)
 			}
-			bitmaps = append(bitmaps, bitmap)
 			return true
 		})
 
@@ -48,16 +48,12 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 		var retrievalBitmap roaring.Bitmap
 		// MustNots subtract from whatever the set is.
 		s.IterCond(&q.MustNots, func(state *ClauseState) (next bool) {
-			if ctx.Bitmap.IsEmpty() {
-				return false
-			}
-
 			for _, token := range state.Tokens {
 				s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&retrievalBitmap)
 				ctx.Bitmap.AndNot(&retrievalBitmap)
 			}
 
-			return true
+			return !ctx.Bitmap.IsEmpty()
 		})
 	}
 }

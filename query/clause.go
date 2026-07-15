@@ -85,13 +85,13 @@ type ClauseState struct {
 
 type HandleClauseFunc func(state *ClauseState)
 
+// Iterates about the matching fields + Tokens ignoring those entries that doesn't contain any token
 func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 	var state ClauseState
 
 	for _, kw := range c.Keywords {
 		state.Boost = kw.Boost
 
-		var found bool
 		for _, state.Field = range s.Storage.Fields {
 			state.Tokens = state.Tokens[:0]
 			token, tokenFound := state.Field.Tokens.GetBytes(kw.Value)
@@ -115,21 +115,9 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 				}
 			}
 
-			if len(state.Tokens) == 0 {
-				continue
+			if len(state.Tokens) != 0 {
+				handle(&state)
 			}
-
-			if !found {
-				found = true
-			}
-			handle(&state)
-		}
-
-		// For those that were not found we need to do something
-		if !found {
-			state.Field = nil
-			state.Tokens = state.Tokens[:0]
-			handle(&state)
 		}
 	}
 
@@ -161,7 +149,9 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 			}
 		}
 
-		handle(&state)
+		if len(state.Tokens) != 0 {
+			handle(&state)
+		}
 	}
 
 	for _, entry := range c.FieldRanges {
@@ -206,12 +196,16 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 				state.Tokens = append(state.Tokens, token)
 			}
 		}
-		handle(&state)
+		if len(state.Tokens) != 0 {
+			handle(&state)
+		}
 	}
 }
 
 type HandleClauseCondFunc func(state *ClauseState) (next bool)
 
+// Same as Iter but also call handle when there is no tokens available for the clause.
+// The return value of handle is used to early stop the query
 func (s *Searcher) IterCond(c *Clause, handle HandleClauseCondFunc) {
 	var state ClauseState
 

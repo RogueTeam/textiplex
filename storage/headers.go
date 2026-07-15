@@ -97,9 +97,9 @@ func (v *RawValue) UnsafeString() (s string) {
 type Token struct {
 	// Document frequency of the token in all documents
 	FrequencyCount uint64
-	// Precomputed Idf Value
-	Idf float32
-	_/*Padding */ [4]byte
+	// Precomputed Idf and term upper bound for wand retrieval
+	Idf            float32
+	TermUpperBound float32
 	// Posting list of the documents for this token
 	PostingListIndex uint64
 	// Token frequencies per document

@@ -3,12 +3,14 @@ package storage
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
 	"runtime"
+	"slices"
 	"time"
 	"unsafe"
 
@@ -275,13 +277,55 @@ type MergeContext struct {
 	FieldsOrder FieldsOrder
 }
 
-func (m *Merger) writeCollisionToken(ctx *MergeContext, tokensCount, fieldHash uint64, tokenA, tokenB *Token) (err error) {
+func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldA, fieldB *Field, tokensCount, fieldHash uint64, tokenA, tokenB *Token) (err error) {
 	var finalToken Token
 	switch {
 	case tokenA != nil && tokenB != nil: // Equal
 		finalToken = *tokenA
 		finalToken.FrequencyCount = tokenA.FrequencyCount + tokenB.FrequencyCount
 		finalToken.Idf = InverseDocumentFrequency(tokensCount, finalToken.FrequencyCount)
+
+		// A
+		dlsA := fieldA.DocumentLengths
+		freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
+		for i := range freqsA {
+			idx, found := slices.BinarySearchFunc(dlsA, freqsA[i].DocumentIndex, func(e DocumentLengthEntry, t uint32) int {
+				return cmp.Compare(e.Index, t)
+			})
+			if !found {
+				continue
+			}
+			tf := freqsA[i].Frequency
+			dl := dlsA[idx].Length
+			dlsA = dlsA[1+idx:]
+
+			normTf := NormalizedTF(tf, dl, fieldA.AvgDocumentLength)
+
+			if normTf > finalToken.TermUpperBound {
+				finalToken.TermUpperBound = normTf
+			}
+		}
+		// B
+		dlsB := fieldB.DocumentLengths
+		freqsB := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
+		for i := range freqsB {
+			idx, found := slices.BinarySearchFunc(dlsB, freqsB[i].DocumentIndex, func(e DocumentLengthEntry, t uint32) int {
+				return cmp.Compare(e.Index, t)
+			})
+			if !found {
+				continue
+			}
+			tf := freqsB[i].Frequency
+			dl := dlsB[idx].Length
+			dlsB = dlsB[1+idx:]
+
+			normTf := NormalizedTF(tf, dl, fieldB.AvgDocumentLength)
+
+			if normTf > finalToken.TermUpperBound {
+				finalToken.TermUpperBound = normTf
+			}
+		}
+
 		finalToken.PostingListIndex = ctx.PostingListCursor
 		ctx.PostingListCursor++
 		finalToken.FrequenciesIndex = ctx.FrequenciesCursor
@@ -294,6 +338,27 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, tokensCount, fieldHash u
 	case tokenA != nil:
 		finalToken = *tokenA
 		finalToken.Idf = InverseDocumentFrequency(tokensCount, finalToken.FrequencyCount)
+
+		dlsA := fieldA.DocumentLengths
+		freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
+		for i := range freqsA {
+			idx, found := slices.BinarySearchFunc(dlsA, freqsA[i].DocumentIndex, func(e DocumentLengthEntry, t uint32) int {
+				return cmp.Compare(e.Index, t)
+			})
+			if !found {
+				continue
+			}
+			tf := freqsA[i].Frequency
+			dl := dlsA[idx].Length
+			dlsA = dlsA[1+idx:]
+
+			normTf := NormalizedTF(tf, dl, fieldA.AvgDocumentLength)
+
+			if normTf > finalToken.TermUpperBound {
+				finalToken.TermUpperBound = normTf
+			}
+		}
+
 		finalToken.PostingListIndex = ctx.PostingListCursor
 		ctx.PostingListCursor++
 		finalToken.FrequenciesIndex = ctx.FrequenciesCursor
@@ -307,6 +372,27 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, tokensCount, fieldHash u
 	case tokenB != nil:
 		finalToken = *tokenB
 		finalToken.Idf = InverseDocumentFrequency(tokensCount, finalToken.FrequencyCount)
+
+		dlsB := fieldB.DocumentLengths
+		freqsB := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
+		for i := range freqsB {
+			idx, found := slices.BinarySearchFunc(dlsB, freqsB[i].DocumentIndex, func(e DocumentLengthEntry, t uint32) int {
+				return cmp.Compare(e.Index, t)
+			})
+			if !found {
+				continue
+			}
+			tf := freqsB[i].Frequency
+			dl := dlsB[idx].Length
+			dlsB = dlsB[1+idx:]
+
+			normTf := NormalizedTF(tf, dl, fieldB.AvgDocumentLength)
+
+			if normTf > finalToken.TermUpperBound {
+				finalToken.TermUpperBound = normTf
+			}
+		}
+
 		finalToken.PostingListIndex = ctx.PostingListCursor
 		ctx.PostingListCursor++
 		finalToken.FrequenciesIndex = ctx.FrequenciesCursor
@@ -484,10 +570,13 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				return fmt.Errorf("failed to write A's field token document frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
 			}
 
-			binary.NativeEndian.PutUint32(ctx.Buffer[:], *(*uint32)(unsafe.Pointer(&token.Idf)))
-			_, err = ctx.DstW.Write(ctx.Buffer[:])
+			_, err = ctx.DstW.Write(pointers.UnsafeSlice(&token.Idf))
 			if err != nil {
-				return fmt.Errorf("failed to write A's field token document frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
+				return fmt.Errorf("failed to write A's field token idf: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
+			}
+			_, err = ctx.DstW.Write(pointers.UnsafeSlice(&token.TermUpperBound))
+			if err != nil {
+				return fmt.Errorf("failed to write A's field token term upper bound: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
 			}
 
 			// Add posting list
@@ -578,10 +667,13 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				return fmt.Errorf("failed to write B's field token document frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
 			}
 
-			binary.NativeEndian.PutUint32(ctx.Buffer[:], *(*uint32)(unsafe.Pointer(&token.Idf)))
-			_, err = ctx.DstW.Write(ctx.Buffer[:])
+			_, err = ctx.DstW.Write(pointers.UnsafeSlice(&token.Idf))
 			if err != nil {
-				return fmt.Errorf("failed to write A's field token document frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
+				return fmt.Errorf("failed to write A's field token idf: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
+			}
+			_, err = ctx.DstW.Write(pointers.UnsafeSlice(&token.TermUpperBound))
+			if err != nil {
+				return fmt.Errorf("failed to write A's field token term upper bound: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
 			}
 
 			// Add posting list
@@ -682,22 +774,22 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			for aIdx, bIdx := 0, 0; aIdx < aLen || bIdx < bLen; {
 				switch {
 				case aIdx >= aLen:
-					err = m.writeCollisionToken(&ctx, tokensCount, fieldHash, nil, &fieldB.Tokens[bIdx])
+					err = m.writeCollisionToken(&ctx, fieldA, fieldB, tokensCount, fieldHash, nil, &fieldB.Tokens[bIdx])
 					bIdx++
 				case bIdx >= bLen:
-					err = m.writeCollisionToken(&ctx, tokensCount, fieldHash, &fieldA.Tokens[aIdx], nil)
+					err = m.writeCollisionToken(&ctx, fieldA, fieldB, tokensCount, fieldHash, &fieldA.Tokens[aIdx], nil)
 					aIdx++
 				default:
 					switch bytes.Compare(fieldA.Tokens[aIdx].Value.Bytes(), fieldB.Tokens[bIdx].Value.Bytes()) {
 					case 0:
-						err = m.writeCollisionToken(&ctx, tokensCount, fieldHash, &fieldA.Tokens[aIdx], &fieldB.Tokens[bIdx])
+						err = m.writeCollisionToken(&ctx, fieldA, fieldB, tokensCount, fieldHash, &fieldA.Tokens[aIdx], &fieldB.Tokens[bIdx])
 						aIdx++
 						bIdx++
 					case -1:
-						err = m.writeCollisionToken(&ctx, tokensCount, fieldHash, &fieldA.Tokens[aIdx], nil)
+						err = m.writeCollisionToken(&ctx, fieldA, fieldB, tokensCount, fieldHash, &fieldA.Tokens[aIdx], nil)
 						aIdx++
 					default:
-						err = m.writeCollisionToken(&ctx, tokensCount, fieldHash, nil, &fieldB.Tokens[bIdx])
+						err = m.writeCollisionToken(&ctx, fieldA, fieldB, tokensCount, fieldHash, nil, &fieldB.Tokens[bIdx])
 						bIdx++
 					}
 				}

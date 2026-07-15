@@ -2,10 +2,12 @@ package storage
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"fmt"
 	"iter"
 	"os"
+	"slices"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring"
@@ -314,6 +316,26 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 				Value:            RawValueFrom(pd.Value),
 			}
 
+			dls := field.DocumentLengths
+			freqs := s.TokenFrequencies[freqIndex : freqIndex+token.FrequencyCount]
+			for i := range freqs {
+				idx, found := slices.BinarySearchFunc(dls, freqs[i].DocumentIndex, func(e DocumentLengthEntry, t uint32) int {
+					return cmp.Compare(e.Index, t)
+				})
+				if !found {
+					continue
+				}
+				tf := freqs[i].Frequency
+				dl := dls[idx].Length
+				dls = dls[1+idx:]
+
+				normTf := NormalizedTF(tf, dl, field.AvgDocumentLength)
+
+				if normTf > token.TermUpperBound {
+					token.TermUpperBound = normTf
+				}
+			}
+
 			// The frequency slice is now copied into the contiguous region; drop
 			// the per-token backing array so the GC can reclaim it during the
 			// pass rather than all at once at the end.
@@ -411,7 +433,7 @@ func (s *Storage) SaveTo(name string) (err error) {
 
 			out = append(out, pointers.UnsafeSlice(&token.FrequencyCount)...)
 			out = append(out, pointers.UnsafeSlice(&token.Idf)...)
-			out = append(out, 0, 0, 0, 0)
+			out = append(out, pointers.UnsafeSlice(&token.TermUpperBound)...)
 			out = append(out, pointers.UnsafeSlice(&token.PostingListIndex)...)
 			out = append(out, pointers.UnsafeSlice(&token.FrequenciesIndex)...)
 			out = append(out, pointers.UnsafeSlice(&token.Value.Size)...)

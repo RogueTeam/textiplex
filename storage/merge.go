@@ -285,6 +285,7 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldA, fieldB *Field, t
 		finalToken.FrequencyCount = tokenA.FrequencyCount + tokenB.FrequencyCount
 		finalToken.Idf = InverseDocumentFrequency(tokensCount, finalToken.FrequencyCount)
 
+		var maxNorm float32
 		// A
 		dlsA := fieldA.DocumentLengths
 		freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
@@ -301,8 +302,8 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldA, fieldB *Field, t
 
 			normTf := NormalizedTF(tf, dl, fieldA.AvgDocumentLength)
 
-			if normTf > finalToken.TermUpperBound {
-				finalToken.TermUpperBound = normTf
+			if normTf > maxNorm {
+				maxNorm = normTf
 			}
 		}
 		// B
@@ -321,10 +322,12 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldA, fieldB *Field, t
 
 			normTf := NormalizedTF(tf, dl, fieldB.AvgDocumentLength)
 
-			if normTf > finalToken.TermUpperBound {
-				finalToken.TermUpperBound = normTf
+			if normTf > maxNorm {
+				maxNorm = normTf
 			}
 		}
+
+		finalToken.TermUpperBound = finalToken.Idf * maxNorm
 
 		finalToken.PostingListIndex = ctx.PostingListCursor
 		ctx.PostingListCursor++
@@ -339,6 +342,7 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldA, fieldB *Field, t
 		finalToken = *tokenA
 		finalToken.Idf = InverseDocumentFrequency(tokensCount, finalToken.FrequencyCount)
 
+		var maxNorm float32
 		dlsA := fieldA.DocumentLengths
 		freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
 		for i := range freqsA {
@@ -354,10 +358,11 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldA, fieldB *Field, t
 
 			normTf := NormalizedTF(tf, dl, fieldA.AvgDocumentLength)
 
-			if normTf > finalToken.TermUpperBound {
-				finalToken.TermUpperBound = normTf
+			if normTf > maxNorm {
+				maxNorm = normTf
 			}
 		}
+		finalToken.TermUpperBound = finalToken.Idf * maxNorm
 
 		finalToken.PostingListIndex = ctx.PostingListCursor
 		ctx.PostingListCursor++
@@ -373,6 +378,7 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldA, fieldB *Field, t
 		finalToken = *tokenB
 		finalToken.Idf = InverseDocumentFrequency(tokensCount, finalToken.FrequencyCount)
 
+		var maxNorm float32
 		dlsB := fieldB.DocumentLengths
 		freqsB := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
 		for i := range freqsB {
@@ -388,10 +394,11 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldA, fieldB *Field, t
 
 			normTf := NormalizedTF(tf, dl, fieldB.AvgDocumentLength)
 
-			if normTf > finalToken.TermUpperBound {
-				finalToken.TermUpperBound = normTf
+			if normTf > maxNorm {
+				maxNorm = normTf
 			}
 		}
+		finalToken.TermUpperBound = finalToken.Idf * maxNorm
 
 		finalToken.PostingListIndex = ctx.PostingListCursor
 		ctx.PostingListCursor++

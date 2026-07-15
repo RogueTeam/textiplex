@@ -318,6 +318,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 
 			dls := field.DocumentLengths
 			freqs := s.TokenFrequencies[freqIndex : freqIndex+token.FrequencyCount]
+			var maxNormTf float32
 			for i := range freqs {
 				idx, found := slices.BinarySearchFunc(dls, freqs[i].DocumentIndex, func(e DocumentLengthEntry, t uint32) int {
 					return cmp.Compare(e.Index, t)
@@ -331,10 +332,11 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 
 				normTf := NormalizedTF(tf, dl, field.AvgDocumentLength)
 
-				if normTf > token.TermUpperBound {
-					token.TermUpperBound = normTf
+				if normTf > maxNormTf {
+					maxNormTf = normTf
 				}
 			}
+			token.TermUpperBound = token.Idf * maxNormTf
 
 			// The frequency slice is now copied into the contiguous region; drop
 			// the per-token backing array so the GC can reclaim it during the

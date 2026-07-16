@@ -338,7 +338,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 			frequencyCount := workBitmap.GetCardinality()
 			*token = Token{
 				FrequencyCount:   frequencyCount,
-				Idf:              InverseDocumentFrequency(field.TotalTokenFrequenciesCount, frequencyCount),
+				Idf:              InverseDocumentFrequency(uint64(len(field.DocumentLengths)), frequencyCount),
 				PostingListIndex: plIndex,
 				FrequenciesIndex: freqIndex,
 				Value:            RawValueFrom(pd.Value),

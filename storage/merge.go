@@ -281,7 +281,10 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, avgDocsLength float32, f
 	case tokenA != nil && tokenB != nil: // Equal
 		finalToken = *tokenA
 		finalToken.FrequencyCount = tokenA.FrequencyCount + tokenB.FrequencyCount
-		finalToken.Idf = InverseDocumentFrequency(tokensCount, finalToken.FrequencyCount)
+		finalToken.Idf = InverseDocumentFrequency(
+			uint64(len(fieldA.DocumentLengths))+uint64(len(fieldB.DocumentLengths)),
+			finalToken.FrequencyCount,
+		)
 
 		finalToken.TermUpperBound = finalToken.Idf * max(
 			MaxNormTf(avgDocsLength, fieldA.DocumentLengths, ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex:tokenA.FrequenciesIndex+tokenA.FrequencyCount]),
@@ -299,7 +302,10 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, avgDocsLength float32, f
 		})
 	case tokenA != nil:
 		finalToken = *tokenA
-		finalToken.Idf = InverseDocumentFrequency(tokensCount, finalToken.FrequencyCount)
+		finalToken.Idf = InverseDocumentFrequency(
+			uint64(len(fieldA.DocumentLengths)),
+			finalToken.FrequencyCount,
+		)
 
 		finalToken.TermUpperBound = finalToken.Idf * MaxNormTf(
 			avgDocsLength,
@@ -319,7 +325,10 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, avgDocsLength float32, f
 		})
 	case tokenB != nil:
 		finalToken = *tokenB
-		finalToken.Idf = InverseDocumentFrequency(tokensCount, finalToken.FrequencyCount)
+		finalToken.Idf = InverseDocumentFrequency(
+			uint64(len(fieldB.DocumentLengths)),
+			finalToken.FrequencyCount,
+		)
 
 		finalToken.TermUpperBound = finalToken.Idf * MaxNormTf(
 			avgDocsLength,

@@ -344,10 +344,6 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 				Value:            RawValueFrom(pd.Value),
 			}
 
-			dls := field.DocumentLengths
-			freqs := s.TokenFrequencies[freqIndex : freqIndex+token.FrequencyCount]
-			token.TermUpperBound = token.Idf * MaxNormTf(field.AvgDocumentLength, dls, freqs)
-
 			// The frequency slice is now copied into the contiguous region; drop
 			// the per-token backing array so the GC can reclaim it during the
 			// pass rather than all at once at the end.
@@ -445,7 +441,7 @@ func (s *Storage) SaveTo(name string) (err error) {
 
 			out = append(out, pointers.UnsafeSlice(&token.FrequencyCount)...)
 			out = append(out, pointers.UnsafeSlice(&token.Idf)...)
-			out = append(out, pointers.UnsafeSlice(&token.TermUpperBound)...)
+			out = append(out, 0, 0, 0, 0)
 			out = append(out, pointers.UnsafeSlice(&token.PostingListIndex)...)
 			out = append(out, pointers.UnsafeSlice(&token.FrequenciesIndex)...)
 			out = append(out, pointers.UnsafeSlice(&token.Value.Size)...)

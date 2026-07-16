@@ -2,10 +2,12 @@ package storage
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"fmt"
 	"iter"
 	"os"
+	"slices"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring"
@@ -157,6 +159,34 @@ func (s *Storage) Reset() (err error) {
 	return nil
 }
 
+func MaxNormTf(avgDocsLength float32, dls []DocumentLengthEntry, freqs []TokenFrequencyEntry) (maxNormTf float32) {
+	for i := range freqs {
+		idx, found := slices.BinarySearchFunc(dls, freqs[i].DocumentIndex, func(e DocumentLengthEntry, t uint32) int {
+			return cmp.Compare(e.Index, t)
+		})
+		if found {
+			tf := freqs[i].Frequency
+			dl := dls[idx].Length
+			dls = dls[1+idx:]
+
+			normTf := NormalizedTF(tf, dl, avgDocsLength)
+
+			if normTf > maxNormTf {
+				maxNormTf = normTf
+			}
+		} else if idx < len(dls) {
+			dls = dls[idx:]
+			if len(dls) == 0 {
+				break
+			}
+		} else { // Out of bounds there is nothing to check after this, we can safely skip everything else
+			break
+		}
+
+	}
+	return maxNormTf
+}
+
 // Builds the entire storage from a set of document definitions
 func (s *Storage) BuildFrom(docs ...*Document) {
 	if s.Initialized {
@@ -305,8 +335,10 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 
 			token := &field.Tokens[tokenIdx]
 			tokenIdx++
+			frequencyCount := workBitmap.GetCardinality()
 			*token = Token{
-				FrequencyCount:   workBitmap.GetCardinality(),
+				FrequencyCount:   frequencyCount,
+				Idf:              InverseDocumentFrequency(uint64(len(field.DocumentLengths)), frequencyCount),
 				PostingListIndex: plIndex,
 				FrequenciesIndex: freqIndex,
 				Value:            RawValueFrom(pd.Value),
@@ -367,7 +399,7 @@ func (s *Storage) SaveTo(name string) (err error) {
 
 	// File Header
 	out = binary.NativeEndian.AppendUint64(out, MagicNumber)
-	out = binary.NativeEndian.AppendUint16(out, s.Version)
+	out = append(out, pointers.UnsafeSlice(&s.Version)...)
 	out = append(out, 0, 0, 0, 0, 0, 0) // Padding 6 bytes
 	out = binary.NativeEndian.AppendUint32(out, uint32(len(s.DocumentsIds)))
 	out = append(out, 0, 0, 0, 0)
@@ -389,28 +421,30 @@ func (s *Storage) SaveTo(name string) (err error) {
 
 	// Write fields
 	for fieldHash, field := range s.Fields {
-		out = binary.NativeEndian.AppendUint64(out, fieldHash)
+		out = append(out, pointers.UnsafeSlice(&fieldHash)...)
 		out = append(out, pointers.UnsafeSlice(&field.AvgDocumentLength)...)
 		out = append(out, 0, 0, 0, 0)
 		out = append(out, pointers.UnsafeSlice(&field.TotalDocumentsLength)...)
 		out = binary.NativeEndian.AppendUint64(out, uint64(len(field.Tokens)))
-		out = binary.NativeEndian.AppendUint64(out, field.TotalTokenFrequenciesCount)
+		out = append(out, pointers.UnsafeSlice(&field.TotalTokenFrequenciesCount)...)
 		out = binary.NativeEndian.AppendUint64(out, uint64(len(field.DocumentLengths)))
 
 		for index := range field.DocumentLengths {
 			docLength := &field.DocumentLengths[index]
 
-			out = binary.NativeEndian.AppendUint32(out, docLength.Index)
-			out = binary.NativeEndian.AppendUint32(out, docLength.Length)
+			out = append(out, pointers.UnsafeSlice(&docLength.Index)...)
+			out = append(out, pointers.UnsafeSlice(&docLength.Length)...)
 		}
 
 		for tokenIdx := range field.Tokens {
 			token := &field.Tokens[tokenIdx]
 
-			out = binary.NativeEndian.AppendUint64(out, token.FrequencyCount)
-			out = binary.NativeEndian.AppendUint64(out, token.PostingListIndex)
-			out = binary.NativeEndian.AppendUint64(out, token.FrequenciesIndex)
-			out = binary.NativeEndian.AppendUint64(out, token.Value.Size)
+			out = append(out, pointers.UnsafeSlice(&token.FrequencyCount)...)
+			out = append(out, pointers.UnsafeSlice(&token.Idf)...)
+			out = append(out, 0, 0, 0, 0)
+			out = append(out, pointers.UnsafeSlice(&token.PostingListIndex)...)
+			out = append(out, pointers.UnsafeSlice(&token.FrequenciesIndex)...)
+			out = append(out, pointers.UnsafeSlice(&token.Value.Size)...)
 			out = append(out, token.Value.Data[:]...)
 		}
 	}

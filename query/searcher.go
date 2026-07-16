@@ -9,9 +9,7 @@ import (
 )
 
 type Searcher struct {
-	Storage           *storage.Storage
-	BM25Saturation    float32
-	BM25LengthPenalty float32
+	Storage *storage.Storage
 	// Maximum amount of entries challenged against levenshtein fuzz algorithm
 	LevenshteinM    int
 	LevenshteinMaxK int
@@ -32,11 +30,42 @@ func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint32) {
 	if len(ctx.Scores) == 0 {
 		return nil
 	}
+
+	if uint64(len(ctx.Scores)) == ctx.Bitmap.GetCardinality() {
+		// ToArray is a per-container bulk fill, far cheaper than draining a
+		// ManyIterator in fixed-size batches, and the ascending order is the same.
+		candidates := ctx.Bitmap.ToArray()
+		slices.SortFunc(
+			candidates,
+			func(a, b uint32) int {
+				scoreCmp := cmp.Compare(ctx.Scores[b], ctx.Scores[a])
+				if scoreCmp == 0 {
+					return bytes.Compare(s.Storage.DocumentsIds[b].Value.Bytes(), s.Storage.DocumentsIds[a].Value.Bytes())
+				}
+				return scoreCmp
+			},
+		)
+
+		zeroIdx, found := slices.BinarySearchFunc(
+			candidates, 0.0,
+			func(e uint32, t float32) int {
+				return cmp.Compare(t, ctx.Scores[e])
+			},
+		)
+		if !found {
+			return candidates
+		}
+		return candidates[:zeroIdx]
+	}
+
 	// ToArray is a per-container bulk fill, far cheaper than draining a
 	// ManyIterator in fixed-size batches, and the ascending order is the same.
-	candidates := ctx.Bitmap.ToArray()
+	idxs = make([]uint32, 0, len(ctx.Scores))
+	for idx := range ctx.Scores {
+		idxs = append(idxs, idx)
+	}
 	slices.SortFunc(
-		candidates,
+		idxs,
 		func(a, b uint32) int {
 			scoreCmp := cmp.Compare(ctx.Scores[b], ctx.Scores[a])
 			if scoreCmp == 0 {
@@ -45,15 +74,5 @@ func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint32) {
 			return scoreCmp
 		},
 	)
-
-	zeroIdx, found := slices.BinarySearchFunc(
-		candidates, 0.0,
-		func(e uint32, t float32) int {
-			return cmp.Compare(t, ctx.Scores[e])
-		},
-	)
-	if !found {
-		return candidates
-	}
-	return candidates[:zeroIdx]
+	return idxs
 }

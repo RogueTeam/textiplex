@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	benchDocCount    = 1_000
-	benchFieldLen    = 200 // tokens per doc field — "big enough" body
-	benchVocabCommon = 50  // shared vocabulary spread across all docs
+	BM25BenchDocumentCout = 1_000
+	BM25FieldLen          = 200 // tokens per doc field — "big enough" body
+	BM25VocabularyCommon  = 50  // shared vocabulary spread across all docs
 )
 
 // prepareSearchCorpus builds benchDocCount docs, each with a body field of
@@ -23,14 +23,14 @@ const (
 //
 // Construction happens entirely outside the benchmark clock.
 func prepareSearchCorpus() (s *storage.Storage) {
-	docs := make([]*storage.Document, 0, benchDocCount)
+	docs := make([]*storage.Document, 0, BM25BenchDocumentCout)
 
-	for i := range benchDocCount {
-		tokens := make([]*storage.TokenDefinition, 0, benchVocabCommon+1)
+	for i := range BM25BenchDocumentCout {
+		tokens := make([]*storage.TokenDefinition, 0, BM25VocabularyCommon+1)
 
 		// Common pool: each common term appears with a frequency that varies by
 		// doc, giving a realistic TF distribution to score over.
-		for v := range benchVocabCommon {
+		for v := range BM25VocabularyCommon {
 			freq := uint32(1 + (i+v)%5)
 			tokens = append(tokens, testsuite.MakeToken(fmt.Sprintf("term-%d", v), freq))
 		}
@@ -39,7 +39,7 @@ func prepareSearchCorpus() (s *storage.Storage) {
 
 		docs = append(docs, testsuite.MakeDoc(
 			fmt.Sprintf("doc-%06d", i),
-			testsuite.MakeField(fieldBody, benchFieldLen, tokens...),
+			testsuite.MakeField(fieldBody, BM25FieldLen, tokens...),
 		))
 	}
 
@@ -51,7 +51,7 @@ func prepareSearchCorpus() (s *storage.Storage) {
 // BenchmarkSearchShould measures a 3-term OR query over the common vocabulary.
 // These terms hit every document, so this is the heavy path: large unioned
 // bitmap, scoring across the whole corpus, full sort.
-func BenchmarkSearchShould(b *testing.B) {
+func BenchmarkBM25SearchShould(b *testing.B) {
 	s := prepareSearchCorpus()
 	var searcher = query.New(s)
 
@@ -74,7 +74,7 @@ func BenchmarkSearchShould(b *testing.B) {
 // BenchmarkSearchMust measures a 3-term AND query. All three common terms hit
 // every doc, so the intersection stays large — exercises repeated And over
 // long posting lists plus full-corpus scoring.
-func BenchmarkSearchMust(b *testing.B) {
+func BenchmarkBM25SearchMust(b *testing.B) {
 	s := prepareSearchCorpus()
 	var searcher = query.New(s)
 
@@ -96,7 +96,7 @@ func BenchmarkSearchMust(b *testing.B) {
 
 // BenchmarkSearchCombined measures a realistic mixed query: a broad Should
 // over common terms, narrowed by a Must, with a MustNot exclusion.
-func BenchmarkSearchCombined(b *testing.B) {
+func BenchmarkBM25SearchCombined(b *testing.B) {
 	s := prepareSearchCorpus()
 	var searcher = query.New(s)
 
@@ -119,10 +119,10 @@ func BenchmarkSearchCombined(b *testing.B) {
 
 // BenchmarkSearchSelective measures a highly selective query (one matching
 // doc). This isolates per-query setup overhead from scoring cost.
-func BenchmarkSearchSelective(b *testing.B) {
+func BenchmarkBM25SearchSelective(b *testing.B) {
 	s := prepareSearchCorpus()
 	var searcher = query.New(s)
-	target := fmt.Sprintf("uniq-%d", benchDocCount/2)
+	target := fmt.Sprintf("uniq-%d", BM25BenchDocumentCout/2)
 
 	b.ReportAllocs()
 	b.ResetTimer()

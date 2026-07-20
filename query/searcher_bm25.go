@@ -104,7 +104,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
-					ctx.Scores[docIdx] += idfBoost * tfnorm
+					ctx.Scores[docIdx] += score
 				}
 			}
 		case freqDense && !dlDense:
@@ -121,7 +121,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
-					ctx.Scores[docIdx] += idfBoost * tfnorm
+					ctx.Scores[docIdx] += score
 				}
 			}
 		case !freqDense && dlDense:
@@ -138,7 +138,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
-					ctx.Scores[docIdx] += idfBoost * tfnorm
+					ctx.Scores[docIdx] += score
 				}
 			}
 		default: // !freqDense && !dlDense
@@ -158,7 +158,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
-					ctx.Scores[docIdx] += idfBoost * tfnorm
+					ctx.Scores[docIdx] += score
 				}
 			}
 		}

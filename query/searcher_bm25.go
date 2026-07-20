@@ -1,7 +1,6 @@
 package query
 
 import (
-	"cmp"
 	"slices"
 
 	"github.com/RoaringBitmap/roaring"
@@ -50,6 +49,14 @@ func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
 			s.accumulateBM25(ctx, state, saturation, lengthPenalty)
 		})
 	}
+}
+
+func CmpDocumentLengthEntryAndDocumentIndex(e storage.DocumentLengthEntry, t uint32) int {
+	return int(e.Index) - int(t)
+}
+
+func CmpTokenFrequencyEntryAndDocumentIndex(e storage.TokenFrequencyEntry, t uint32) int {
+	return int(e.DocumentIndex) - int(t)
 }
 
 const MinimumBM25Score = 0
@@ -110,7 +117,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 		case freqDense && !dlDense:
 			for _, docIdx := range resolved {
 				tf := float32(freqs[docIdx].Frequency)
-				docLengthIdx, _ := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
+				docLengthIdx, _ := slices.BinarySearchFunc(docLengths, docIdx, CmpDocumentLengthEntryAndDocumentIndex)
 
 				dl := float32(docLengths[docLengthIdx].Length)
 				docLengths = docLengths[1+docLengthIdx:]
@@ -127,7 +134,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 		case !freqDense && dlDense:
 			for _, docIdx := range resolved {
 				dl := float32(docLengths[docIdx].Length) // Do inmediatly the index operation
-				freqIdx, _ := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
+				freqIdx, _ := slices.BinarySearchFunc(freqs, docIdx, CmpTokenFrequencyEntryAndDocumentIndex)
 
 				tf := float32(freqs[freqIdx].Frequency)
 				freqs = freqs[1+freqIdx:]
@@ -143,8 +150,8 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 			}
 		default: // !freqDense && !dlDense
 			for _, docIdx := range resolved {
-				freqIdx, _ := slices.BinarySearchFunc(freqs, docIdx, func(e storage.TokenFrequencyEntry, t uint32) int { return cmp.Compare(e.DocumentIndex, t) })
-				docLengthIdx, _ := slices.BinarySearchFunc(docLengths, docIdx, func(e storage.DocumentLengthEntry, t uint32) int { return cmp.Compare(e.Index, t) })
+				freqIdx, _ := slices.BinarySearchFunc(freqs, docIdx, CmpTokenFrequencyEntryAndDocumentIndex)
+				docLengthIdx, _ := slices.BinarySearchFunc(docLengths, docIdx, CmpDocumentLengthEntryAndDocumentIndex)
 
 				tf := float32(freqs[freqIdx].Frequency)
 				freqs = freqs[1+freqIdx:]

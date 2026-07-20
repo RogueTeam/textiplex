@@ -360,6 +360,11 @@ func (s *Scoring) Add(guess int, idx uint32, score float32) (i int) {
 	return guess + i
 }
 
+func (s *Scoring) IndexOf(guess int, idx uint32) (i int) {
+	i, _ = slices.BinarySearch(s.Candidates[guess:], idx)
+	return guess + i
+}
+
 func (s *Scoring) Get(guess int, idx uint32) (score float32) {
 	i, found := slices.BinarySearch(s.Candidates[guess:], idx)
 	if found {

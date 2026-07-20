@@ -109,6 +109,8 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
 					guess = ctx.Scoring.Add(guess, docIdx, score)
+				} else {
+					guess = ctx.Scoring.IndexOf(guess, docIdx)
 				}
 			}
 		case freqDense && !dlDense:
@@ -126,6 +128,8 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
 					guess = ctx.Scoring.Add(guess, docIdx, score)
+				} else {
+					guess = ctx.Scoring.IndexOf(guess, docIdx)
 				}
 			}
 		case !freqDense && dlDense:
@@ -143,6 +147,8 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
 					guess = ctx.Scoring.Add(guess, docIdx, score)
+				} else {
+					guess = ctx.Scoring.IndexOf(guess, docIdx)
 				}
 			}
 		default: // !freqDense && !dlDense
@@ -163,6 +169,8 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
 					guess = ctx.Scoring.Add(guess, docIdx, score)
+				} else {
+					guess = ctx.Scoring.IndexOf(guess, docIdx)
 				}
 			}
 		}

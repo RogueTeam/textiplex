@@ -20,11 +20,7 @@ import (
 // slice range, lets every per-term write land on a slice instead of a hashed
 // map, and collapses the map writes into one final pass.
 func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
-	cardinality := ctx.Bitmap.GetCardinality()
-	ctx.Scores = make(map[uint32]float32, cardinality)
-	if cardinality == 0 {
-		return
-	}
+	ctx.Scoring.Reset(&ctx.Bitmap)
 
 	var saturation, lengthPenalty float32
 	if s.BM25Saturation != 0 {
@@ -111,7 +107,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
-					ctx.Scores[docIdx] += score
+					ctx.Scoring.Add(docIdx, score)
 				}
 			}
 		case freqDense && !dlDense:
@@ -128,7 +124,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
-					ctx.Scores[docIdx] += score
+					ctx.Scoring.Add(docIdx, score)
 				}
 			}
 		case !freqDense && dlDense:
@@ -145,7 +141,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
-					ctx.Scores[docIdx] += score
+					ctx.Scoring.Add(docIdx, score)
 				}
 			}
 		default: // !freqDense && !dlDense
@@ -165,7 +161,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
-					ctx.Scores[docIdx] += score
+					ctx.Scoring.Add(docIdx, score)
 				}
 			}
 		}

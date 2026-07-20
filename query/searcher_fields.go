@@ -10,11 +10,11 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 		return
 	}
 
-	cardinality := uint32(ctx.Bitmap.GetCardinality())
-	ctx.Scores = make(map[uint32]float32, cardinality)
+	ctx.Scoring.Reset(&ctx.Bitmap)
 
 	var pending = ctx.Bitmap.Clone()
 
+	var assigned uint32
 	var retrievalBitmap roaring.Bitmap
 	for tokenIdx := range field.Tokens {
 		if pending.IsEmpty() {
@@ -30,8 +30,11 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 			continue
 		}
 
-		for _, docIdx := range resolved.ToArray() {
-			ctx.Scores[docIdx] = float32(cardinality - uint32(len(ctx.Scores)))
+		resolvedArray := resolved.ToArray()
+		for _, docIdx := range resolvedArray {
+			score := float32(uint32(ctx.Scoring.Len()) - assigned)
+			assigned++
+			ctx.Scoring.Add(docIdx, score)
 		}
 
 		pending.AndNot(&retrievalBitmap)

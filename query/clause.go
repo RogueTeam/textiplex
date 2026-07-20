@@ -2,6 +2,7 @@ package query
 
 import (
 	"bytes"
+	"slices"
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/RogueTeam/textiplex/levenshtein"
@@ -339,8 +340,33 @@ func (s *Searcher) IterCond(c *Clause, handle HandleClauseCondFunc) {
 	}
 }
 
+type Scoring struct {
+	Candidates []uint32
+	Scores     []float32
+}
+
+func (s *Scoring) Reset(src *roaring.Bitmap) {
+	s.Candidates = src.ToArray()
+	s.Scores = make([]float32, len(s.Candidates))
+}
+
+func (s *Scoring) Add(idx uint32, score float32) {
+	i, _ := slices.BinarySearch(s.Candidates, idx)
+	s.Scores[i] += score
+}
+
+func (s *Scoring) Get(idx uint32) (score float32) {
+	i, found := slices.BinarySearch(s.Candidates, idx)
+	if found {
+		return s.Scores[i]
+	}
+	return 0
+}
+
+func (s *Scoring) Len() (n int) { return len(s.Candidates) }
+
 // Query context intended to be cached and reused by caller on each search
 type QueryContext struct {
-	Bitmap roaring.Bitmap
-	Scores map[uint32]float32
+	Bitmap  roaring.Bitmap
+	Scoring Scoring
 }

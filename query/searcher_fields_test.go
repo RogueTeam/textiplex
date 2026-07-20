@@ -120,7 +120,7 @@ func TestFieldScoreIntegerAscending(t *testing.T) {
 			assertions.Equal(tc.want, testsuite.ResolveDocumentIndexes(s, idxs), "must be ascending by integer value")
 			assertSortedDescByScore(assertions, ctx, idxs)
 			// Top result carries the full cardinality as its score.
-			assertions.Equal(float32(len(tc.docs)), ctx.Scores[idxs[0]])
+			assertions.Equal(float32(len(tc.docs)), ctx.Scoring.Get(idxs[0]))
 		})
 	}
 }
@@ -299,7 +299,7 @@ func TestFieldScoreUnknownFieldIsNoop(t *testing.T) {
 	assertions.NotPanics(func() {
 		idxs, ctx := testsuite.RunFieldScore(s, uint64(0xDEADBEEF), nil)
 		assertions.Empty(idxs, "unknown field yields no ranking")
-		assertions.Nil(ctx.Scores, "unknown field must return before allocating scores")
+		assertions.Nil(ctx.Scoring.Candidates, "unknown field must return before allocating scores")
 	})
 }
 
@@ -315,7 +315,7 @@ func TestFieldScoreEmptyCandidateSet(t *testing.T) {
 		// Non-nil empty slice → empty candidate bitmap (cardinality 0).
 		idxs, ctx := testsuite.RunFieldScore(s, fieldHash, []uint32{})
 		assertions.Empty(idxs)
-		assertions.Empty(ctx.Scores)
+		assertions.Empty(ctx.Scoring.Candidates)
 	})
 }
 
@@ -346,7 +346,7 @@ func TestFieldScoreScoreSequenceIsDense(t *testing.T) {
 
 	got := make([]float32, 0, n)
 	for _, idx := range idxs {
-		got = append(got, ctx.Scores[idx])
+		got = append(got, ctx.Scoring.Get(idx))
 	}
 
 	want := make([]float32, 0, n)

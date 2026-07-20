@@ -127,10 +127,10 @@ func BenchmarkCustomIndexSearchShould(b *testing.B) {
 		searcher.FilterDocuments(&ctx, sq)
 		searcher.BM25Score(&ctx, sq)
 
-		b.SetBytes(int64(len(ctx.Scores)) * 4)
+		b.SetBytes(int64(ctx.Scoring.Len()) * 4)
 		if !logged {
 			logged = true
-			b.Logf("Found #: %d", len(ctx.Scores))
+			b.Logf("Found #: %d", ctx.Scoring.Len())
 		}
 	}
 }

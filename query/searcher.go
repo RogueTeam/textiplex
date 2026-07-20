@@ -29,7 +29,7 @@ const ManyIteratorBatchSize = 8
 // Once a filtering and scoring are done, next step of a searching algorithm
 // Resolves the ctx to an actual idx slice
 func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint32) {
-	if len(ctx.Scores) == 0 {
+	if ctx.Scoring.Len() == 0 {
 		return nil
 	}
 	// ToArray is a per-container bulk fill, far cheaper than draining a
@@ -38,7 +38,7 @@ func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint32) {
 	slices.SortFunc(
 		candidates,
 		func(a, b uint32) int {
-			scoreCmp := cmp.Compare(ctx.Scores[b], ctx.Scores[a])
+			scoreCmp := cmp.Compare(ctx.Scoring.Get(b), ctx.Scoring.Get(a))
 			if scoreCmp == 0 {
 				return bytes.Compare(s.Storage.DocumentsIds[b].Value.Bytes(), s.Storage.DocumentsIds[a].Value.Bytes())
 			}
@@ -49,7 +49,7 @@ func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint32) {
 	zeroIdx, found := slices.BinarySearchFunc(
 		candidates, 0.0,
 		func(e uint32, t float32) int {
-			return cmp.Compare(t, ctx.Scores[e])
+			return cmp.Compare(t, ctx.Scoring.Get(e))
 		},
 	)
 	if !found {

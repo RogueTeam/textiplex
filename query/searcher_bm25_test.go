@@ -85,7 +85,7 @@ func TestShouldSingleTerm(t *testing.T) {
 
 			// Every matched doc must carry a strictly positive score.
 			for _, idx := range idxs {
-				assertions.Greater(ctx.Scoring.Get(idx), float32(0.0), "doc %d must be scored", idx)
+				assertions.Greater(ctx.Scoring.Get(0, idx), float32(0.0), "doc %d must be scored", idx)
 			}
 		})
 	}
@@ -114,7 +114,7 @@ func TestRankingByTermFrequency(t *testing.T) {
 
 	hi, _ := testsuite.IndexOfDocument(&s, "doc-hi")
 	lo, _ := testsuite.IndexOfDocument(&s, "doc-lo")
-	assertions.Greater(ctx.Scoring.Get(hi), ctx.Scoring.Get(lo))
+	assertions.Greater(ctx.Scoring.Get(0, hi), ctx.Scoring.Get(0, lo))
 }
 
 // ── Ranking: shorter document ranks higher at equal term frequency ────────────
@@ -163,7 +163,7 @@ func TestRankingByInverseDocumentFrequency(t *testing.T) {
 
 	rare, _ := testsuite.IndexOfDocument(&s, "doc-rare")
 	common, _ := testsuite.IndexOfDocument(&s, "doc-common")
-	assertions.Greater(ctx.Scoring.Get(rare), ctx.Scoring.Get(common),
+	assertions.Greater(ctx.Scoring.Get(0, rare), ctx.Scoring.Get(0, common),
 		"doc matched by the rarer term must score higher")
 }
 
@@ -297,13 +297,13 @@ func TestBoostAffectsScore(t *testing.T) {
 	q1 := &query.SimpleQuery{}
 	q1.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 	_, ctx1 := testsuite.RunQuery(q1, s1)
-	base := ctx1.Scoring.Get(0)
+	base := ctx1.Scoring.Get(0, 0)
 
 	s2 := build()
 	q2 := &query.SimpleQuery{}
 	q2.Shoulds.Keyword([]byte("contrato"), 2.0, 0)
 	_, ctx2 := testsuite.RunQuery(q2, s2)
-	boosted := ctx2.Scoring.Get(0)
+	boosted := ctx2.Scoring.Get(0, 0)
 
 	assertions.Greater(base, float32(0.0))
 	assertions.InDelta(2.0*base, boosted, 1e-9, "boost of 2.0 must double the term contribution")
@@ -382,13 +382,13 @@ func scoreByID(s *storage.Storage, ctx *query.QueryContext, id string) float32 {
 	if !ok {
 		return 0
 	}
-	return ctx.Scoring.Get(idx)
+	return ctx.Scoring.Get(0, idx)
 }
 
 // assertSortedDescByScore verifies ResolveBM25 returned best-first.
 func assertSortedDescByScore(a *assert.Assertions, ctx *query.QueryContext, idxs []uint32) {
 	for i := 1; i < len(idxs); i++ {
-		a.GreaterOrEqual(ctx.Scoring.Get(idxs[i-1]), ctx.Scoring.Get(idxs[i]),
+		a.GreaterOrEqual(ctx.Scoring.Get(0, idxs[i-1]), ctx.Scoring.Get(0, idxs[i]),
 			"results must be ordered by descending score (pos %d vs %d)", i-1, i)
 	}
 }
@@ -445,7 +445,7 @@ func TestShouldDuplicateTerm(t *testing.T) {
 
 	assertions.Len(idxs1, 1)
 	assertions.Len(idxs2, 1)
-	assertions.GreaterOrEqual(ctx2.Scoring.Get(idxs2[0]), ctx1.Scoring.Get(idxs1[0]),
+	assertions.GreaterOrEqual(ctx2.Scoring.Get(0, idxs2[0]), ctx1.Scoring.Get(0, idxs1[0]),
 		"a repeated should term must not lower the score")
 }
 
@@ -467,7 +467,7 @@ func TestShouldTermInAllDocs(t *testing.T) {
 
 	assertions.Len(idxs, 3, "every doc must match")
 	for _, idx := range idxs {
-		assertions.Greater(ctx.Scoring.Get(idx), float32(0.0), "smoothed idf keeps the score positive even at n==N")
+		assertions.Greater(ctx.Scoring.Get(0, idx), float32(0.0), "smoothed idf keeps the score positive even at n==N")
 	}
 }
 
@@ -766,7 +766,7 @@ func TestBoostScalesLinearly(t *testing.T) {
 	baseQ := &query.SimpleQuery{}
 	baseQ.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 	_, baseCtx := testsuite.RunQuery(baseQ, build())
-	base := baseCtx.Scoring.Get(0)
+	base := baseCtx.Scoring.Get(0, 0)
 
 	cases := []struct {
 		name  string
@@ -784,7 +784,7 @@ func TestBoostScalesLinearly(t *testing.T) {
 			q.Shoulds.Keyword([]byte("contrato"), tc.boost, 0)
 			_, ctx := testsuite.RunQuery(q, build())
 			assertions.Greater(base, float32(0.0))
-			assertions.InDelta(tc.want, ctx.Scoring.Get(0), 1e-9)
+			assertions.InDelta(tc.want, ctx.Scoring.Get(0, 0), 1e-9)
 		})
 	}
 }
@@ -881,7 +881,7 @@ func TestScoresZeroForNonMatched(t *testing.T) {
 	for _, id := range []string{"doc-miss1", "doc-miss2"} {
 		idx, _ := testsuite.IndexOfDocument(s, id)
 		assertions.False(ctx.Bitmap.Contains(idx), "%s must not be matched", id)
-		assertions.Zero(ctx.Scoring.Get(idx), "%s must have zero score", id)
+		assertions.Zero(ctx.Scoring.Get(0, idx), "%s must have zero score", id)
 	}
 }
 
@@ -1061,7 +1061,7 @@ func TestPropertyResultsSortedByScore(t *testing.T) {
 		assertions.False(seen[idx], "duplicate index %d", idx)
 		seen[idx] = true
 		assertions.True(ctx.Bitmap.Contains(idx))
-		assertions.Greater(ctx.Scoring.Get(idx), float32(float32(0.0)))
+		assertions.Greater(ctx.Scoring.Get(0, idx), float32(float32(0.0)))
 	}
 }
 
@@ -1209,7 +1209,7 @@ func TestMultiFieldScoring(t *testing.T) {
 
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-a"}, testsuite.ResolveDocumentIndexes(s, idxs))
-		assertions.Greater(ctx.Scoring.Get(idxs[0]), float32(0.0))
+		assertions.Greater(ctx.Scoring.Get(0, idxs[0]), float32(0.0))
 	})
 
 	t.Run("two docs same term different fields both match unscoped", func(t *testing.T) {
@@ -1225,7 +1225,7 @@ func TestMultiFieldScoring(t *testing.T) {
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Len(idxs, 2)
 		for _, idx := range idxs {
-			assertions.Greater(ctx.Scoring.Get(idx), float32(0.0))
+			assertions.Greater(ctx.Scoring.Get(0, idx), float32(0.0))
 		}
 	})
 }
@@ -1247,7 +1247,7 @@ func TestBoostEdgeCases(t *testing.T) {
 		q.Shoulds.Keyword([]byte("contrato"), float32(0.0), 0)
 		_, ctx := testsuite.RunQuery(q, single())
 		// The clause matched but its contribution is scaled to zero.
-		assertions.InDelta(float32(0.0), ctx.Scoring.Get(0), 1e-12, "a zero boost must add no score")
+		assertions.InDelta(float32(0.0), ctx.Scoring.Get(0, 0), 1e-12, "a zero boost must add no score")
 	})
 
 	t.Run("boost on must term raises score", func(t *testing.T) {
@@ -1261,8 +1261,8 @@ func TestBoostEdgeCases(t *testing.T) {
 		boostQ.Musts.Keyword([]byte("contrato"), 4.0, 0)
 		_, boostCtx := testsuite.RunQuery(boostQ, single())
 
-		assertions.Greater(baseCtx.Scoring.Get(0), float32(0.0))
-		assertions.InDelta(4.0*baseCtx.Scoring.Get(0), boostCtx.Scoring.Get(0), 1e-9,
+		assertions.Greater(baseCtx.Scoring.Get(0, 0), float32(0.0))
+		assertions.InDelta(4.0*baseCtx.Scoring.Get(0, 0), boostCtx.Scoring.Get(0, 0), 1e-9,
 			"must clauses are scored, so their boost scales linearly too")
 	})
 
@@ -1281,7 +1281,7 @@ func TestBoostEdgeCases(t *testing.T) {
 		boostQ.Shoulds.FieldKeyword(fieldTitle, []byte("alerta"), 2.5, 0)
 		_, boostCtx := testsuite.RunQuery(boostQ, build())
 
-		assertions.InDelta(2.5*baseCtx.Scoring.Get(0), boostCtx.Scoring.Get(0), 1e-9)
+		assertions.InDelta(2.5*baseCtx.Scoring.Get(0, 0), boostCtx.Scoring.Get(0, 0), 1e-9)
 	})
 
 	t.Run("boost does not change the matching set", func(t *testing.T) {
@@ -1310,7 +1310,7 @@ func TestBoostEdgeCases(t *testing.T) {
 		q := &query.SimpleQuery{}
 		q.Shoulds.Keyword([]byte("contrato"), 1e9, 0)
 		_, ctx := testsuite.RunQuery(q, single())
-		assertions.Greater(ctx.Scoring.Get(0), float32(0.0))
+		assertions.Greater(ctx.Scoring.Get(0, 0), float32(0.0))
 	})
 
 	t.Run("boost on must-not has no scoring effect", func(t *testing.T) {
@@ -1387,7 +1387,7 @@ func TestClauseContradictions(t *testing.T) {
 		idxBoth, ctxBoth := testsuite.RunQuery(both, build())
 
 		assertions.Len(idxBoth, 1)
-		assertions.GreaterOrEqual(ctxBoth.Scoring.Get(0), ctxMust.Scoring.Get(0),
+		assertions.GreaterOrEqual(ctxBoth.Scoring.Get(0, 0), ctxMust.Scoring.Get(0, 0),
 			"repeating the term as a should must not lower the score")
 	})
 
@@ -1644,7 +1644,7 @@ func TestRankingSubtleties(t *testing.T) {
 		q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Len(idxs, 2)
-		assertions.InDelta(ctx.Scoring.Get(idxs[0]), ctx.Scoring.Get(idxs[1]), 1e-12,
+		assertions.InDelta(ctx.Scoring.Get(0, idxs[0]), ctx.Scoring.Get(0, idxs[1]), 1e-12,
 			"identical docs must score identically")
 	})
 
@@ -1686,7 +1686,7 @@ func TestRankingSubtleties(t *testing.T) {
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Equal([]string{"doc-huge", "doc-one"}, testsuite.ResolveDocumentIndexes(s, idxs))
 		for _, idx := range idxs {
-			assertions.Greater(ctx.Scoring.Get(idx), float32(0), "saturated tf must keep the score greater than zero")
+			assertions.Greater(ctx.Scoring.Get(0, idx), float32(0), "saturated tf must keep the score greater than zero")
 		}
 	})
 
@@ -1723,7 +1723,7 @@ func TestCorpusLevelIDF(t *testing.T) {
 		q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Len(idxs, 1)
-		assertions.Greater(ctx.Scoring.Get(0), float32(0.0), "smoothed idf must stay positive even at N==n==1")
+		assertions.Greater(ctx.Scoring.Get(0, 0), float32(0.0), "smoothed idf must stay positive even at N==n==1")
 	})
 
 	t.Run("rare term dominates ranking in a large corpus", func(t *testing.T) {
@@ -1844,7 +1844,7 @@ func TestDegenerateInputs(t *testing.T) {
 		q.Shoulds.Keyword([]byte("contrato"), 1.0, 0)
 		idxs, ctx := testsuite.RunQuery(q, s)
 		assertions.Len(idxs, 1)
-		assertions.Greater(ctx.Scoring.Get(0), float32(0.0))
+		assertions.Greater(ctx.Scoring.Get(0, 0), float32(0.0))
 	})
 
 	t.Run("several must-not clauses with nothing else is empty", func(t *testing.T) {
@@ -2096,7 +2096,7 @@ func TestStructuralInvariantsExtended(t *testing.T) {
 		for _, id := range []string{"doc-drop", "doc-miss"} {
 			idx, _ := testsuite.IndexOfDocument(s, id)
 			assertions.False(ctx.Bitmap.Contains(idx))
-			assertions.Zero(ctx.Scoring.Get(idx))
+			assertions.Zero(ctx.Scoring.Get(0, idx))
 		}
 	})
 
@@ -2237,7 +2237,7 @@ func TestPropertyInvariantsExtended(t *testing.T) {
 		assertions.NotEmpty(idxs)
 		assertSortedDescByScore(assertions, ctx, idxs)
 		for _, idx := range idxs {
-			sc := ctx.Scoring.Get(idx)
+			sc := ctx.Scoring.Get(0, idx)
 			assertions.Greater(sc, float32(0.0))
 		}
 	})
@@ -2271,7 +2271,7 @@ func TestPropertyInvariantsExtended(t *testing.T) {
 		for i := range idxF {
 			idF, idR := sForward.DocumentsIds[idxF[i]].Value.UnsafeString(), sReverse.DocumentsIds[idxR[i]].Value.UnsafeString()
 			assertions.Equal(idF, idR)
-			assertions.InDelta(ctxF.Scoring.Get(idxF[i]), ctxR.Scoring.Get(idxR[i]), 1e-12)
+			assertions.InDelta(ctxF.Scoring.Get(0, idxF[i]), ctxR.Scoring.Get(0, idxR[i]), 1e-12)
 		}
 	})
 }

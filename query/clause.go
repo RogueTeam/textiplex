@@ -350,15 +350,20 @@ func (s *Scoring) Reset(src *roaring.Bitmap) {
 	s.Scores = make([]float32, len(s.Candidates))
 }
 
-func (s *Scoring) Add(idx uint32, score float32) {
-	i, _ := slices.BinarySearch(s.Candidates, idx)
-	s.Scores[i] += score
+func (s *Scoring) Resolve() (idxs []uint32) {
+	return
 }
 
-func (s *Scoring) Get(idx uint32) (score float32) {
-	i, found := slices.BinarySearch(s.Candidates, idx)
+func (s *Scoring) Add(guess int, idx uint32, score float32) (i int) {
+	i, _ = slices.BinarySearch(s.Candidates[guess:], idx)
+	s.Scores[guess:][i] += score
+	return guess + i
+}
+
+func (s *Scoring) Get(guess int, idx uint32) (score float32) {
+	i, found := slices.BinarySearch(s.Candidates[guess:], idx)
 	if found {
-		return s.Scores[i]
+		return s.Scores[guess:][i]
 	}
 	return 0
 }

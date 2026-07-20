@@ -30,11 +30,12 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 			continue
 		}
 
+		var guess int
 		resolvedArray := resolved.ToArray()
 		for _, docIdx := range resolvedArray {
 			score := float32(uint32(ctx.Scoring.Len()) - assigned)
 			assigned++
-			ctx.Scoring.Add(docIdx, score)
+			guess = ctx.Scoring.Add(guess, docIdx, score)
 		}
 
 		pending.AndNot(&retrievalBitmap)

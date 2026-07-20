@@ -208,6 +208,6 @@ func TestMustRangeSurvivesScoring(t *testing.T) {
 	idxs, ctx := testsuite.RunQuery(q, s)
 	a.Len(idxs, 3)
 	for _, idx := range idxs {
-		a.Positive(ctx.Scoring.Get(idx), "every retrieved doc must carry a positive score")
+		a.Positive(ctx.Scoring.Get(0, idx), "every retrieved doc must carry a positive score")
 	}
 }

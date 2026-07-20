@@ -94,6 +94,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 			continue
 		}
 
+		var guess int
 		resolved := roaring.FastAnd(&ctx.Bitmap, &tokenPl).ToArray()
 		switch {
 		case freqDense && dlDense:
@@ -107,7 +108,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
-					ctx.Scoring.Add(docIdx, score)
+					guess = ctx.Scoring.Add(guess, docIdx, score)
 				}
 			}
 		case freqDense && !dlDense:
@@ -124,7 +125,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
-					ctx.Scoring.Add(docIdx, score)
+					guess = ctx.Scoring.Add(guess, docIdx, score)
 				}
 			}
 		case !freqDense && dlDense:
@@ -141,7 +142,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
-					ctx.Scoring.Add(docIdx, score)
+					guess = ctx.Scoring.Add(guess, docIdx, score)
 				}
 			}
 		default: // !freqDense && !dlDense
@@ -161,7 +162,7 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
-					ctx.Scoring.Add(docIdx, score)
+					guess = ctx.Scoring.Add(guess, docIdx, score)
 				}
 			}
 		}

@@ -85,10 +85,13 @@ func (r *Reader) Query(skip uint, field SortField, reverse bool, q *query.Simple
 			r.Searcher.FieldScore(&ctx, uint64(field))
 		}
 
-		scores := r.Searcher.ResolveScores(&ctx)
+		scores := r.Searcher.ResolveScores(&ctx, false)
 		if reverse {
 			scores = scores[:max(uint(len(scores))-skip, 0)]
 			for _, score := range slices.Backward(scores) {
+				if score.Value == 0 {
+					return
+				}
 				if !yield(r.Storage.DocumentsIds[score.Index].Value.Bytes()) {
 					return
 				}
@@ -97,6 +100,9 @@ func (r *Reader) Query(skip uint, field SortField, reverse bool, q *query.Simple
 		}
 		scores = scores[min(skip, uint(len(scores))):]
 		for _, score := range scores {
+			if score.Value == 0 {
+				return
+			}
 			if !yield(r.Storage.DocumentsIds[score.Index].Value.Bytes()) {
 				return
 			}

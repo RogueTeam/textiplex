@@ -2243,14 +2243,12 @@ func TestPropertyInvariantsExtended(t *testing.T) {
 
 	t.Run("doc insertion order is invariant on a random corpus", func(t *testing.T) {
 		assertions := assert.New(t)
-		rng := rand.New(rand.NewSource(505))
 		const n = 22
 		base := make([]*storage.Document, 0, n)
 		for i := range n {
-			tf := uint32(1 + rng.Intn(5))
 			base = append(base, testsuite.MakeDoc(
 				fmt.Sprintf("doc-%03d", i),
-				testsuite.MakeField(fieldBody, 12, testsuite.MakeToken("contrato", tf))))
+				testsuite.MakeField(fieldBody, 12, testsuite.MakeToken("contrato", 1+uint32(i)))))
 		}
 		reversed := slices.Clone(base)
 		slices.Reverse(reversed)

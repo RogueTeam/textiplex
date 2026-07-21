@@ -136,7 +136,7 @@ func TestReader(t *testing.T) {
 	)
 	tests := []Test{
 		{Query: "+Jon +Snow", Expect: Expect{DocumentIds: []string{"ID-036"}}},
-		{Query: "+USA", Expect: Expect{DocumentIds: []string{"ID-040", "ID-035", "ID-033", "ID-026", "ID-024", "ID-021", "ID-019", "ID-017", "ID-015", "ID-008", "ID-007", "ID-001"}}},
+		{Query: "+USA", Expect: Expect{DocumentIds: []string{"ID-001", "ID-007", "ID-008", "ID-015", "ID-017", "ID-019", "ID-021", "ID-024", "ID-026", "ID-033", "ID-035", "ID-040"}}},
 		{Query: "+Hopper +USA", Expect: Expect{DocumentIds: []string{"ID-007"}}},
 		{Query: "+David -country:UK", Expect: Expect{DocumentIds: []string{"ID-003"}}},
 	}

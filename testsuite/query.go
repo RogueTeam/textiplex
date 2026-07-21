@@ -19,7 +19,7 @@ func RunQuery(q *query.SimpleQuery, s *storage.Storage) (scores []query.Score, c
 	ctx = &query.QueryContext{}
 	searcher.FilterDocuments(ctx, q)
 	searcher.BM25Score(ctx, q)
-	scores = searcher.ResolveScores(ctx)
+	scores = searcher.ResolveScores(ctx, true)
 	return scores, ctx
 }
 
@@ -64,6 +64,6 @@ func RunFieldScore(s *storage.Storage, fieldHash uint64, candidates []uint32) (s
 	}
 
 	searcher.FieldScore(ctx, fieldHash)
-	scores = searcher.ResolveScores(ctx)
+	scores = searcher.ResolveScores(ctx, true)
 	return scores, ctx
 }

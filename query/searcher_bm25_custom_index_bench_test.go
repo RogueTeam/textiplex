@@ -96,7 +96,7 @@ func init() {
 	}
 }
 
-func BenchmarkCustomIndexSearchShould(b *testing.B) {
+func BenchmarkCustomIndexSearchWithCopy(b *testing.B) {
 	if !CustomBm25IndexBench {
 		b.Skip()
 		return
@@ -126,7 +126,47 @@ func BenchmarkCustomIndexSearchShould(b *testing.B) {
 		var ctx query.QueryContext
 		searcher.FilterDocuments(&ctx, sq)
 		searcher.BM25Score(&ctx, sq)
-		searcher.ResolveScores(&ctx)
+		searcher.ResolveScores(&ctx, true)
+
+		b.SetBytes(int64(ctx.Scoring.Len()) * 4)
+		if !logged {
+			logged = true
+			b.Logf("Found #: %d", ctx.Scoring.Len())
+		}
+	}
+}
+
+func BenchmarkCustomIndexSearchWithNoCopy(b *testing.B) {
+	if !CustomBm25IndexBench {
+		b.Skip()
+		return
+	}
+
+	assertions := assert.New(b)
+
+	var s storage.Storage
+	err := s.Load(IndexPath)
+	if !assertions.NoError(err, "failed to load index from path") {
+		return
+	}
+
+	q, err := dorks.Parse(strings.NewReader(QueryString))
+	if !assertions.NoError(err, "failed to parse query string") {
+		return
+	}
+
+	sq := q.Compile(uint64(AllField), DefaultTokenizer, FieldTokenizers)
+
+	var searcher = query.New(&s)
+
+	b.ReportAllocs()
+
+	var logged bool
+	for b.Loop() {
+		var ctx query.QueryContext
+		searcher.FilterDocuments(&ctx, sq)
+		searcher.BM25Score(&ctx, sq)
+		searcher.ResolveScores(&ctx, false)
 
 		b.SetBytes(int64(ctx.Scoring.Len()) * 4)
 		if !logged {

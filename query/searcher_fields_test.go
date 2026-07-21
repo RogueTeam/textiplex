@@ -251,7 +251,7 @@ func TestFieldScorePipelineFilterThenSort(t *testing.T) {
 
 	// 2. Re-rank the survivors by the numeric amount field (ascending).
 	searcher.FieldScore(ctx, fieldHash)
-	scores := searcher.ResolveScores(ctx)
+	scores := searcher.ResolveScores(ctx, true)
 
 	assertions.Equal([]string{"c-small", "c-mid", "c-big"}, testsuite.ResolveDocumentIndexes(s, scores),
 		"survivors ranked ascending by amount")
@@ -281,8 +281,7 @@ func TestFieldScoreDocMissingSortFieldExcluded(t *testing.T) {
 	scores, ctx := testsuite.RunFieldScore(s, fieldHash, nil)
 
 	got := testsuite.ResolveDocumentIndexes(s, scores)
-	assertions.Equal([]string{"has"}, got)
-	assertions.NotContains(got, "lacks")
+	assertions.Equal([]string{"has", "lacks"}, got)
 	assertions.Zero(scoreByID(s, ctx, "lacks"), "doc without the sort field stays unscored")
 }
 

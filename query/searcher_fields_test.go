@@ -115,12 +115,12 @@ func TestFieldScoreIntegerAscending(t *testing.T) {
 			}
 			s := buildStorage(docs...)
 
-			idxs, ctx := testsuite.RunFieldScore(s, fieldHash, nil)
+			scores, ctx := testsuite.RunFieldScore(s, fieldHash, nil)
 
-			assertions.Equal(tc.want, testsuite.ResolveDocumentIndexes(s, idxs), "must be ascending by integer value")
-			assertSortedDescByScore(assertions, ctx, idxs)
+			assertions.Equal(tc.want, testsuite.ResolveDocumentIndexes(s, scores), "must be ascending by integer value")
+			assertSortedDescByScore(assertions, ctx, scores)
 			// Top result carries the full cardinality as its score.
-			assertions.Equal(float32(len(tc.docs)), ctx.Scoring.Get(0, idxs[0]))
+			assertions.Equal(float32(len(tc.docs)), scores[0].Value)
 		})
 	}
 }
@@ -251,12 +251,12 @@ func TestFieldScorePipelineFilterThenSort(t *testing.T) {
 
 	// 2. Re-rank the survivors by the numeric amount field (ascending).
 	searcher.FieldScore(ctx, fieldHash)
-	idxs := searcher.ResolveScores(ctx)
+	scores := searcher.ResolveScores(ctx)
 
-	assertions.Equal([]string{"c-small", "c-mid", "c-big"}, testsuite.ResolveDocumentIndexes(s, idxs),
+	assertions.Equal([]string{"c-small", "c-mid", "c-big"}, testsuite.ResolveDocumentIndexes(s, scores),
 		"survivors ranked ascending by amount")
 
-	got := testsuite.ResolveDocumentIndexes(s, idxs)
+	got := testsuite.ResolveDocumentIndexes(s, scores)
 	assertions.NotContains(got, "x-huge", "filtered-out doc must not appear despite having an amount")
 }
 
@@ -278,9 +278,9 @@ func TestFieldScoreDocMissingSortFieldExcluded(t *testing.T) {
 			testsuite.MakeField(fieldKind, 1, testsuite.MakeToken("contrato", 1))),
 	)
 
-	idxs, ctx := testsuite.RunFieldScore(s, fieldHash, nil)
+	scores, ctx := testsuite.RunFieldScore(s, fieldHash, nil)
 
-	got := testsuite.ResolveDocumentIndexes(s, idxs)
+	got := testsuite.ResolveDocumentIndexes(s, scores)
 	assertions.Equal([]string{"has"}, got)
 	assertions.NotContains(got, "lacks")
 	assertions.Zero(scoreByID(s, ctx, "lacks"), "doc without the sort field stays unscored")
@@ -299,7 +299,7 @@ func TestFieldScoreUnknownFieldIsNoop(t *testing.T) {
 	assertions.NotPanics(func() {
 		idxs, ctx := testsuite.RunFieldScore(s, uint64(0xDEADBEEF), nil)
 		assertions.Empty(idxs, "unknown field yields no ranking")
-		assertions.Nil(ctx.Scoring.Candidates, "unknown field must return before allocating scores")
+		assertions.Nil(ctx.Scoring.Scores, "unknown field must return before allocating scores")
 	})
 }
 
@@ -315,7 +315,7 @@ func TestFieldScoreEmptyCandidateSet(t *testing.T) {
 		// Non-nil empty slice → empty candidate bitmap (cardinality 0).
 		idxs, ctx := testsuite.RunFieldScore(s, fieldHash, []uint32{})
 		assertions.Empty(idxs)
-		assertions.Empty(ctx.Scoring.Candidates)
+		assertions.Empty(ctx.Scoring.Scores)
 	})
 }
 
@@ -341,12 +341,12 @@ func TestFieldScoreScoreSequenceIsDense(t *testing.T) {
 	}
 	s := buildStorage(docs...)
 
-	idxs, ctx := testsuite.RunFieldScore(s, fieldHash, nil)
-	assertions.Len(idxs, n)
+	scores, _ := testsuite.RunFieldScore(s, fieldHash, nil)
+	assertions.Len(scores, n)
 
 	got := make([]float32, 0, n)
-	for _, idx := range idxs {
-		got = append(got, ctx.Scoring.Get(0, idx))
+	for _, score := range scores {
+		got = append(got, score.Value)
 	}
 
 	want := make([]float32, 0, n)
@@ -375,5 +375,5 @@ func TestFieldScoreScoreSequenceIsDense(t *testing.T) {
 	for _, p := range pairs {
 		wantIDs = append(wantIDs, p.id)
 	}
-	assertions.Equal(wantIDs, testsuite.ResolveDocumentIndexes(s, idxs))
+	assertions.Equal(wantIDs, testsuite.ResolveDocumentIndexes(s, scores))
 }

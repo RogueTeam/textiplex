@@ -126,6 +126,7 @@ func BenchmarkCustomIndexSearchShould(b *testing.B) {
 		var ctx query.QueryContext
 		searcher.FilterDocuments(&ctx, sq)
 		searcher.BM25Score(&ctx, sq)
+		searcher.ResolveScores(&ctx)
 
 		b.SetBytes(int64(ctx.Scoring.Len()) * 4)
 		if !logged {

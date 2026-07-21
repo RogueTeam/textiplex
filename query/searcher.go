@@ -28,32 +28,32 @@ const ManyIteratorBatchSize = 8
 
 // Once a filtering and scoring are done, next step of a searching algorithm
 // Resolves the ctx to an actual idx slice
-func (s *Searcher) ResolveScores(ctx *QueryContext) (idxs []uint32) {
+func (s *Searcher) ResolveScores(ctx *QueryContext) (scores []Score) {
 	if ctx.Scoring.Len() == 0 {
 		return nil
 	}
 	// ToArray is a per-container bulk fill, far cheaper than draining a
 	// ManyIterator in fixed-size batches, and the ascending order is the same.
-	candidates := ctx.Bitmap.ToArray()
+	scores = slices.Clone(ctx.Scoring.Scores)
 	slices.SortFunc(
-		candidates,
-		func(a, b uint32) int {
-			scoreCmp := cmp.Compare(ctx.Scoring.Get(0, b), ctx.Scoring.Get(0, a))
+		scores,
+		func(a, b Score) int {
+			scoreCmp := cmp.Compare(b.Value, a.Value)
 			if scoreCmp == 0 {
-				return bytes.Compare(s.Storage.DocumentsIds[b].Value.Bytes(), s.Storage.DocumentsIds[a].Value.Bytes())
+				return bytes.Compare(s.Storage.DocumentsIds[b.Index].Value.Bytes(), s.Storage.DocumentsIds[a.Index].Value.Bytes())
 			}
 			return scoreCmp
 		},
 	)
 
 	zeroIdx, found := slices.BinarySearchFunc(
-		candidates, 0.0,
-		func(e uint32, t float32) int {
-			return cmp.Compare(t, ctx.Scoring.Get(0, e))
+		scores, 0.0,
+		func(e Score, t float32) int {
+			return cmp.Compare(t, e.Value)
 		},
 	)
 	if !found {
-		return candidates
+		return scores
 	}
-	return candidates[:zeroIdx]
+	return scores[:zeroIdx]
 }

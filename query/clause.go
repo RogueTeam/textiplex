@@ -341,39 +341,42 @@ func (s *Searcher) IterCond(c *Clause, handle HandleClauseCondFunc) {
 }
 
 type Scoring struct {
-	Candidates []uint32
-	Scores     []float32
+	Scores []Score
+}
+
+type Score struct {
+	Index uint32
+	Value float32
 }
 
 func (s *Scoring) Reset(src *roaring.Bitmap) {
-	s.Candidates = src.ToArray()
-	s.Scores = make([]float32, len(s.Candidates))
-}
-
-func (s *Scoring) Resolve() (idxs []uint32) {
-	return
+	asArray := src.ToArray()
+	s.Scores = make([]Score, len(asArray))
+	for i := range asArray {
+		s.Scores[i].Index = asArray[i]
+	}
 }
 
 func (s *Scoring) Add(guess int, idx uint32, score float32) (i int) {
-	i, _ = slices.BinarySearch(s.Candidates[guess:], idx)
-	s.Scores[guess:][i] += score
+	i, _ = slices.BinarySearchFunc(s.Scores[guess:], idx, func(e Score, t uint32) int { return int(e.Index) - int(t) })
+	s.Scores[guess:][i].Value += score
 	return guess + i
 }
 
 func (s *Scoring) IndexOf(guess int, idx uint32) (i int) {
-	i, _ = slices.BinarySearch(s.Candidates[guess:], idx)
+	i, _ = slices.BinarySearchFunc(s.Scores[guess:], idx, func(e Score, t uint32) int { return int(e.Index) - int(t) })
 	return guess + i
 }
 
 func (s *Scoring) Get(guess int, idx uint32) (score float32) {
-	i, found := slices.BinarySearch(s.Candidates[guess:], idx)
+	i, found := slices.BinarySearchFunc(s.Scores[guess:], idx, func(e Score, t uint32) int { return int(e.Index) - int(t) })
 	if found {
-		return s.Scores[guess:][i]
+		return s.Scores[guess:][i].Value
 	}
 	return 0
 }
 
-func (s *Scoring) Len() (n int) { return len(s.Candidates) }
+func (s *Scoring) Len() (n int) { return len(s.Scores) }
 
 // Query context intended to be cached and reused by caller on each search
 type QueryContext struct {

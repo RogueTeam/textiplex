@@ -48,8 +48,8 @@ func buildAmounts(pairs ...amountDoc) *storage.Storage {
 	return s
 }
 
-func ids(s *storage.Storage, idxs []uint32) []string {
-	return testsuite.ResolveDocumentIndexes(s, idxs)
+func ids(s *storage.Storage, scores []query.Score) []string {
+	return testsuite.ResolveDocumentIndexes(s, scores)
 }
 
 // Core repro: +amount:>0 over docs whose values are all distinct. Pre-fix this
@@ -70,8 +70,8 @@ func TestMustRangeGreaterExcludesLowReturnsRest(t *testing.T) {
 	// +amount:>0  → RangeCaptureModeRight, low=0, high=open
 	q.Musts.FieldRange(fieldAmount, testsuite.SortableInt64(0), nil, query.RangeCaptureModeRight, 1.0)
 
-	idxs, _ := testsuite.RunQuery(q, s)
-	got := ids(s, idxs)
+	scores, _ := testsuite.RunQuery(q, s)
+	got := ids(s, scores)
 
 	a.ElementsMatch([]string{"d-a", "d-b", "d-c"}, got,
 		"a Must range must union its tokens, not intersect them")
@@ -93,8 +93,8 @@ func TestMustRangeGreaterEqualIncludesLow(t *testing.T) {
 	// +amount:>=0 → RangeCaptureModeBoth, low=0, high=open
 	q.Musts.FieldRange(fieldAmount, testsuite.SortableInt64(0), nil, query.RangeCaptureModeBoth, 1.0)
 
-	idxs, _ := testsuite.RunQuery(q, s)
-	a.ElementsMatch([]string{"d-zero", "d-a"}, ids(s, idxs))
+	scores, _ := testsuite.RunQuery(q, s)
+	a.ElementsMatch([]string{"d-zero", "d-a"}, ids(s, scores))
 }
 
 // Isolates the positional first-token-skip bug WITHOUT the And-wipe: the range
@@ -114,8 +114,8 @@ func TestMustRangeGreaterUnindexedBoundSingleMatch(t *testing.T) {
 	// +amount:>25 (25 not indexed) → only 30 qualifies
 	q.Musts.FieldRange(fieldAmount, testsuite.SortableInt64(25), nil, query.RangeCaptureModeRight, 1.0)
 
-	idxs, _ := testsuite.RunQuery(q, s)
-	a.Equal([]string{"d-c"}, ids(s, idxs),
+	scores, _ := testsuite.RunQuery(q, s)
+	a.Equal([]string{"d-c"}, ids(s, scores),
 		"the first in-range token must not be dropped when the bound value is absent")
 }
 
@@ -134,8 +134,8 @@ func TestMustRangeLessExcludesHigh(t *testing.T) {
 	// +amount:<20 → RangeCaptureModeLeft, low=open, high=20
 	q.Musts.FieldRange(fieldAmount, nil, testsuite.SortableInt64(20), query.RangeCaptureModeLeft, 1.0)
 
-	idxs, _ := testsuite.RunQuery(q, s)
-	got := ids(s, idxs)
+	scores, _ := testsuite.RunQuery(q, s)
+	got := ids(s, scores)
 	a.ElementsMatch([]string{"d-neg", "d-a"}, got)
 	a.NotContains(got, "d-b", "strictly-less must exclude the high bound")
 }
@@ -154,8 +154,8 @@ func TestMustRangeNoMatchEmpty(t *testing.T) {
 	// +amount:>1000 → nothing qualifies
 	q.Musts.FieldRange(fieldAmount, testsuite.SortableInt64(1000), nil, query.RangeCaptureModeRight, 1.0)
 
-	idxs, _ := testsuite.RunQuery(q, s)
-	a.Empty(ids(s, idxs))
+	scores, _ := testsuite.RunQuery(q, s)
+	a.Empty(ids(s, scores))
 }
 
 // A keyword Must intersected with a range Must: two separate entries, so the
@@ -185,8 +185,8 @@ func TestMustKeywordIntersectMustRange(t *testing.T) {
 	q.Musts.FieldKeyword(fieldKindMR, []byte("contract"), 1.0, 0)
 	q.Musts.FieldRange(fieldAmount, testsuite.SortableInt64(0), nil, query.RangeCaptureModeRight, 1.0)
 
-	idxs, _ := testsuite.RunQuery(q, s)
-	a.ElementsMatch([]string{"d-c-10", "d-c-20"}, ids(s, idxs),
+	scores, _ := testsuite.RunQuery(q, s)
+	a.ElementsMatch([]string{"d-c-10", "d-c-20"}, ids(s, scores),
 		"result must be (kind==contract) ∩ (amount>0)")
 }
 
@@ -205,9 +205,9 @@ func TestMustRangeSurvivesScoring(t *testing.T) {
 	q := &query.SimpleQuery{}
 	q.Musts.FieldRange(fieldAmount, testsuite.SortableInt64(0), nil, query.RangeCaptureModeRight, 1.0)
 
-	idxs, ctx := testsuite.RunQuery(q, s)
-	a.Len(idxs, 3)
-	for _, idx := range idxs {
-		a.Positive(ctx.Scoring.Get(0, idx), "every retrieved doc must carry a positive score")
+	scores, _ := testsuite.RunQuery(q, s)
+	a.Len(scores, 3)
+	for _, score := range scores {
+		a.Positive(score.Value, "every retrieved doc must carry a positive score")
 	}
 }

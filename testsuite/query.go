@@ -12,15 +12,15 @@ import (
 // RunQuery filters then scores a query against s, returning the ranked doc
 // indices (best first) alongside the populated context so assertions can read
 // raw scores and the resolved bitmap.
-func RunQuery(q *query.SimpleQuery, s *storage.Storage) (idxs []uint32, ctx *query.QueryContext) {
+func RunQuery(q *query.SimpleQuery, s *storage.Storage) (scores []query.Score, ctx *query.QueryContext) {
 	searcher := query.New(s)
 	searcher.LevenshteinM = levenshtein.DefaultM
 	searcher.LevenshteinMaxK = levenshtein.DefaultK
 	ctx = &query.QueryContext{}
 	searcher.FilterDocuments(ctx, q)
 	searcher.BM25Score(ctx, q)
-	idxs = searcher.ResolveScores(ctx)
-	return idxs, ctx
+	scores = searcher.ResolveScores(ctx)
+	return scores, ctx
 }
 
 // IndexOfDocument returns the internal index assigned to an external doc id after
@@ -37,10 +37,10 @@ func IndexOfDocument(s *storage.Storage, id string) (uint32, bool) {
 }
 
 // ResolveDocumentIndexes maps a ranked slice of internal indices back to external ids.
-func ResolveDocumentIndexes(s *storage.Storage, idxs []uint32) []string {
-	out := make([]string, len(idxs))
-	for i, idx := range idxs {
-		out[i] = strings.Clone(s.DocumentsIds[idx].Value.UnsafeString())
+func ResolveDocumentIndexes(s *storage.Storage, scores []query.Score) []string {
+	out := make([]string, len(scores))
+	for i, score := range scores {
+		out[i] = strings.Clone(s.DocumentsIds[score.Index].Value.UnsafeString())
 	}
 	return out
 }
@@ -49,7 +49,7 @@ func ResolveDocumentIndexes(s *storage.Storage, idxs []uint32) []string {
 // then resolves to a ranked slice (best first). Passing candidates == nil means
 // "every document in the corpus"; a non-nil (even empty) slice restricts the
 // candidate set to exactly those internal indices.
-func RunFieldScore(s *storage.Storage, fieldHash uint64, candidates []uint32) (idxs []uint32, ctx *query.QueryContext) {
+func RunFieldScore(s *storage.Storage, fieldHash uint64, candidates []uint32) (scores []query.Score, ctx *query.QueryContext) {
 	searcher := query.New(s)
 	ctx = &query.QueryContext{}
 
@@ -64,6 +64,6 @@ func RunFieldScore(s *storage.Storage, fieldHash uint64, candidates []uint32) (i
 	}
 
 	searcher.FieldScore(ctx, fieldHash)
-	idxs = searcher.ResolveScores(ctx)
-	return idxs, ctx
+	scores = searcher.ResolveScores(ctx)
+	return scores, ctx
 }

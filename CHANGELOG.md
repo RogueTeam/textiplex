@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.7.9](https://github.com/RogueTeam/textiplex/compare/v1.7.8...v1.7.9) (2026-07-21)
+
+
+### Bug Fixes
+
+* improved resolve speed ([f851d57](https://github.com/RogueTeam/textiplex/commit/f851d578002c5ee57f0ce65b1587894d6f486ec6))
+
 ### [1.7.8](https://github.com/RogueTeam/textiplex/compare/v1.7.7...v1.7.8) (2026-07-21)
 
 

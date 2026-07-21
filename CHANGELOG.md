@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.7.7](https://github.com/RogueTeam/textiplex/compare/v1.7.6...v1.7.7) (2026-07-21)
+
+
+### Bug Fixes
+
+* allow guessing by using index of ([8b83df6](https://github.com/RogueTeam/textiplex/commit/8b83df65db594f3c17f9ff0793bb5fa2b8d62482))
+* allow shorting queries by adding a guess engine ([42c63d6](https://github.com/RogueTeam/textiplex/commit/42c63d64b9ef990b05eb38a9da352e9842175449))
+* extended benchmark suite to permit custom indexes ([e5c2af0](https://github.com/RogueTeam/textiplex/commit/e5c2af08feef72a4435c03c66c24639ae04b0990))
+* faster cmp function for binary search ([7aa9f84](https://github.com/RogueTeam/textiplex/commit/7aa9f8438e99228ba76ca64adeffcfb74d91ec7b))
+* fixed missing get update call ([1f62f38](https://github.com/RogueTeam/textiplex/commit/1f62f381fb9a2abe0e48403dd3818f61e1a09816))
+* full loop unrolling over all iterations ([1d70684](https://github.com/RogueTeam/textiplex/commit/1d706845d1657e472c21a471e0158095e95a8855))
+* implemented a binary searchable scoring type to prevent indexing directly over a map ([e39a5bd](https://github.com/RogueTeam/textiplex/commit/e39a5bdab7f8af98aaa5afa9911806cacaa7f8c6))
+* loop unrolling for !freqDense && dlDense ([75aff17](https://github.com/RogueTeam/textiplex/commit/75aff1733775811ca465e0d102d4c9b302e80fe4))
+* removed branching ([504f35c](https://github.com/RogueTeam/textiplex/commit/504f35cf6f785897192bfbda93c679577b68e545))
+* removed multiple times computed score ([47d4475](https://github.com/RogueTeam/textiplex/commit/47d447587b57cf385cd98893e2080b5582c3636e))
+
 ### [1.7.6](https://github.com/RogueTeam/textiplex/compare/v1.7.5...v1.7.6) (2026-07-16)
 
 ### [1.7.5](https://github.com/RogueTeam/textiplex/compare/v1.7.3...v1.7.5) (2026-07-15)

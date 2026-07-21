@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.7.8](https://github.com/RogueTeam/textiplex/compare/v1.7.7...v1.7.8) (2026-07-21)
+
+
+### Bug Fixes
+
+* support for sorting directly on scores ([a408fe5](https://github.com/RogueTeam/textiplex/commit/a408fe5246ac190a0918c70ef5d03677ea42e530))
+
 ### [1.7.7](https://github.com/RogueTeam/textiplex/compare/v1.7.6...v1.7.7) (2026-07-21)
 
 

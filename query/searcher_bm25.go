@@ -133,7 +133,59 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				}
 			}
 		case !freqDense && dlDense:
-			for _, docIdx := range resolved {
+			var i int
+			for ; i+4 < len(resolved); i += 4 {
+				docIdx1 := resolved[i]
+				docIdx2 := resolved[1+i]
+				docIdx3 := resolved[2+i]
+				docIdx4 := resolved[3+i]
+
+				dl1 := float32(docLengths[docIdx1].Length) // Do inmediatly the index operation
+				dl2 := float32(docLengths[docIdx2].Length) // Do inmediatly the index operation
+				dl3 := float32(docLengths[docIdx3].Length) // Do inmediatly the index operation
+				dl4 := float32(docLengths[docIdx4].Length) // Do inmediatly the index operation
+
+				freqIdx4, _ := slices.BinarySearchFunc(freqs, docIdx4, CmpTokenFrequencyEntryAndDocumentIndex)
+				freqIdx3, _ := slices.BinarySearchFunc(freqs[:freqIdx4], docIdx3, CmpTokenFrequencyEntryAndDocumentIndex)
+				freqIdx2, _ := slices.BinarySearchFunc(freqs[:freqIdx3], docIdx2, CmpTokenFrequencyEntryAndDocumentIndex)
+				freqIdx1, _ := slices.BinarySearchFunc(freqs[:freqIdx2], docIdx1, CmpTokenFrequencyEntryAndDocumentIndex)
+
+				tf1 := float32(freqs[freqIdx1].Frequency)
+				tf2 := float32(freqs[freqIdx2].Frequency)
+				tf3 := float32(freqs[freqIdx3].Frequency)
+				tf4 := float32(freqs[freqIdx4].Frequency)
+
+				freqs = freqs[1+freqIdx4:]
+
+				denominator1_1 := tf1 + satXOneMinuxLp
+				denominator1_2 := tf2 + satXOneMinuxLp
+				denominator1_3 := tf3 + satXOneMinuxLp
+				denominator1_4 := tf4 + satXOneMinuxLp
+
+				denominator2_1 := dl1 * saturationXLengthPenaltyDivAvgDocLength
+				denominator2_2 := dl2 * saturationXLengthPenaltyDivAvgDocLength
+				denominator2_3 := dl3 * saturationXLengthPenaltyDivAvgDocLength
+				denominator2_4 := dl4 * saturationXLengthPenaltyDivAvgDocLength
+
+				tfnorm1 := tf1 / (denominator1_1 + denominator2_1)
+				tfnorm2 := tf2 / (denominator1_2 + denominator2_2)
+				tfnorm3 := tf3 / (denominator1_3 + denominator2_3)
+				tfnorm4 := tf4 / (denominator1_4 + denominator2_4)
+
+				score1 := idfBoost * tfnorm1
+				score2 := idfBoost * tfnorm2
+				score3 := idfBoost * tfnorm3
+				score4 := idfBoost * tfnorm4
+
+				ctx.Scoring.Add(guess, docIdx1, score1)
+				ctx.Scoring.Add(guess, docIdx2, score2)
+				ctx.Scoring.Add(guess, docIdx3, score3)
+				guess4 := ctx.Scoring.Add(guess, docIdx4, score4)
+
+				guess = guess4
+			}
+
+			for _, docIdx := range resolved[i:] {
 				dl := float32(docLengths[docIdx].Length) // Do inmediatly the index operation
 				freqIdx, _ := slices.BinarySearchFunc(freqs, docIdx, CmpTokenFrequencyEntryAndDocumentIndex)
 
@@ -143,7 +195,6 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				denominator1 := tf + satXOneMinuxLp
 				denominator2 := dl * saturationXLengthPenaltyDivAvgDocLength
 				tfnorm := tf / (denominator1 + denominator2)
-
 				score := idfBoost * tfnorm
 				if score > MinimumBM25Score {
 					guess = ctx.Scoring.Add(guess, docIdx, score)

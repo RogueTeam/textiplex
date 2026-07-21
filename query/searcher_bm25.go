@@ -150,11 +150,8 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				tfnorm := tf / (denominator1 + denominator2)
 
 				score := idfBoost * tfnorm
-				if score > MinimumBM25Score {
-					guess = ctx.Scoring.Add(guess, docIdx, score)
-				} else {
-					guess = ctx.Scoring.IndexOf(guess, docIdx)
-				}
+
+				guess = ctx.Scoring.Add(guess, docIdx, score)
 			}
 		case freqDense && !dlDense:
 			var i int
@@ -218,11 +215,8 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				tfnorm := tf / (denominator1 + denominator2)
 
 				score := idfBoost * tfnorm
-				if score > MinimumBM25Score {
-					guess = ctx.Scoring.Add(guess, docIdx, score)
-				} else {
-					guess = ctx.Scoring.IndexOf(guess, docIdx)
-				}
+
+				guess = ctx.Scoring.Add(guess, docIdx, score)
 			}
 		case !freqDense && dlDense:
 			var i int
@@ -286,11 +280,8 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				denominator2 := dl * saturationXLengthPenaltyDivAvgDocLength
 				tfnorm := tf / (denominator1 + denominator2)
 				score := idfBoost * tfnorm
-				if score > MinimumBM25Score {
-					guess = ctx.Scoring.Add(guess, docIdx, score)
-				} else {
-					guess = ctx.Scoring.IndexOf(guess, docIdx)
-				}
+
+				guess = ctx.Scoring.Add(guess, docIdx, score)
 			}
 		default: // !freqDense && !dlDense
 			var i int
@@ -364,11 +355,8 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				tfnorm := tf / (denominator1 + denominator2)
 
 				score := idfBoost * tfnorm
-				if score > MinimumBM25Score {
-					guess = ctx.Scoring.Add(guess, docIdx, score)
-				} else {
-					guess = ctx.Scoring.IndexOf(guess, docIdx)
-				}
+
+				guess = ctx.Scoring.Add(guess, docIdx, score)
 			}
 		}
 	}

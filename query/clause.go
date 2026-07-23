@@ -2,7 +2,6 @@ package query
 
 import (
 	"bytes"
-	"slices"
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/RogueTeam/textiplex/levenshtein"
@@ -344,6 +343,25 @@ type Scoring struct {
 	Scores []Score
 }
 
+func (s *Scoring) BinarySearch(guess int, docIdx uint32) (i int, found bool) {
+	sub := s.Scores[guess:]
+	n := len(sub)
+	// Define cmp(x[-1], target) < 0 and cmp(x[n], target) >= 0 .
+	// Invariant: cmp(x[i - 1], target) < 0, cmp(x[j], target) >= 0.
+	i, j := 0, n
+	for i < j {
+		h := int(uint(i+j) >> 1) // avoid overflow when computing h
+		// i ≤ h < j
+		if sub[h].Index < docIdx {
+			i = h + 1 // preserves cmp(x[i - 1], target) < 0
+		} else {
+			j = h // preserves cmp(x[j], target) >= 0
+		}
+	}
+	// i == j, cmp(x[i-1], target) < 0, and cmp(x[j], target) (= cmp(x[i], target)) >= 0  =>  answer is i.
+	return i, i < n && sub[i].Index == docIdx
+}
+
 type Score struct {
 	Index uint32
 	Value float32
@@ -358,18 +376,13 @@ func (s *Scoring) Reset(src *roaring.Bitmap) {
 }
 
 func (s *Scoring) Add(guess int, idx uint32, score float32) (i int) {
-	i, _ = slices.BinarySearchFunc(s.Scores[guess:], idx, func(e Score, t uint32) int { return int(e.Index) - int(t) })
+	i, _ = s.BinarySearch(guess, idx)
 	s.Scores[guess:][i].Value += score
 	return guess + i
 }
 
-func (s *Scoring) IndexOf(guess int, idx uint32) (i int) {
-	i, _ = slices.BinarySearchFunc(s.Scores[guess:], idx, func(e Score, t uint32) int { return int(e.Index) - int(t) })
-	return guess + i
-}
-
 func (s *Scoring) Get(guess int, idx uint32) (score float32) {
-	i, found := slices.BinarySearchFunc(s.Scores[guess:], idx, func(e Score, t uint32) int { return int(e.Index) - int(t) })
+	i, found := s.BinarySearch(guess, idx)
 	if found {
 		return s.Scores[guess:][i].Value
 	}

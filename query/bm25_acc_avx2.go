@@ -7,6 +7,11 @@ import (
 	"github.com/RoaringBitmap/roaring"
 )
 
+const (
+	UnrollingFactorAvx2 = 8 // AVX 256-bit (32 bytes) = 8 x sizeof(float32)
+	UnrollMaskAvx2      = UnrollingFactorAvx2 - 1
+)
+
 func (s *Searcher) AVX2AccumulateBM25(ctx *QueryContext, state *ClauseState, saturation, lengthPenalty float32) {
 	var tokenPl roaring.Bitmap
 
@@ -74,10 +79,10 @@ func (s *Searcher) AVX2AccumulateBM25(ctx *QueryContext, state *ClauseState, sat
 
 		var guess int
 		resolved := roaring.FastAnd(&ctx.Bitmap, &tokenPl).ToArray()
-		n8 := len(resolved) &^ UnrollMask
+		n8 := len(resolved) &^ UnrollMaskAvx2
 		switch {
 		case freqDense && dlDense:
-			for i := 0; i < n8; i += UnrollingFactor {
+			for i := 0; i < n8; i += UnrollingFactorAvx2 {
 				docIdx1 := resolved[0+i]
 				docIdx2 := resolved[1+i]
 				docIdx3 := resolved[2+i]
@@ -144,7 +149,7 @@ func (s *Searcher) AVX2AccumulateBM25(ctx *QueryContext, state *ClauseState, sat
 				guess = ctx.Scoring.Add(guess, docIdx, score)
 			}
 		case freqDense && !dlDense:
-			for i := 0; i < n8; i += UnrollingFactor {
+			for i := 0; i < n8; i += UnrollingFactorAvx2 {
 				docIdx1 := resolved[0+i]
 				docIdx2 := resolved[1+i]
 				docIdx3 := resolved[2+i]
@@ -224,7 +229,7 @@ func (s *Searcher) AVX2AccumulateBM25(ctx *QueryContext, state *ClauseState, sat
 				guess = ctx.Scoring.Add(guess, docIdx, score)
 			}
 		case !freqDense && dlDense:
-			for i := 0; i < n8; i += UnrollingFactor {
+			for i := 0; i < n8; i += UnrollingFactorAvx2 {
 				docIdx1 := resolved[0+i]
 				docIdx2 := resolved[1+i]
 				docIdx3 := resolved[2+i]
@@ -304,7 +309,7 @@ func (s *Searcher) AVX2AccumulateBM25(ctx *QueryContext, state *ClauseState, sat
 			}
 		default: // !freqDense && !dlDense
 
-			for i := 0; i < n8; i += UnrollingFactor {
+			for i := 0; i < n8; i += UnrollingFactorAvx2 {
 				docIdx1 := resolved[0+i]
 				docIdx2 := resolved[1+i]
 				docIdx3 := resolved[2+i]

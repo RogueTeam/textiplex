@@ -22,7 +22,6 @@ const (
 func (s *Searcher) AVX2AccumulateBM25(ctx *QueryContext, state *ClauseState, saturation, lengthPenalty float32) {
 	var tokenPl roaring.Bitmap
 
-	docLengths := state.Field.DocumentLengths
 	avgDocLength := state.Field.AvgDocumentLength
 	boost := state.Boost
 	satPlus1 := saturation + 1
@@ -54,7 +53,7 @@ func (s *Searcher) AVX2AccumulateBM25(ctx *QueryContext, state *ClauseState, sat
 	}
 	saturationXLengthPenaltyDivAvgDocLengths := archsimd.LoadFloat32x8Array(&saturationXLengthPenaltyDivAvgDocLengthVec)
 
-	dlDense := len(docLengths) == len(s.Storage.DocumentsIds)
+	dlDense := len(state.Field.DocumentLengths) == len(s.Storage.DocumentsIds)
 
 	// One staging array per in-flight vector. These live on the stack, so the
 	// 64-wide gather phase costs no vector registers: it only issues the 64
@@ -71,6 +70,7 @@ func (s *Searcher) AVX2AccumulateBM25(ctx *QueryContext, state *ClauseState, sat
 	)
 
 	for _, token := range state.Tokens {
+		docLengths := state.Field.DocumentLengths
 		idf := InverseDocumentFrequency(uint64(len(state.Field.DocumentLengths)), token.FrequencyCount)
 		freqs := s.Storage.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
 		freqDense := len(freqs) == len(s.Storage.DocumentsIds)

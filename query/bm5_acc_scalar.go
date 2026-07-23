@@ -12,16 +12,17 @@ const (
 func (s *Searcher) ScalarAccumulateBM25(ctx *QueryContext, state *ClauseState, saturation, lengthPenalty float32) {
 	var tokenPl roaring.Bitmap
 
-	docLengths := state.Field.DocumentLengths
 	avgDocLength := state.Field.AvgDocumentLength
 	boost := state.Boost
 	satPlus1 := saturation + 1
 	oneMinusLP := 1 - lengthPenalty
 	satXOneMinuxLp := saturation * oneMinusLP
 	saturationXLengthPenaltyDivAvgDocLength := saturation * (lengthPenalty / avgDocLength)
-	dlDense := len(docLengths) == len(s.Storage.DocumentsIds)
+	dlDense := len(state.Field.DocumentLengths) == len(s.Storage.DocumentsIds)
 
 	for _, token := range state.Tokens {
+		docLengths := state.Field.DocumentLengths
+
 		idf := InverseDocumentFrequency(uint64(len(state.Field.DocumentLengths)), token.FrequencyCount)
 		freqs := s.Storage.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
 		freqDense := len(freqs) == len(s.Storage.DocumentsIds)
@@ -177,7 +178,7 @@ func (s *Searcher) ScalarAccumulateBM25(ctx *QueryContext, state *ClauseState, s
 				tf7 := float32(freqs[docIdx7].Frequency)
 				tf8 := float32(freqs[docIdx8].Frequency)
 
-				docLengthIdx8, _ := docLengths[:].BinarySearch(docIdx8)
+				docLengthIdx8, _ := docLengths.BinarySearch(docIdx8)
 				docLengthIdx7, _ := docLengths[:docLengthIdx8].BinarySearch(docIdx7)
 				docLengthIdx6, _ := docLengths[:docLengthIdx7].BinarySearch(docIdx6)
 				docLengthIdx5, _ := docLengths[:docLengthIdx6].BinarySearch(docIdx5)
@@ -413,7 +414,7 @@ func (s *Searcher) ScalarAccumulateBM25(ctx *QueryContext, state *ClauseState, s
 				docIdx7 := resolved[6+i]
 				docIdx8 := resolved[7+i]
 
-				docLengthIdx8, _ := docLengths[:].BinarySearch(docIdx8)
+				docLengthIdx8, _ := docLengths.BinarySearch(docIdx8)
 				docLengthIdx7, _ := docLengths[:docLengthIdx8].BinarySearch(docIdx7)
 				docLengthIdx6, _ := docLengths[:docLengthIdx7].BinarySearch(docIdx6)
 				docLengthIdx5, _ := docLengths[:docLengthIdx6].BinarySearch(docIdx5)

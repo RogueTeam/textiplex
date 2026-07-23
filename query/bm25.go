@@ -1,6 +1,8 @@
 package query
 
 import (
+	"os"
+
 	"github.com/RogueTeam/textiplex/fastlog"
 )
 
@@ -8,6 +10,10 @@ const (
 	DefaultSaturation    = 1.2
 	DefaultLengthPenalty = 0.75
 )
+
+const ForceScalarEnv = "FORCE_SCALAR"
+
+var ForceScalar = os.Getenv(ForceScalarEnv) != ""
 
 // IDF returns the Inverse Document Frequency for a single term.
 // It answers: "how surprising is it to see this term in a document?"

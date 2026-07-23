@@ -166,10 +166,10 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				tf3 := float32(freqs[docIdx3].Frequency)
 				tf4 := float32(freqs[docIdx4].Frequency)
 
-				docLengthIdx4, _ := slices.BinarySearchFunc(docLengths, docIdx1, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx3, _ := slices.BinarySearchFunc(docLengths, docIdx2, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx2, _ := slices.BinarySearchFunc(docLengths, docIdx3, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx1, _ := slices.BinarySearchFunc(docLengths, docIdx4, CmpDocumentLengthEntryAndDocumentIndex)
+				docLengthIdx4, _ := slices.BinarySearchFunc(docLengths, docIdx4, CmpDocumentLengthEntryAndDocumentIndex)
+				docLengthIdx3, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx4], docIdx3, CmpDocumentLengthEntryAndDocumentIndex)
+				docLengthIdx2, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx4], docIdx2, CmpDocumentLengthEntryAndDocumentIndex)
+				docLengthIdx1, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx4], docIdx1, CmpDocumentLengthEntryAndDocumentIndex)
 
 				dl1 := float32(docLengths[docLengthIdx1].Length)
 				dl2 := float32(docLengths[docLengthIdx2].Length)
@@ -291,10 +291,10 @@ func (s *Searcher) accumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 				docIdx3 := resolved[2+i]
 				docIdx4 := resolved[3+i]
 
-				docLengthIdx4, _ := slices.BinarySearchFunc(docLengths, docIdx1, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx3, _ := slices.BinarySearchFunc(docLengths, docIdx2, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx2, _ := slices.BinarySearchFunc(docLengths, docIdx3, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx1, _ := slices.BinarySearchFunc(docLengths, docIdx4, CmpDocumentLengthEntryAndDocumentIndex)
+				docLengthIdx4, _ := slices.BinarySearchFunc(docLengths, docIdx4, CmpDocumentLengthEntryAndDocumentIndex)
+				docLengthIdx3, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx4], docIdx3, CmpDocumentLengthEntryAndDocumentIndex)
+				docLengthIdx2, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx4], docIdx2, CmpDocumentLengthEntryAndDocumentIndex)
+				docLengthIdx1, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx4], docIdx1, CmpDocumentLengthEntryAndDocumentIndex)
 
 				dl1 := float32(docLengths[docLengthIdx1].Length)
 				dl2 := float32(docLengths[docLengthIdx2].Length)

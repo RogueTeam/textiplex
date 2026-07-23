@@ -118,6 +118,7 @@ func BenchmarkCustomIndexSearchWithCopy(b *testing.B) {
 	sq := q.Compile(uint64(AllField), DefaultTokenizer, FieldTokenizers)
 
 	var searcher = query.New(&s)
+	searcher.ForceScalar = os.Getenv("FORCE_SCALAR") != ""
 
 	b.ReportAllocs()
 
@@ -158,6 +159,7 @@ func BenchmarkCustomIndexSearchWithNoCopy(b *testing.B) {
 	sq := q.Compile(uint64(AllField), DefaultTokenizer, FieldTokenizers)
 
 	var searcher = query.New(&s)
+	searcher.ForceScalar = os.Getenv("FORCE_SCALAR") != ""
 
 	b.ReportAllocs()
 

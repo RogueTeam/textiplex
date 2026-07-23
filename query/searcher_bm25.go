@@ -48,7 +48,7 @@ func (s *Searcher) BM25Score(ctx *QueryContext, q *SimpleQuery) {
 
 func (s *Searcher) AccumulateBM25(ctx *QueryContext, state *ClauseState, saturation, lengthPenalty float32) {
 	switch {
-	case archsimd.X86.AVX2():
+	case !s.ForceScalar && archsimd.X86.AVX2():
 		s.AVX2AccumulateBM25(ctx, state, saturation, lengthPenalty)
 	default:
 		s.ScalarAccumulateBM25(ctx, state, saturation, lengthPenalty)

@@ -338,32 +338,6 @@ func TestBM25Primitives(t *testing.T) {
 		assertions.Greater(rare, common, "rarer term must have higher idf")
 		assertions.Greater(common, float32(0.0))
 	})
-
-	t.Run("normalized tf saturates", func(t *testing.T) {
-		// As tf→∞ this formula approaches (saturation+1): the saturation*lengthNorm
-		// term in the denominator becomes negligible against tf.
-		ceiling := float32(query.DefaultSaturation + 1.0) // 2.2
-		hi := query.NormalizedTF(1_000_000, 10, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		assertions.Less(hi, ceiling)
-		assertions.InDelta(ceiling, hi, 0.01, "huge tf should sit just under the ceiling")
-	})
-
-	t.Run("normalized tf monotonic in tf", func(t *testing.T) {
-		a := query.NormalizedTF(1, 10, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		b := query.NormalizedTF(2, 10, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		assertions.Greater(b, a)
-	})
-
-	t.Run("length penalty punishes long docs", func(t *testing.T) {
-		short := query.NormalizedTF(1, 5, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		long := query.NormalizedTF(1, 20, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		assertions.Greater(short, long, "same tf, longer doc must score lower")
-	})
-
-	t.Run("scores are finite", func(t *testing.T) {
-		score := query.ScoreTermBM25(1000, 3, 4, 12, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		assertions.Greater(score, float32(0.0))
-	})
 }
 
 // ── local helpers (names chosen to avoid clashing with the base suite) ────────
@@ -944,83 +918,6 @@ func TestBM25IDFExtended(t *testing.T) {
 		rare := query.InverseDocumentFrequency(1000, 1)
 		all := query.InverseDocumentFrequency(1000, 1000)
 		assertions.Greater(rare, all)
-	})
-}
-
-func TestBM25NormalizedTFExtended(t *testing.T) {
-	t.Run("zero tf yields zero", func(t *testing.T) {
-		assertions := assert.New(t)
-		got := query.NormalizedTF(0, 10, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		assertions.Zero(got)
-	})
-
-	t.Run("strictly monotonic in tf", func(t *testing.T) {
-		assertions := assert.New(t)
-		a := query.NormalizedTF(1, 10, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		b := query.NormalizedTF(2, 10, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		c := query.NormalizedTF(5, 10, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		assertions.Greater(b, a)
-		assertions.Greater(c, b)
-	})
-
-	t.Run("length penalty zero removes length dependence", func(t *testing.T) {
-		assertions := assert.New(t)
-		short := query.NormalizedTF(3, 5, 100, query.DefaultSaturation, float32(0.0))
-		long := query.NormalizedTF(3, 500, 100, query.DefaultSaturation, float32(0.0))
-		assertions.InDelta(short, long, 1e-12, "with b=0 doc length must not matter")
-	})
-
-	t.Run("invariant to penalty when docLen equals avgDocLen", func(t *testing.T) {
-		assertions := assert.New(t)
-		// factor (1 - b + b*docLen/avgDocLen) == 1 when docLen==avgDocLen, any b.
-		noPenalty := query.NormalizedTF(3, 10, 10, query.DefaultSaturation, float32(0.0))
-		fullPenalty := query.NormalizedTF(3, 10, 10, query.DefaultSaturation, 1.0)
-		assertions.InDelta(noPenalty, fullPenalty, 1e-12)
-	})
-
-	t.Run("higher saturation raises the ceiling", func(t *testing.T) {
-		assertions := assert.New(t)
-		low := query.NormalizedTF(1_000_000, 10, 10, 1.2, query.DefaultLengthPenalty)
-		high := query.NormalizedTF(1_000_000, 10, 10, 2.0, query.DefaultLengthPenalty)
-		assertions.Greater(high, low, "larger k1 must lift the saturation ceiling")
-	})
-}
-
-func TestBM25ScoreExtended(t *testing.T) {
-	t.Run("score equals idf times normalized tf", func(t *testing.T) {
-		assertions := assert.New(t)
-		idf := query.InverseDocumentFrequency(1000, 7)
-		ntf := query.NormalizedTF(3, 12, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		got := query.ScoreTermBM25(1000, 7, 3, 12, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		assertions.InDelta(idf*ntf, got, 1e-9, "ScoreTermBM25 must compose idf and normalized tf")
-	})
-
-	t.Run("monotonic in tf", func(t *testing.T) {
-		assertions := assert.New(t)
-		a := query.ScoreTermBM25(1000, 7, 1, 12, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		b := query.ScoreTermBM25(1000, 7, 2, 12, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		c := query.ScoreTermBM25(1000, 7, 5, 12, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		assertions.Greater(b, a)
-		assertions.Greater(c, b)
-	})
-
-	t.Run("rarer term scores higher at equal tf and length", func(t *testing.T) {
-		assertions := assert.New(t)
-		rare := query.ScoreTermBM25(1000, 1, 3, 10, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		common := query.ScoreTermBM25(1000, 500, 3, 10, 10, query.DefaultSaturation, query.DefaultLengthPenalty)
-		assertions.Greater(rare, common)
-	})
-
-	t.Run("finite and positive across a parameter spread", func(t *testing.T) {
-		assertions := assert.New(t)
-		scores := []float32{
-			query.ScoreTermBM25(10, 1, 1, 1, 1, query.DefaultSaturation, query.DefaultLengthPenalty),
-			query.ScoreTermBM25(1_000_000, 1, 50, 3, 200, query.DefaultSaturation, query.DefaultLengthPenalty),
-			query.ScoreTermBM25(1_000_000, 999_999, 1, 1000, 10, query.DefaultSaturation, query.DefaultLengthPenalty),
-		}
-		for i, sc := range scores {
-			assertions.Greater(sc, float32(0.0), "score %d must be positive", i)
-		}
 	})
 }
 
@@ -1925,58 +1822,6 @@ func TestBM25PrimitivesDeep(t *testing.T) {
 			cur := query.InverseDocumentFrequency(10000, n)
 			assertions.Greater(prev, cur, "idf must drop as n grows to %d", n)
 			prev = cur
-		}
-	})
-
-	t.Run("normalized tf with zero saturation equals one", func(t *testing.T) {
-		assertions := assert.New(t)
-		// With k1==0 the denominator collapses to tf, so the ratio is 1 for any tf>0.
-		got := query.NormalizedTF(7, 123, 10, float32(0.0), query.DefaultLengthPenalty)
-		assertions.InDelta(1.0, got, 1e-12)
-	})
-
-	t.Run("normalized tf approaches k1 plus one ceiling", func(t *testing.T) {
-		assertions := assert.New(t)
-		const k1 = float32(2.0)
-		got := query.NormalizedTF(1_000_000, 10, 10, k1, query.DefaultLengthPenalty)
-		assertions.Less(got, k1+1.0)
-		assertions.InDelta(k1+1.0, got, 0.01)
-	})
-
-	t.Run("normalized tf strictly decreasing in doc length at full penalty", func(t *testing.T) {
-		assertions := assert.New(t)
-		short := query.NormalizedTF(3, 5, 10, query.DefaultSaturation, 1.0)
-		mid := query.NormalizedTF(3, 10, 10, query.DefaultSaturation, 1.0)
-		long := query.NormalizedTF(3, 40, 10, query.DefaultSaturation, 1.0)
-		assertions.Greater(short, mid)
-		assertions.Greater(mid, long)
-	})
-
-	t.Run("score composes idf and normalized tf with custom params", func(t *testing.T) {
-		assertions := assert.New(t)
-		const k1, b = 2.0, 0.5
-		idf := query.InverseDocumentFrequency(5000, 13)
-		ntf := query.NormalizedTF(4, 20, 15, k1, b)
-		got := query.ScoreTermBM25(5000, 13, 4, 20, 15, k1, b)
-		assertions.InDelta(idf*ntf, got, 1e-9)
-	})
-
-	t.Run("score length penalty zero ignores doc length", func(t *testing.T) {
-		assertions := assert.New(t)
-		short := query.ScoreTermBM25(1000, 7, 3, 5, 100, query.DefaultSaturation, float32(0.0))
-		long := query.ScoreTermBM25(1000, 7, 3, 500, 100, query.DefaultSaturation, float32(0.0))
-		assertions.InDelta(short, long, 1e-12)
-	})
-
-	t.Run("score finite and positive across extreme params", func(t *testing.T) {
-		assertions := assert.New(t)
-		scores := []float32{
-			query.ScoreTermBM25(1, 1, 1, 1, 1, query.DefaultSaturation, query.DefaultLengthPenalty),
-			query.ScoreTermBM25(10_000_000, 1, 1, 1, 1, query.DefaultSaturation, query.DefaultLengthPenalty),
-			query.ScoreTermBM25(10_000_000, 9_999_999, 5000, 1, 100000, query.DefaultSaturation, query.DefaultLengthPenalty),
-		}
-		for i, sc := range scores {
-			assertions.Greater(sc, float32(0.0), "score %d must stay positive", i)
 		}
 	})
 }

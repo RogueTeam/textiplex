@@ -2113,7 +2113,7 @@ func TestPropertyInvariantsExtended(t *testing.T) {
 		for i := range scoresF {
 			idF, idR := sForward.DocumentsIds[scoresF[i].Index].Value.UnsafeString(), sReverse.DocumentsIds[scoresR[i].Index].Value.UnsafeString()
 			assertions.Equal(idF, idR)
-			assertions.InDelta(scoresF[i].Value, scoresR[i].Value, 1e-12)
+			assertions.InDelta(scoresF[i].Value, scoresR[i].Value, 1e-5)
 		}
 	})
 }

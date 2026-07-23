@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.7.10](https://github.com/RogueTeam/textiplex/compare/v1.7.9...v1.7.10) (2026-07-23)
+
+
+### Bug Fixes
+
+* correctly assign values to document lengths ([2ab3589](https://github.com/RogueTeam/textiplex/commit/2ab358942445b98f32b4020647ca911290bec004))
+
 ### [1.7.9](https://github.com/RogueTeam/textiplex/compare/v1.7.8...v1.7.9) (2026-07-21)
 
 

@@ -64,6 +64,26 @@ type TokenFrequencyEntry struct {
 	Frequency uint32
 }
 
+type TokenFrequencies []TokenFrequencyEntry
+
+func (s TokenFrequencies) BinarySearch(docIdx uint32) (i int, found bool) {
+	n := len(s)
+	// Define cmp(x[-1], target) < 0 and cmp(x[n], target) >= 0 .
+	// Invariant: cmp(x[i - 1], target) < 0, cmp(x[j], target) >= 0.
+	i, j := 0, n
+	for i < j {
+		h := int(uint(i+j) >> 1) // avoid overflow when computing h
+		// i ≤ h < j
+		if s[h].DocumentIndex < docIdx {
+			i = h + 1 // preserves cmp(x[i - 1], target) < 0
+		} else {
+			j = h // preserves cmp(x[j], target) >= 0
+		}
+	}
+	// i == j, cmp(x[i-1], target) < 0, and cmp(x[j], target) (= cmp(x[i], target)) >= 0  =>  answer is i.
+	return i, i < n && s[i].DocumentIndex == docIdx
+}
+
 const TokenSize = unsafe.Sizeof(Token{})
 
 const MaxRawValueSize = 128
@@ -122,3 +142,23 @@ type DocumentId struct {
 }
 
 const DocumentIdSize = unsafe.Sizeof(DocumentId{})
+
+type DocumentsLengths []DocumentLengthEntry
+
+func (s DocumentsLengths) BinarySearch(docIdx uint32) (i int, found bool) {
+	n := len(s)
+	// Define cmp(x[-1], target) < 0 and cmp(x[n], target) >= 0 .
+	// Invariant: cmp(x[i - 1], target) < 0, cmp(x[j], target) >= 0.
+	i, j := 0, n
+	for i < j {
+		h := int(uint(i+j) >> 1) // avoid overflow when computing h
+		// i ≤ h < j
+		if s[h].Index < docIdx {
+			i = h + 1 // preserves cmp(x[i - 1], target) < 0
+		} else {
+			j = h // preserves cmp(x[j], target) >= 0
+		}
+	}
+	// i == j, cmp(x[i-1], target) < 0, and cmp(x[j], target) (= cmp(x[i], target)) >= 0  =>  answer is i.
+	return i, i < n && s[i].Index == docIdx
+}

@@ -1,6 +1,6 @@
 module github.com/RogueTeam/textiplex
 
-go 1.26.4
+go 1.27rc2
 
 require (
 	github.com/RoaringBitmap/roaring v1.9.4

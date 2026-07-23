@@ -376,14 +376,40 @@ func (s *Scoring) Reset(src *roaring.Bitmap) {
 }
 
 func (s *Scoring) Add(guess int, idx uint32, score float32) (i int) {
-	i, _ = s.BinarySearch(guess, idx)
+	sub := s.Scores[guess:]
+	n := len(sub)
+	// Define cmp(x[-1], target) < 0 and cmp(x[n], target) >= 0 .
+	// Invariant: cmp(x[i - 1], target) < 0, cmp(x[j], target) >= 0.
+	i, j := 0, n
+	for i < j {
+		h := int(uint(i+j) >> 1) // avoid overflow when computing h
+		// i ≤ h < j
+		if sub[h].Index < idx {
+			i = h + 1 // preserves cmp(x[i - 1], target) < 0
+		} else {
+			j = h // preserves cmp(x[j], target) >= 0
+		}
+	}
 	s.Scores[guess:][i].Value += score
 	return guess + i
 }
 
 func (s *Scoring) Get(guess int, idx uint32) (score float32) {
-	i, found := s.BinarySearch(guess, idx)
-	if found {
+	sub := s.Scores[guess:]
+	n := len(sub)
+	// Define cmp(x[-1], target) < 0 and cmp(x[n], target) >= 0 .
+	// Invariant: cmp(x[i - 1], target) < 0, cmp(x[j], target) >= 0.
+	i, j := 0, n
+	for i < j {
+		h := int(uint(i+j) >> 1) // avoid overflow when computing h
+		// i ≤ h < j
+		if sub[h].Index < idx {
+			i = h + 1 // preserves cmp(x[i - 1], target) < 0
+		} else {
+			j = h // preserves cmp(x[j], target) >= 0
+		}
+	}
+	if i < n && sub[i].Index == idx {
 		return s.Scores[guess:][i].Value
 	}
 	return 0

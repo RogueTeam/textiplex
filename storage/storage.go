@@ -101,7 +101,7 @@ type Field struct {
 	TotalTokenFrequenciesCount uint64
 	// DocumentLength entries
 	// Keys are indexes of the documents
-	DocumentLengths []DocumentLengthEntry
+	DocumentLengths DocumentsLengths
 }
 
 type PostingList struct {
@@ -137,7 +137,7 @@ type Storage struct {
 	// Posting lists used once the caller knows which fields-tokens to query
 	PostingLists []PostingList
 	// Token frequencies
-	TokenFrequencies []TokenFrequencyEntry
+	TokenFrequencies TokenFrequencies
 	// Used to determine if the storage was already initialized or not
 	Initialized bool
 }

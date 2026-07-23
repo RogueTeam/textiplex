@@ -1,8 +1,6 @@
 package query
 
 import (
-	"slices"
-
 	"github.com/RoaringBitmap/roaring"
 )
 
@@ -179,14 +177,14 @@ func (s *Searcher) ScalarAccumulateBM25(ctx *QueryContext, state *ClauseState, s
 				tf7 := float32(freqs[docIdx7].Frequency)
 				tf8 := float32(freqs[docIdx8].Frequency)
 
-				docLengthIdx8, _ := slices.BinarySearchFunc(docLengths[:], docIdx8, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx7, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx8], docIdx7, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx6, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx7], docIdx6, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx5, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx6], docIdx5, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx4, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx5], docIdx4, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx3, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx4], docIdx3, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx2, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx3], docIdx2, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx1, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx2], docIdx1, CmpDocumentLengthEntryAndDocumentIndex)
+				docLengthIdx8, _ := docLengths[:].BinarySearch(docIdx8)
+				docLengthIdx7, _ := docLengths[:docLengthIdx8].BinarySearch(docIdx7)
+				docLengthIdx6, _ := docLengths[:docLengthIdx7].BinarySearch(docIdx6)
+				docLengthIdx5, _ := docLengths[:docLengthIdx6].BinarySearch(docIdx5)
+				docLengthIdx4, _ := docLengths[:docLengthIdx5].BinarySearch(docIdx4)
+				docLengthIdx3, _ := docLengths[:docLengthIdx4].BinarySearch(docIdx3)
+				docLengthIdx2, _ := docLengths[:docLengthIdx3].BinarySearch(docIdx2)
+				docLengthIdx1, _ := docLengths[:docLengthIdx2].BinarySearch(docIdx1)
 
 				dl1 := float32(docLengths[docLengthIdx1].Length)
 				dl2 := float32(docLengths[docLengthIdx2].Length)
@@ -266,7 +264,7 @@ func (s *Searcher) ScalarAccumulateBM25(ctx *QueryContext, state *ClauseState, s
 				docIdx := resolved[i]
 
 				tf := float32(freqs[docIdx].Frequency)
-				docLengthIdx, _ := slices.BinarySearchFunc(docLengths, docIdx, CmpDocumentLengthEntryAndDocumentIndex)
+				docLengthIdx, _ := docLengths.BinarySearch(docIdx)
 
 				dl := float32(docLengths[docLengthIdx].Length)
 				docLengths = docLengths[1+docLengthIdx:]
@@ -301,14 +299,14 @@ func (s *Searcher) ScalarAccumulateBM25(ctx *QueryContext, state *ClauseState, s
 				dl7 := float32(docLengths[docIdx7].Length) // Do inmediatly the index operation
 				dl8 := float32(docLengths[docIdx8].Length) // Do inmediatly the index operation
 
-				freqIdx8, _ := slices.BinarySearchFunc(freqs, docIdx8, CmpTokenFrequencyEntryAndDocumentIndex)
-				freqIdx7, _ := slices.BinarySearchFunc(freqs[:freqIdx8], docIdx7, CmpTokenFrequencyEntryAndDocumentIndex)
-				freqIdx6, _ := slices.BinarySearchFunc(freqs[:freqIdx7], docIdx6, CmpTokenFrequencyEntryAndDocumentIndex)
-				freqIdx5, _ := slices.BinarySearchFunc(freqs[:freqIdx6], docIdx5, CmpTokenFrequencyEntryAndDocumentIndex)
-				freqIdx4, _ := slices.BinarySearchFunc(freqs[:freqIdx5], docIdx4, CmpTokenFrequencyEntryAndDocumentIndex)
-				freqIdx3, _ := slices.BinarySearchFunc(freqs[:freqIdx4], docIdx3, CmpTokenFrequencyEntryAndDocumentIndex)
-				freqIdx2, _ := slices.BinarySearchFunc(freqs[:freqIdx3], docIdx2, CmpTokenFrequencyEntryAndDocumentIndex)
-				freqIdx1, _ := slices.BinarySearchFunc(freqs[:freqIdx2], docIdx1, CmpTokenFrequencyEntryAndDocumentIndex)
+				freqIdx8, _ := freqs.BinarySearch(docIdx8)
+				freqIdx7, _ := freqs[:freqIdx8].BinarySearch(docIdx7)
+				freqIdx6, _ := freqs[:freqIdx7].BinarySearch(docIdx6)
+				freqIdx5, _ := freqs[:freqIdx6].BinarySearch(docIdx5)
+				freqIdx4, _ := freqs[:freqIdx5].BinarySearch(docIdx4)
+				freqIdx3, _ := freqs[:freqIdx4].BinarySearch(docIdx3)
+				freqIdx2, _ := freqs[:freqIdx3].BinarySearch(docIdx2)
+				freqIdx1, _ := freqs[:freqIdx2].BinarySearch(docIdx1)
 
 				tf1 := float32(freqs[freqIdx1].Frequency)
 				tf2 := float32(freqs[freqIdx2].Frequency)
@@ -389,7 +387,7 @@ func (s *Searcher) ScalarAccumulateBM25(ctx *QueryContext, state *ClauseState, s
 				docIdx := resolved[i]
 
 				dl := float32(docLengths[docIdx].Length) // Do inmediatly the index operation
-				freqIdx, _ := slices.BinarySearchFunc(freqs, docIdx, CmpTokenFrequencyEntryAndDocumentIndex)
+				freqIdx, _ := freqs.BinarySearch(docIdx)
 
 				tf := float32(freqs[freqIdx].Frequency)
 				freqs = freqs[1+freqIdx:]
@@ -415,14 +413,14 @@ func (s *Searcher) ScalarAccumulateBM25(ctx *QueryContext, state *ClauseState, s
 				docIdx7 := resolved[6+i]
 				docIdx8 := resolved[7+i]
 
-				docLengthIdx8, _ := slices.BinarySearchFunc(docLengths[:], docIdx8, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx7, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx8], docIdx7, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx6, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx7], docIdx6, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx5, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx6], docIdx5, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx4, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx5], docIdx4, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx3, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx4], docIdx3, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx2, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx3], docIdx2, CmpDocumentLengthEntryAndDocumentIndex)
-				docLengthIdx1, _ := slices.BinarySearchFunc(docLengths[:docLengthIdx2], docIdx1, CmpDocumentLengthEntryAndDocumentIndex)
+				docLengthIdx8, _ := docLengths[:].BinarySearch(docIdx8)
+				docLengthIdx7, _ := docLengths[:docLengthIdx8].BinarySearch(docIdx7)
+				docLengthIdx6, _ := docLengths[:docLengthIdx7].BinarySearch(docIdx6)
+				docLengthIdx5, _ := docLengths[:docLengthIdx6].BinarySearch(docIdx5)
+				docLengthIdx4, _ := docLengths[:docLengthIdx5].BinarySearch(docIdx4)
+				docLengthIdx3, _ := docLengths[:docLengthIdx4].BinarySearch(docIdx3)
+				docLengthIdx2, _ := docLengths[:docLengthIdx3].BinarySearch(docIdx2)
+				docLengthIdx1, _ := docLengths[:docLengthIdx2].BinarySearch(docIdx1)
 
 				dl1 := float32(docLengths[docLengthIdx1].Length)
 				dl2 := float32(docLengths[docLengthIdx2].Length)
@@ -434,14 +432,14 @@ func (s *Searcher) ScalarAccumulateBM25(ctx *QueryContext, state *ClauseState, s
 				dl8 := float32(docLengths[docLengthIdx8].Length)
 				docLengths = docLengths[1+docLengthIdx8:]
 
-				freqIdx8, _ := slices.BinarySearchFunc(freqs, docIdx8, CmpTokenFrequencyEntryAndDocumentIndex)
-				freqIdx7, _ := slices.BinarySearchFunc(freqs[:freqIdx8], docIdx7, CmpTokenFrequencyEntryAndDocumentIndex)
-				freqIdx6, _ := slices.BinarySearchFunc(freqs[:freqIdx7], docIdx6, CmpTokenFrequencyEntryAndDocumentIndex)
-				freqIdx5, _ := slices.BinarySearchFunc(freqs[:freqIdx6], docIdx5, CmpTokenFrequencyEntryAndDocumentIndex)
-				freqIdx4, _ := slices.BinarySearchFunc(freqs[:freqIdx5], docIdx4, CmpTokenFrequencyEntryAndDocumentIndex)
-				freqIdx3, _ := slices.BinarySearchFunc(freqs[:freqIdx4], docIdx3, CmpTokenFrequencyEntryAndDocumentIndex)
-				freqIdx2, _ := slices.BinarySearchFunc(freqs[:freqIdx3], docIdx2, CmpTokenFrequencyEntryAndDocumentIndex)
-				freqIdx1, _ := slices.BinarySearchFunc(freqs[:freqIdx2], docIdx1, CmpTokenFrequencyEntryAndDocumentIndex)
+				freqIdx8, _ := freqs.BinarySearch(docIdx8)
+				freqIdx7, _ := freqs[:freqIdx8].BinarySearch(docIdx7)
+				freqIdx6, _ := freqs[:freqIdx7].BinarySearch(docIdx6)
+				freqIdx5, _ := freqs[:freqIdx6].BinarySearch(docIdx5)
+				freqIdx4, _ := freqs[:freqIdx5].BinarySearch(docIdx4)
+				freqIdx3, _ := freqs[:freqIdx4].BinarySearch(docIdx3)
+				freqIdx2, _ := freqs[:freqIdx3].BinarySearch(docIdx2)
+				freqIdx1, _ := freqs[:freqIdx2].BinarySearch(docIdx1)
 
 				tf1 := float32(freqs[freqIdx1].Frequency)
 				tf2 := float32(freqs[freqIdx2].Frequency)
@@ -521,8 +519,8 @@ func (s *Searcher) ScalarAccumulateBM25(ctx *QueryContext, state *ClauseState, s
 			for i := n8; i < len(resolved); i++ {
 				docIdx := resolved[i]
 
-				freqIdx, _ := slices.BinarySearchFunc(freqs, docIdx, CmpTokenFrequencyEntryAndDocumentIndex)
-				docLengthIdx, _ := slices.BinarySearchFunc(docLengths, docIdx, CmpDocumentLengthEntryAndDocumentIndex)
+				freqIdx, _ := freqs.BinarySearch(docIdx)
+				docLengthIdx, _ := docLengths.BinarySearch(docIdx)
 
 				tf := float32(freqs[freqIdx].Frequency)
 				freqs = freqs[1+freqIdx:]

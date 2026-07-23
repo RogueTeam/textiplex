@@ -2,8 +2,6 @@ package query
 
 import (
 	"simd/archsimd"
-
-	"github.com/RogueTeam/textiplex/storage"
 )
 
 // BM25Score fills ctx.Scores with the BM25 score of every document in
@@ -53,12 +51,4 @@ func (s *Searcher) AccumulateBM25(ctx *QueryContext, state *ClauseState, saturat
 	default:
 		s.ScalarAccumulateBM25(ctx, state, saturation, lengthPenalty)
 	}
-}
-
-func CmpDocumentLengthEntryAndDocumentIndex(e storage.DocumentLengthEntry, t uint32) int {
-	return int(e.Index) - int(t)
-}
-
-func CmpTokenFrequencyEntryAndDocumentIndex(e storage.TokenFrequencyEntry, t uint32) int {
-	return int(e.DocumentIndex) - int(t)
 }

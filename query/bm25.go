@@ -11,9 +11,9 @@ const (
 	DefaultLengthPenalty = 0.75
 )
 
-const ForceScalarEnv = "FORCE_SCALAR"
+const ForceSimdEnv = "FORCE_SIMD"
 
-var ForceScalar = os.Getenv(ForceScalarEnv) != ""
+var ForceSimd = os.Getenv(ForceSimdEnv) != ""
 
 // IDF returns the Inverse Document Frequency for a single term.
 // It answers: "how surprising is it to see this term in a document?"

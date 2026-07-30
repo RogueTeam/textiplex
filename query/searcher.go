@@ -14,8 +14,8 @@ type Searcher struct {
 	// Maximum amount of entries challenged against levenshtein fuzz algorithm
 	LevenshteinM    int
 	LevenshteinMaxK int
-	// Performance
-	ForceScalar bool
+	// Performance optimization path
+	ForceSimd bool
 }
 
 func New(s *storage.Storage) (searcher *Searcher) {

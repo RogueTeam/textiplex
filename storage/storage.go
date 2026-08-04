@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"fmt"
@@ -376,67 +377,99 @@ func (s *Storage) SaveTo(name string) (err error) {
 		return fmt.Errorf("failed to truncate file size: %w", err)
 	}
 
-	dst, err := unix.Mmap(
-		int(file.Fd()),
-		0,
-		int(s.Size),
-		unix.PROT_WRITE,
-		unix.MAP_SHARED,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to mmap file: %w", err)
-	}
-	defer unix.Munmap(dst)
-
-	out := dst[:0]
+	var writeBuffer [8]byte
+	dst := bufio.NewWriterSize(file, 4<<20)
 
 	// File Header
-	out = binary.NativeEndian.AppendUint64(out, MagicNumber)
-	out = binary.NativeEndian.AppendUint16(out, s.Version)
-	out = append(out, 0, 0, 0, 0, 0, 0) // Padding 6 bytes
-	out = binary.NativeEndian.AppendUint32(out, uint32(len(s.DocumentsIds)))
-	out = append(out, 0, 0, 0, 0)
-	out = binary.NativeEndian.AppendUint64(out, uint64(len(s.Fields)))
-	out = binary.NativeEndian.AppendUint64(out, uint64(len(s.PostingLists)))
-	out = binary.NativeEndian.AppendUint64(out, uint64(len(s.TokenFrequencies)))
+	binary.NativeEndian.PutUint64(writeBuffer[:], MagicNumber)
+	_, err = dst.Write(writeBuffer[:])
+	if err != nil {
+		return fmt.Errorf("failed to write magic number: %w", err)
+	}
+	binary.NativeEndian.PutUint16(writeBuffer[:], s.Version)
+	_, err = dst.Write(writeBuffer[:])
+	if err != nil {
+		return fmt.Errorf("failed to write version: %w", err)
+	}
+	binary.NativeEndian.PutUint32(writeBuffer[:], uint32(len(s.DocumentsIds)))
+	_, err = dst.Write(writeBuffer[:])
+	if err != nil {
+		return fmt.Errorf("failed to write number of documents: %w", err)
+	}
+	binary.NativeEndian.PutUint64(writeBuffer[:], uint64(len(s.Fields)))
+	_, err = dst.Write(writeBuffer[:])
+	if err != nil {
+		return fmt.Errorf("failed to write number of fields: %w", err)
+	}
+	binary.NativeEndian.PutUint64(writeBuffer[:], uint64(len(s.PostingLists)))
+	_, err = dst.Write(writeBuffer[:])
+	if err != nil {
+		return fmt.Errorf("failed to write number of posting lists: %w", err)
+	}
+	binary.NativeEndian.PutUint64(writeBuffer[:], uint64(len(s.TokenFrequencies)))
+	_, err = dst.Write(writeBuffer[:])
+	if err != nil {
+		return fmt.Errorf("failed to write number of token frequencies: %w", err)
+	}
 
 	// Document Ids table
 	if len(s.DocumentsIds) > 0 {
-		docIdsAsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&s.DocumentsIds[0])), DocumentIdSize*uintptr(len(s.DocumentsIds)))
-		out = append(out, docIdsAsBytes...)
+		_, err = dst.Write(pointers.UnsafeSliceBytes(s.DocumentsIds))
+		if err != nil {
+			return fmt.Errorf("failed to write document ids: %w", err)
+		}
 	}
 
 	// Write token frequencies
 	if len(s.TokenFrequencies) > 0 {
-		tokFreqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&s.TokenFrequencies[0])), TokenFrequencyEntrySize*uintptr(len(s.TokenFrequencies)))
-		out = append(out, tokFreqsBytes...)
+		_, err = dst.Write(pointers.UnsafeSliceBytes(s.TokenFrequencies))
+		if err != nil {
+			return fmt.Errorf("failed to write token frequencies bytes: %w", err)
+		}
 	}
 
 	// Write fields
 	for fieldHash, field := range s.Fields {
-		out = binary.NativeEndian.AppendUint64(out, fieldHash)
-		out = append(out, pointers.UnsafeSlice(&field.AvgDocumentLength)...)
-		out = append(out, 0, 0, 0, 0)
-		out = append(out, pointers.UnsafeSlice(&field.TotalDocumentsLength)...)
-		out = binary.NativeEndian.AppendUint64(out, uint64(len(field.Tokens)))
-		out = binary.NativeEndian.AppendUint64(out, field.TotalTokenFrequenciesCount)
-		out = binary.NativeEndian.AppendUint64(out, uint64(len(field.DocumentLengths)))
-
-		for index := range field.DocumentLengths {
-			docLength := &field.DocumentLengths[index]
-
-			out = binary.NativeEndian.AppendUint32(out, docLength.Index)
-			out = binary.NativeEndian.AppendUint32(out, docLength.Length)
+		_, err = dst.Write(pointers.UnsafeValueBytes(&fieldHash))
+		if err != nil {
+			return fmt.Errorf("failed to write field hash: %w", err)
+		}
+		copy(writeBuffer[:], pointers.UnsafeValueBytes(&field.AvgDocumentLength))
+		_, err = dst.Write(writeBuffer[:])
+		if err != nil {
+			return fmt.Errorf("failed to write field's avg doc length: %w", err)
+		}
+		_, err = dst.Write(pointers.UnsafeValueBytes(&field.TotalDocumentsLength))
+		if err != nil {
+			return fmt.Errorf("failed to write field's total document length: %w", err)
+		}
+		binary.NativeEndian.PutUint64(writeBuffer[:], uint64(len(field.Tokens)))
+		_, err = dst.Write(writeBuffer[:])
+		if err != nil {
+			return fmt.Errorf("failed to write field's token count: %w", err)
+		}
+		_, err = dst.Write(pointers.UnsafeValueBytes(&field.TotalTokenFrequenciesCount))
+		if err != nil {
+			return fmt.Errorf("failed to write field's total token frequencies count: %w", err)
+		}
+		binary.NativeEndian.PutUint64(writeBuffer[:], uint64(len(field.DocumentLengths)))
+		_, err = dst.Write(writeBuffer[:])
+		if err != nil {
+			return fmt.Errorf("failed to write field's document lengths count: %w", err)
 		}
 
-		for tokenIdx := range field.Tokens {
-			token := &field.Tokens[tokenIdx]
+		if len(field.DocumentLengths) > 0 {
+			_, err = dst.Write(pointers.UnsafeSliceBytes(field.DocumentLengths))
+			if err != nil {
+				return fmt.Errorf("failed to write field's documents lengths: %w", err)
+			}
+		}
 
-			out = binary.NativeEndian.AppendUint64(out, token.FrequencyCount)
-			out = binary.NativeEndian.AppendUint64(out, token.PostingListIndex)
-			out = binary.NativeEndian.AppendUint64(out, token.FrequenciesIndex)
-			out = binary.NativeEndian.AppendUint64(out, token.Value.Size)
-			out = append(out, token.Value.Data[:]...)
+		if len(field.Tokens) > 0 {
+			_, err = dst.Write(pointers.UnsafeSliceBytes(field.Tokens))
+			if err != nil {
+				return fmt.Errorf("failed to write field's tokens: %w", err)
+			}
 		}
 	}
 
@@ -444,14 +477,22 @@ func (s *Storage) SaveTo(name string) (err error) {
 	for index := range s.PostingLists {
 		pl := &s.PostingLists[index]
 
-		out = binary.NativeEndian.AppendUint32(out, uint32(len(pl.Data)))
-		out = append(out, pl.Data...)
+		length := uint32(len(pl.Data))
+		_, err = dst.Write(pointers.UnsafeValueBytes(&length))
+		if err != nil {
+			return fmt.Errorf("failed to write posting list's length: %w", err)
+		}
+		_, err = dst.Write(pl.Data)
+		if err != nil {
+			return fmt.Errorf("failed to write posting list's contents: %w", err)
+		}
 	}
 
-	err = unix.Msync(dst, unix.MS_SYNC)
+	err = dst.Flush()
 	if err != nil {
-		return fmt.Errorf("failed to sync pages with FS: %w", err)
+		return fmt.Errorf("failed to flush remaining contents: %w", err)
 	}
+
 	return nil
 }
 

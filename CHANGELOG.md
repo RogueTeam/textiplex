@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.8.0](https://github.com/RogueTeam/textiplex/compare/v1.7.10...v1.8.0) (2026-08-04)
+
+
+### Features
+
+* initial support for buffered writer ([d9407a2](https://github.com/RogueTeam/textiplex/commit/d9407a24df2a25d10f9ab6dc387e0a31dcca7722))
+
+
+### Bug Fixes
+
+* support for helper caster in merge ([8386ba2](https://github.com/RogueTeam/textiplex/commit/8386ba2327c539985706678c5b9118316a21477f))
+* zero allocation call ([9452436](https://github.com/RogueTeam/textiplex/commit/9452436cf46fb7cf27d6702346e9ecebfb7d2a26))
+
 ### [1.7.10](https://github.com/RogueTeam/textiplex/compare/v1.7.9...v1.7.10) (2026-07-23)
 
 

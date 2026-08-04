@@ -111,7 +111,7 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 					return fmt.Errorf("failed to write B's token frequency index: %w", err)
 				}
 
-				_, err = ctx.DstW.Write(pointers.UnsafeSlice(&freq.Frequency))
+				_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&freq.Frequency))
 				if err != nil {
 					return fmt.Errorf("failed to write B's token frequency: %w", err)
 				}
@@ -144,7 +144,7 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 							return fmt.Errorf("failed to write B's token frequency index: %w", err)
 						}
 
-						_, err = ctx.DstW.Write(pointers.UnsafeSlice(&freq.Frequency))
+						_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&freq.Frequency))
 						if err != nil {
 							return fmt.Errorf("failed to write B's token frequency: %w", err)
 						}
@@ -187,7 +187,7 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 								return fmt.Errorf("failed to write B's token frequency index: %w", err)
 							}
 
-							_, err = ctx.DstW.Write(pointers.UnsafeSlice(&freq.Frequency))
+							_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&freq.Frequency))
 							if err != nil {
 								return fmt.Errorf("failed to write B's token frequency: %w", err)
 							}
@@ -220,7 +220,7 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 								return fmt.Errorf("failed to write B's token frequency index: %w", err)
 							}
 
-							_, err = ctx.DstW.Write(pointers.UnsafeSlice(&freq.Frequency))
+							_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&freq.Frequency))
 							if err != nil {
 								return fmt.Errorf("failed to write B's token frequency: %w", err)
 							}
@@ -316,7 +316,7 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 		})
 	}
 
-	_, err = ctx.DstW.Write(pointers.UnsafeSlice(&finalToken))
+	_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&finalToken))
 	if err != nil {
 		return fmt.Errorf("failed to write Collision field token: %w: %d:%s", err, fieldHash, finalToken.Value.UnsafeString())
 	}
@@ -437,16 +437,16 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		field := ctx.StorageA.Fields[fieldHash]
 
 		// Write field header to temporary fields file
-		_, err = ctx.DstW.Write(pointers.UnsafeSlice(&fieldHash))
+		_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&fieldHash))
 		if err != nil {
 			return fmt.Errorf("failed to write A's field hash: %w: %d", err, fieldHash)
 		}
-		copy(ctx.Buffer[:], pointers.UnsafeSlice(&field.AvgDocumentLength))
+		copy(ctx.Buffer[:], pointers.UnsafeValueBytes(&field.AvgDocumentLength))
 		_, err = ctx.DstW.Write(ctx.Buffer[:])
 		if err != nil {
 			return fmt.Errorf("failed to write A's field avgdl: %w: %d", err, fieldHash)
 		}
-		_, err = ctx.DstW.Write(pointers.UnsafeSlice(&field.TotalDocumentsLength))
+		_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&field.TotalDocumentsLength))
 		if err != nil {
 			return fmt.Errorf("failed to write A's field total document lengths: %w: %d", err, fieldHash)
 		}
@@ -455,7 +455,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		if err != nil {
 			return fmt.Errorf("failed to write A's tokens length: %w: %d", err, fieldHash)
 		}
-		_, err = ctx.DstW.Write(pointers.UnsafeSlice(&field.TotalTokenFrequenciesCount))
+		_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&field.TotalTokenFrequenciesCount))
 		if err != nil {
 			return fmt.Errorf("failed to write A's total frequencies count: %w: %d", err, fieldHash)
 		}
@@ -476,7 +476,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		for tokenIdx := range field.Tokens {
 			token := &field.Tokens[tokenIdx]
 
-			_, err = ctx.DstW.Write(pointers.UnsafeSlice(&token.FrequencyCount))
+			_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&token.FrequencyCount))
 			if err != nil {
 				return fmt.Errorf("failed to write A's field token document frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
 			}
@@ -498,7 +498,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 
 			// Write the actual token
-			_, err = ctx.DstW.Write(pointers.UnsafeSlice(&token.Value))
+			_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&token.Value))
 			if err != nil {
 				return fmt.Errorf("failed to write A's field token value: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
 			}
@@ -516,17 +516,17 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		field := ctx.StorageB.Fields[fieldHash]
 
 		// Write field header to temporary fields file
-		_, err = ctx.DstW.Write(pointers.UnsafeSlice(&fieldHash))
+		_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&fieldHash))
 		if err != nil {
 			return fmt.Errorf("failed to write B's field hash: %w: %d", err, fieldHash)
 		}
 
-		copy(ctx.Buffer[:], pointers.UnsafeSlice(&field.AvgDocumentLength))
+		copy(ctx.Buffer[:], pointers.UnsafeValueBytes(&field.AvgDocumentLength))
 		_, err = ctx.DstW.Write(ctx.Buffer[:])
 		if err != nil {
 			return fmt.Errorf("failed to write B's field avgdl: %w: %d", err, fieldHash)
 		}
-		_, err = ctx.DstW.Write(pointers.UnsafeSlice(&field.TotalDocumentsLength))
+		_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&field.TotalDocumentsLength))
 		if err != nil {
 			return fmt.Errorf("failed to write B's field total document lengths: %w: %d", err, fieldHash)
 		}
@@ -535,7 +535,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		if err != nil {
 			return fmt.Errorf("failed to write B's tokens length: %w: %d", err, fieldHash)
 		}
-		_, err = ctx.DstW.Write(pointers.UnsafeSlice(&field.TotalTokenFrequenciesCount))
+		_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&field.TotalTokenFrequenciesCount))
 		if err != nil {
 			return fmt.Errorf("failed to write B's field total frequencies count: %w: %d", err, fieldHash)
 		}
@@ -554,7 +554,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				return fmt.Errorf("failed to write B's document length index: %w: %d:%d", err, fieldHash, dl.Index)
 			}
 
-			_, err = ctx.DstW.Write(pointers.UnsafeSlice(&dl.Length))
+			_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&dl.Length))
 			if err != nil {
 				return fmt.Errorf("failed to write B's document length length: %w: %d:%d", err, fieldHash, dl.Index)
 			}
@@ -564,7 +564,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		for tokenIdx := range field.Tokens {
 			token := &field.Tokens[tokenIdx]
 
-			_, err = ctx.DstW.Write(pointers.UnsafeSlice(&token.FrequencyCount))
+			_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&token.FrequencyCount))
 			if err != nil {
 				return fmt.Errorf("failed to write B's field token document frequency: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
 			}
@@ -592,7 +592,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 
 			// Write the actual token
-			_, err = ctx.DstW.Write(pointers.UnsafeSlice(&token.Value))
+			_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&token.Value))
 			if err != nil {
 				return fmt.Errorf("failed to write B's field token value: %w: %d:%s", err, fieldHash, token.Value.UnsafeString())
 			}
@@ -609,21 +609,21 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		var tokensCount = CountTokensBetweenCollisionFields(fieldA, fieldB)
 
 		// Write the field header inmediatly
-		_, err = ctx.DstW.Write(pointers.UnsafeSlice(&fieldHash))
+		_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&fieldHash))
 		if err != nil {
 			return fmt.Errorf("failed to write collision field field hash: %w: %d", err, fieldHash)
 		}
 
-		copy(ctx.Buffer[:], pointers.UnsafeSlice(&avgDocumentLength))
+		copy(ctx.Buffer[:], pointers.UnsafeValueBytes(&avgDocumentLength))
 		_, err = ctx.DstW.Write(ctx.Buffer[:])
 		if err != nil {
 			return fmt.Errorf("failed to write collision field avgdl: %w: %d", err, fieldHash)
 		}
-		_, err = ctx.DstW.Write(pointers.UnsafeSlice(&totalDocumentLengths))
+		_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&totalDocumentLengths))
 		if err != nil {
 			return fmt.Errorf("failed to write collision field total document length: %w: %d", err, fieldHash)
 		}
-		_, err = ctx.DstW.Write(pointers.UnsafeSlice(&tokensCount))
+		_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&tokensCount))
 		if err != nil {
 			return fmt.Errorf("failed to write collision field tokens length: %w: %d", err, fieldHash)
 		}
@@ -640,7 +640,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 		for index := range fieldA.DocumentLengths {
 			dl := &fieldA.DocumentLengths[index]
-			_, err = ctx.DstW.Write(pointers.UnsafeSlice(dl))
+			_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(dl))
 			if err != nil {
 				return fmt.Errorf("failed to write Collision document length: %w: %d:%d", err, fieldHash, dl.Index)
 			}
@@ -654,7 +654,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				return fmt.Errorf("failed to write Collision document length: %w: %d:%d", err, fieldHash, dl.Index)
 			}
 
-			_, err = ctx.DstW.Write(pointers.UnsafeSlice(&dl.Length))
+			_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&dl.Length))
 			if err != nil {
 				return fmt.Errorf("failed to write Collision document length: %w: %d:%d", err, fieldHash, dl.Index)
 			}
@@ -781,7 +781,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		TotalTokenFrequencies: ctx.FrequenciesCursor,
 	}
 
-	_, err = ctx.DstFile.WriteAt(pointers.UnsafeSlice(&header), 0)
+	_, err = ctx.DstFile.WriteAt(pointers.UnsafeValueBytes(&header), 0)
 	if err != nil {
 		return fmt.Errorf("failed to write header: %w ", err)
 	}

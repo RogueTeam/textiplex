@@ -77,8 +77,7 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 
 			freqs := ctx.StorageA.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
 
-			freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqs[0])), TokenFrequencyEntrySize*uintptr(len(freqs)))
-			_, err = ctx.DstW.Write(freqsBytes)
+			_, err = ctx.DstW.Write(pointers.UnsafeSliceBytes(freqs))
 			if err != nil {
 				return fmt.Errorf("failed to write A's token frequencies: %w", err)
 			}
@@ -156,8 +155,7 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 
 					freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
 
-					freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqsA[0])), TokenFrequencyEntrySize*uintptr(len(freqsA)))
-					_, err = ctx.DstW.Write(freqsBytes)
+					_, err = ctx.DstW.Write(pointers.UnsafeSliceBytes(freqsA))
 					if err != nil {
 						return fmt.Errorf("failed to write A's token frequencies: %w", err)
 					}
@@ -171,8 +169,7 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 
 						freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
 
-						freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqsA[0])), TokenFrequencyEntrySize*uintptr(len(freqsA)))
-						_, err = ctx.DstW.Write(freqsBytes)
+						_, err = ctx.DstW.Write(pointers.UnsafeSliceBytes(freqsA))
 						if err != nil {
 							return fmt.Errorf("failed to write A's token frequencies: %w", err)
 						}
@@ -200,8 +197,7 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 
 						freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
 
-						freqsBytes := unsafe.Slice((*byte)(unsafe.Pointer(&freqsA[0])), TokenFrequencyEntrySize*uintptr(len(freqsA)))
-						_, err = ctx.DstW.Write(freqsBytes)
+						_, err = ctx.DstW.Write(pointers.UnsafeSliceBytes(freqsA))
 						if err != nil {
 							return fmt.Errorf("failed to write A's token frequencies: %w", err)
 						}
@@ -353,16 +349,14 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	ctx.DstFile.Seek(int64(HeaderSize), 0)
 
 	if len(a.DocumentsIds) > 0 {
-		aDocsSlice := unsafe.Slice((*byte)(unsafe.Pointer(&a.DocumentsIds[0])), DocumentIdSize*uintptr(len(a.DocumentsIds)))
-		_, err := ctx.DstFile.Write(aDocsSlice)
+		_, err := ctx.DstFile.Write(pointers.UnsafeSliceBytes(a.DocumentsIds))
 		if err != nil {
 			return fmt.Errorf("failed to write storage A's document ids: %w", err)
 		}
 	}
 
 	if len(b.DocumentsIds) > 0 {
-		bDocsSlice := unsafe.Slice((*byte)(unsafe.Pointer(&b.DocumentsIds[0])), DocumentIdSize*uintptr(len(b.DocumentsIds)))
-		_, err = ctx.DstFile.Write(bDocsSlice)
+		_, err = ctx.DstFile.Write(pointers.UnsafeSliceBytes(b.DocumentsIds))
 		if err != nil {
 			return fmt.Errorf("failed to write storage B's document ids: %w", err)
 		}
@@ -465,8 +459,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			return fmt.Errorf("failed to write A's documents lengths: %w: %d", err, fieldHash)
 		}
 		if len(field.DocumentLengths) > 0 {
-			fieldDocLengths := unsafe.Slice((*byte)(unsafe.Pointer(&field.DocumentLengths[0])), DocumentLengthEntrySize*uintptr(len(field.DocumentLengths)))
-			_, err = ctx.DstW.Write(fieldDocLengths)
+			_, err = ctx.DstW.Write(pointers.UnsafeSliceBytes(field.DocumentLengths))
 			if err != nil {
 				return fmt.Errorf("failed to write storage Field Document length ids: %w", err)
 			}

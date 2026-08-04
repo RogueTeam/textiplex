@@ -1,0 +1,48 @@
+goos: linux
+goarch: amd64
+pkg: github.com/RogueTeam/textiplex/query
+cpu: 12th Gen Intel(R) Core(TM) i7-1280P
+BenchmarkCustomIndexSearchWithCopy
+    searcher_bm25_custom_index_bench_test.go:134: Found #: 46002657
+BenchmarkCustomIndexSearchWithCopy-20      	       1	3085613483 ns/op	  59.64 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:134: Found #: 46002657
+BenchmarkCustomIndexSearchWithCopy-20      	       1	3015084194 ns/op	  61.03 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:134: Found #: 46002657
+BenchmarkCustomIndexSearchWithCopy-20      	       1	2985674945 ns/op	  61.63 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:134: Found #: 46002657
+BenchmarkCustomIndexSearchWithCopy-20      	       1	2962866928 ns/op	  62.11 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:134: Found #: 46002657
+BenchmarkCustomIndexSearchWithCopy-20      	       1	3033980711 ns/op	  60.65 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:134: Found #: 46002657
+BenchmarkCustomIndexSearchWithCopy-20      	       1	3002902269 ns/op	  61.28 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:134: Found #: 46002657
+BenchmarkCustomIndexSearchWithCopy-20      	       1	2989512683 ns/op	  61.55 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:134: Found #: 46002657
+BenchmarkCustomIndexSearchWithCopy-20      	       1	2954113494 ns/op	  62.29 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:134: Found #: 46002657
+BenchmarkCustomIndexSearchWithCopy-20      	       1	2946750339 ns/op	  62.45 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:134: Found #: 46002657
+BenchmarkCustomIndexSearchWithCopy-20      	       1	2988474131 ns/op	  61.57 MB/s	749165016 B/op	   20270 allocs/op
+BenchmarkCustomIndexSearchWithNoCopy
+    searcher_bm25_custom_index_bench_test.go:174: Found #: 46002657
+BenchmarkCustomIndexSearchWithNoCopy-20    	       1	2970787714 ns/op	  61.94 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:174: Found #: 46002657
+BenchmarkCustomIndexSearchWithNoCopy-20    	       1	2987903657 ns/op	  61.59 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:174: Found #: 46002657
+BenchmarkCustomIndexSearchWithNoCopy-20    	       1	2994828928 ns/op	  61.44 MB/s	749292640 B/op	   20298 allocs/op
+    searcher_bm25_custom_index_bench_test.go:174: Found #: 46002657
+BenchmarkCustomIndexSearchWithNoCopy-20    	       1	2985615843 ns/op	  61.63 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:174: Found #: 46002657
+BenchmarkCustomIndexSearchWithNoCopy-20    	       1	2978631403 ns/op	  61.78 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:174: Found #: 46002657
+BenchmarkCustomIndexSearchWithNoCopy-20    	       1	2978539286 ns/op	  61.78 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:174: Found #: 46002657
+BenchmarkCustomIndexSearchWithNoCopy-20    	       1	2979378042 ns/op	  61.76 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:174: Found #: 46002657
+BenchmarkCustomIndexSearchWithNoCopy-20    	       1	2981143638 ns/op	  61.72 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:174: Found #: 46002657
+BenchmarkCustomIndexSearchWithNoCopy-20    	       1	2921490264 ns/op	  62.99 MB/s	749165016 B/op	   20270 allocs/op
+    searcher_bm25_custom_index_bench_test.go:174: Found #: 46002657
+BenchmarkCustomIndexSearchWithNoCopy-20    	       1	2916593881 ns/op	  63.09 MB/s	749165016 B/op	   20270 allocs/op
+PASS
+ok  	github.com/RogueTeam/textiplex/query	82.493s

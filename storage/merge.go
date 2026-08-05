@@ -404,7 +404,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			0,
 			int(necessarySize),
 			unix.PROT_READ|unix.PROT_WRITE,
-			unix.MAP_SHARED | unix.MAP_POPULATE,
+			unix.MAP_SHARED,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to mmap file: %w", err)

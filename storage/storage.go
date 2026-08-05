@@ -547,7 +547,7 @@ func (s *Storage) Load(name string) (err error) {
 		0,
 		int(size),
 		unix.PROT_READ,
-		unix.MAP_SHARED | unix.MAP_POPULATE,
+		unix.MAP_SHARED,
 	)
 	if err != nil {
 		return fmt.Errorf("failed mmap file: %w", err)

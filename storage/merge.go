@@ -3,18 +3,14 @@ package storage
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
-	"runtime"
-	"time"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/RogueTeam/textiplex/pointers"
-	"github.com/shirou/gopsutil/v4/mem"
 	"golang.org/x/sys/unix"
 )
 
@@ -371,23 +367,12 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		return fmt.Errorf("failed to write token frequencies: %w", err)
 	}
 
-	plSize := PendingPostingListSize * uintptr(ctx.PostingListCount)
-	necessarySize := int64(plSize)
-
-	var maxInMemoryPostingList int64
-	memCtx, cancel := context.WithTimeout(context.TODO(), time.Second)
-	defer cancel()
-	v, _ := mem.VirtualMemoryWithContext(memCtx)
-	if v != nil {
-		maxInMemoryPostingList = int64(v.Available / uint64(runtime.NumCPU()))
-	}
-
 	var memFile *os.File
 	var mmapMemFile []byte
-	if necessarySize < maxInMemoryPostingList {
-		ctx.PostingLists = make([]PendingPostingList, 0, ctx.PostingListCount)
-		defer func() { ctx.PostingLists = nil }() // Drop the reference as soon as posible
-	} else {
+	if ctx.PostingListCount > 0 {
+		plSize := PendingPostingListSize * uintptr(ctx.PostingListCount)
+		necessarySize := int64(plSize)
+
 		memFile, err = m.CreateTemp("*.tmp")
 		if err != nil {
 			return fmt.Errorf("failed to create temporary file: %w", err)
@@ -420,10 +405,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			return fmt.Errorf("failed to madvise huge page: %w", err)
 		}
 
-		if ctx.PostingListCount > 0 {
-			ptr := (*PendingPostingList)(unsafe.Pointer(&mmapMemFile[0]))
-			ctx.PostingLists = unsafe.Slice(ptr, ctx.PostingListCount)[:0]
-		}
+		ptr := (*PendingPostingList)(unsafe.Pointer(&mmapMemFile[0]))
+		ctx.PostingLists = unsafe.Slice(ptr, ctx.PostingListCount)[:0]
 	}
 
 	// Phase 2, write A's only fields

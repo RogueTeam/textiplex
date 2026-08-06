@@ -34,7 +34,7 @@ func (s *Tokens) BinarySearchString(ss string) (i int, found bool) {
 		}
 	}
 	// i == j, cmp(x[i-1], target) < 0, and cmp(x[j], target) (= cmp(x[i], target)) >= 0  =>  answer is i.
-	return i, i < n && strings.Compare((*s)[i].Value.UnsafeString(), ss) == 0
+	return i, i < n && (*s)[i].Value.UnsafeString() == ss
 }
 
 func (s *Tokens) BinarySearchBytes(b []byte) (i int, found bool) {
@@ -52,7 +52,7 @@ func (s *Tokens) BinarySearchBytes(b []byte) (i int, found bool) {
 		}
 	}
 	// i == j, cmp(x[i-1], target) < 0, and cmp(x[j], target) (= cmp(x[i], target)) >= 0  =>  answer is i.
-	return i, i < n && bytes.Compare((*s)[i].Value.Bytes(), b) == 0
+	return i, i < n && bytes.Equal((*s)[i].Value.Bytes(), b)
 }
 
 func (s *Tokens) GetString(ss string) (token *Token, found bool) {

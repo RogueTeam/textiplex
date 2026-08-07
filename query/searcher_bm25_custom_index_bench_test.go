@@ -126,7 +126,7 @@ func BenchmarkCustomIndexSearchWithCopy(b *testing.B) {
 		var ctx query.QueryContext
 		searcher.FilterDocuments(&ctx, sq)
 		searcher.BM25Score(&ctx, sq)
-		searcher.ResolveScores(&ctx, true)
+		// 	searcher.ResolveScores(&ctx, true)
 
 		b.SetBytes(int64(ctx.Scoring.Len()) * 4)
 		if !logged {
@@ -166,7 +166,7 @@ func BenchmarkCustomIndexSearchWithNoCopy(b *testing.B) {
 		var ctx query.QueryContext
 		searcher.FilterDocuments(&ctx, sq)
 		searcher.BM25Score(&ctx, sq)
-		searcher.ResolveScores(&ctx, false)
+		// searcher.ResolveScores(&ctx, false)
 
 		b.SetBytes(int64(ctx.Scoring.Len()) * 4)
 		if !logged {

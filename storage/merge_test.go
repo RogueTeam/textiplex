@@ -177,7 +177,7 @@ func TestMergeCollisionFieldDisjointTokens(t *testing.T) {
 
 	// Doc lengths: a's verbatim, b's offset.
 	assertions.Equal(
-		[]storage.DocumentLengthEntry{
+		storage.DocumentsLengths{
 			{Index: 0, Length: 4},
 			{Index: 1, Length: 2},
 		},

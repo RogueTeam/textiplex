@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"iter"
 	"os"
+	"strings"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring"
-	"github.com/RogueTeam/textiplex/binarysearch"
 	"github.com/RogueTeam/textiplex/pointers"
 	"github.com/RogueTeam/textiplex/pool"
 	"github.com/tidwall/btree"
@@ -19,10 +19,44 @@ import (
 
 type Tokens []Token
 
+func (s *Tokens) BinarySearchString(ss string) (i int, found bool) {
+	n := len((*s))
+	// Define cmp(x[-1], target) < 0 and cmp(x[n], target) >= 0 .
+	// Invariant: cmp(x[i - 1], target) < 0, cmp(x[j], target) >= 0.
+	i, j := 0, n
+	for i < j {
+		h := int(uint(i+j) >> 1) // avoid overflow when computing h
+		// i ≤ h < j
+		if strings.Compare((*s)[h].Value.UnsafeString(), ss) < 0 {
+			i = h + 1 // preserves cmp(x[i - 1], target) < 0
+		} else {
+			j = h // preserves cmp(x[j], target) >= 0
+		}
+	}
+	// i == j, cmp(x[i-1], target) < 0, and cmp(x[j], target) (= cmp(x[i], target)) >= 0  =>  answer is i.
+	return i, i < n && (*s)[i].Value.UnsafeString() == ss
+}
+
+func (s *Tokens) BinarySearchBytes(b []byte) (i int, found bool) {
+	n := len((*s))
+	// Define cmp(x[-1], target) < 0 and cmp(x[n], target) >= 0 .
+	// Invariant: cmp(x[i - 1], target) < 0, cmp(x[j], target) >= 0.
+	i, j := 0, n
+	for i < j {
+		h := int(uint(i+j) >> 1) // avoid overflow when computing h
+		// i ≤ h < j
+		if bytes.Compare((*s)[h].Value.Bytes(), b) < 0 {
+			i = h + 1 // preserves cmp(x[i - 1], target) < 0
+		} else {
+			j = h // preserves cmp(x[j], target) >= 0
+		}
+	}
+	// i == j, cmp(x[i-1], target) < 0, and cmp(x[j], target) (= cmp(x[i], target)) >= 0  =>  answer is i.
+	return i, i < n && bytes.Equal((*s)[i].Value.Bytes(), b)
+}
+
 func (s *Tokens) GetString(ss string) (token *Token, found bool) {
-	idx, found := binarysearch.PointerBinarySearchFunc(*s, ss, func(e *Token, t string) int {
-		return bytes.Compare(e.Value.Bytes(), unsafe.Slice(unsafe.StringData(t), len(t)))
-	})
+	idx, found := s.BinarySearchString(ss)
 
 	if !found {
 		return nil, false
@@ -31,10 +65,7 @@ func (s *Tokens) GetString(ss string) (token *Token, found bool) {
 }
 
 func (s *Tokens) GetBytes(b []byte) (token *Token, found bool) {
-	idx, found := binarysearch.PointerBinarySearchFunc(*s, b, func(e *Token, t []byte) int {
-		return bytes.Compare(e.Value.Bytes(), b)
-	})
-
+	idx, found := s.BinarySearchBytes(b)
 	if !found {
 		return nil, false
 	}
@@ -42,9 +73,7 @@ func (s *Tokens) GetBytes(b []byte) (token *Token, found bool) {
 }
 
 func (s *Tokens) GetBytesOrNear(b []byte) (token *Token, found bool) {
-	idx, found := binarysearch.PointerBinarySearchFunc(*s, b, func(e *Token, t []byte) int {
-		return bytes.Compare(e.Value.Bytes(), b)
-	})
+	idx, found := s.BinarySearchBytes(b)
 
 	if !found && idx >= len(*s) {
 		return nil, false
@@ -60,9 +89,7 @@ func (s *Tokens) IterBytes(lo, hi []byte) (seq iter.Seq[*Token]) {
 	var startIndex, endIndex int
 	if lo != nil {
 		var found bool
-		startIndex, found = binarysearch.PointerBinarySearchFunc(*s, lo, func(e *Token, t []byte) int {
-			return bytes.Compare(e.Value.Bytes(), t)
-		})
+		startIndex, found = s.BinarySearchBytes(lo)
 		if !found && startIndex >= len(*s) {
 			return func(yield func(*Token) bool) {}
 		}
@@ -72,9 +99,7 @@ func (s *Tokens) IterBytes(lo, hi []byte) (seq iter.Seq[*Token]) {
 		endIndex = len(*s) - 1
 	} else {
 		var found bool
-		endIndex, found = binarysearch.PointerBinarySearchFunc(*s, hi, func(e *Token, t []byte) int {
-			return bytes.Compare(e.Value.Bytes(), t)
-		})
+		endIndex, found = s.BinarySearchBytes(hi)
 		if !found && endIndex >= len(*s) {
 			return func(yield func(*Token) bool) {}
 		}
@@ -102,7 +127,7 @@ type Field struct {
 	TotalTokenFrequenciesCount uint64
 	// DocumentLength entries
 	// Keys are indexes of the documents
-	DocumentLengths []DocumentLengthEntry
+	DocumentLengths DocumentsLengths
 }
 
 type PostingList struct {
@@ -138,7 +163,7 @@ type Storage struct {
 	// Posting lists used once the caller knows which fields-tokens to query
 	PostingLists []PostingList
 	// Token frequencies
-	TokenFrequencies []TokenFrequencyEntry
+	TokenFrequencies TokenFrequencies
 	// Used to determine if the storage was already initialized or not
 	Initialized bool
 }
@@ -522,7 +547,7 @@ func (s *Storage) Load(name string) (err error) {
 		0,
 		int(size),
 		unix.PROT_READ,
-		unix.MAP_PRIVATE,
+		unix.MAP_SHARED,
 	)
 	if err != nil {
 		return fmt.Errorf("failed mmap file: %w", err)

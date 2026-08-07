@@ -328,7 +328,7 @@ func TestMergeCollisionDocLengthsOffset(t *testing.T) {
 
 	field := merged.Fields[1]
 	assertions.Equal(
-		[]storage.DocumentLengthEntry{{Index: 0, Length: 5}, {Index: 1, Length: 2}, {Index: 2, Length: 3}},
+		storage.DocumentsLengths{{Index: 0, Length: 5}, {Index: 1, Length: 2}, {Index: 2, Length: 3}},
 		field.DocumentLengths,
 	)
 }
@@ -646,7 +646,7 @@ func TestMergeCollisionDocLengthsContent(t *testing.T) {
 	merged := mergeAndLoad(t, &a, &b)
 
 	assertions.Equal(
-		[]storage.DocumentLengthEntry{
+		storage.DocumentsLengths{
 			{Index: 0, Length: 2},
 			{Index: 1, Length: 3},
 			{Index: 2, Length: 4},

@@ -89,7 +89,7 @@ func TestFieldStructure(t *testing.T) {
 		docs            []*storage.Document
 		fieldHash       uint64
 		wantTokenValues []string
-		wantDocLengths  []storage.DocumentLengthEntry
+		wantDocLengths  storage.DocumentsLengths
 		wantAvgdl       float64
 	}
 
@@ -104,7 +104,7 @@ func TestFieldStructure(t *testing.T) {
 			},
 			fieldHash:       42,
 			wantTokenValues: []string{"alpha", "beta"},
-			wantDocLengths:  []storage.DocumentLengthEntry{{Index: 0, Length: 4}},
+			wantDocLengths:  storage.DocumentsLengths{{Index: 0, Length: 4}},
 			wantAvgdl:       4.0,
 		},
 		{
@@ -115,7 +115,7 @@ func TestFieldStructure(t *testing.T) {
 			},
 			fieldHash:       1,
 			wantTokenValues: []string{"foo"},
-			wantDocLengths: []storage.DocumentLengthEntry{
+			wantDocLengths: storage.DocumentsLengths{
 				{Index: 0, Length: 2},
 				{Index: 1, Length: 8},
 			},
@@ -128,7 +128,7 @@ func TestFieldStructure(t *testing.T) {
 				testsuite.MakeDoc("doc-b", testsuite.MakeField(1, 3, testsuite.MakeToken("foo", 3))),
 			},
 			fieldHash: 1,
-			wantDocLengths: []storage.DocumentLengthEntry{
+			wantDocLengths: storage.DocumentsLengths{
 				{Index: 1, Length: 3},
 			},
 			wantAvgdl: 3.0,

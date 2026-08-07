@@ -37,7 +37,7 @@ func mergeAndLoad(t *testing.T, a, b *storage.Storage) *storage.Storage {
 // postingDocIDs returns the doc indices contained in a token's posting list.
 func postingDocIDs(s *storage.Storage, tok *storage.Token) []uint32 {
 	var bitmapForPostingListRetrieval roaring.Bitmap
-	s.PostingLists[tok.PostingListIndex].UnsafeBitmap(&bitmapForPostingListRetrieval)
+	s.PostingLists.Get(int64(tok.PostingListIndex)).UnsafeBitmap(&bitmapForPostingListRetrieval)
 
 	return bitmapForPostingListRetrieval.ToArray()
 }
@@ -316,7 +316,7 @@ func TestMergeHeaderCounts(t *testing.T) {
 
 	// Posting lists: field1 token x (1), field2 token y (1), field3 token shared
 	// merged into a single posting list (1). Total 3.
-	assertions.Len(merged.PostingLists, 3)
+	assertions.Equal(3, merged.PostingLists.Len())
 
 	// Token frequencies: x(1) + y(1) + shared merged(2) == 4.
 	assertions.Len(merged.TokenFrequencies, 4)

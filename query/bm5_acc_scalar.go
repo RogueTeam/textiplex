@@ -40,7 +40,7 @@ func (s *Searcher) ScalarAccumulateBM25(ctx *QueryContext, state *ClauseState, s
 			continue
 		}
 
-		s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&tokenPl)
+		s.Storage.PostingLists.Get(int64(token.PostingListIndex)).UnsafeBitmap(&tokenPl)
 		if tokenPl.IsEmpty() {
 			continue
 		}

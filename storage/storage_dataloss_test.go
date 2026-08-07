@@ -211,10 +211,10 @@ func verify(t *testing.T, label string, s *storage.Storage, tr *truth) {
 			}
 
 			// posting list bitmap must equal exactly the set of docs
-			if tok.PostingListIndex >= uint64(len(s.PostingLists)) {
+			if tok.PostingListIndex >= uint64(s.PostingLists.Len()) {
 				t.Fatalf("%s: field %d token %q posting list index out of range", label, hash, val)
 			}
-			s.PostingLists[tok.PostingListIndex].UnsafeBitmap(&bm)
+			s.PostingLists.Get(int64(tok.PostingListIndex)).UnsafeBitmap(&bm)
 			if bm.GetCardinality() != uint64(len(tt.freqs)) {
 				t.Fatalf("%s: field %d token %q posting cardinality got %d want %d", label, hash, val, bm.GetCardinality(), len(tt.freqs))
 			}

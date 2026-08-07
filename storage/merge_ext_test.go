@@ -554,7 +554,7 @@ func TestMergePostingListCountAcrossFields(t *testing.T) {
 	merged := buildMixedMerged(t)
 
 	// field1: alpha; field2: beta; field3: shared, aonly, bonly == 5 distinct.
-	assertions.Len(merged.PostingLists, 5)
+	assertions.Equal(5, merged.PostingLists.Len())
 }
 
 // 23. Token-frequency count equals the sum of merged document frequencies.

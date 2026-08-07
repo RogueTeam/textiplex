@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"iter"
 	"os"
 	"strings"
@@ -130,6 +131,78 @@ type Field struct {
 	DocumentLengths DocumentsLengths
 }
 
+type PostingLists struct {
+	Reference []byte
+	Headers   []PostingListHeader
+	Entries   []PostingList
+}
+
+func (p *PostingLists) WriteTo(dst io.Writer) (n int64, err error) {
+	if len(p.Headers) > 0 {
+		nn, err := dst.Write(pointers.UnsafeSliceBytes(p.Headers))
+		n += int64(nn)
+		if err != nil {
+			return n, fmt.Errorf("failed to write headers: %w", err)
+		}
+
+		nn, err = dst.Write(p.Reference)
+		n += int64(nn)
+		if err != nil {
+			return n, fmt.Errorf("failed to write data: %w", err)
+		}
+	} else if len(p.Entries) > 0 {
+		var header PostingListHeader
+		for i, pl := range p.Entries {
+			header.Offset += header.Length
+			header.Length = uint64(len(pl.Data))
+
+			nn, err := dst.Write(pointers.UnsafeValueBytes(&header))
+			n += int64(nn)
+			if err != nil {
+				return n, fmt.Errorf("failed to write %d element header: %w", i, err)
+			}
+		}
+
+		for i, pl := range p.Entries {
+			nn, err := dst.Write(pl.Data)
+			n += int64(nn)
+			if err != nil {
+				return n, fmt.Errorf("failed to write %d element data: %w", i, err)
+			}
+		}
+	}
+	return n, nil
+}
+
+func (p *PostingLists) Len() (n int) {
+	return max(len(p.Headers), len(p.Entries))
+}
+
+func (p *PostingLists) DataSize() (n int) {
+	if len(p.Headers) > 0 {
+		for _, header := range p.Headers {
+			n += int(header.Length)
+		}
+		return n
+	}
+	for _, entry := range p.Entries {
+		n += len(entry.Data)
+	}
+	return n
+}
+
+func (p *PostingLists) Get(idx int64) (pl *PostingList) {
+	switch {
+	case len(p.Headers) > 0:
+		header := &p.Headers[idx]
+		return &PostingList{Data: p.Reference[header.Offset : header.Offset+header.Length]}
+	case len(p.Entries) > 0:
+		return &p.Entries[idx]
+	default:
+		panic(fmt.Sprintf("slice of length: %d got invalid index: %d", 0, idx))
+	}
+}
+
 type PostingList struct {
 	Data []byte
 }
@@ -161,7 +234,7 @@ type Storage struct {
 	// index form and human-readble form
 	DocumentsIds []DocumentId
 	// Posting lists used once the caller knows which fields-tokens to query
-	PostingLists []PostingList
+	PostingLists PostingLists
 	// Token frequencies
 	TokenFrequencies TokenFrequencies
 	// Used to determine if the storage was already initialized or not
@@ -276,7 +349,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 		}
 	}
 
-	s.PostingLists = make([]PostingList, 0, postingListsCounter)
+	s.PostingLists.Entries = make([]PostingList, 0, postingListsCounter)
 	s.TokenFrequencies = make([]TokenFrequencyEntry, 0, tokensFreqsCounter)
 
 	// A single reused bitmap plus a reused scratch buffer. Posting lists are
@@ -323,8 +396,8 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 			s.Size += uint64(PostingListHeaderSize)
 			s.Size += uint64(size)
 
-			plIndex := uint64(len(s.PostingLists))
-			s.PostingLists = append(s.PostingLists, PostingList{Data: pdBytes})
+			plIndex := uint64(s.PostingLists.Len())
+			s.PostingLists.Entries = append(s.PostingLists.Entries, PostingList{Data: pdBytes})
 
 			freqIndex := uint64(len(s.TokenFrequencies))
 			s.TokenFrequencies = append(s.TokenFrequencies, pd.Freqs...)
@@ -401,10 +474,15 @@ func (s *Storage) SaveTo(name string) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to write number of fields: %w", err)
 	}
-	binary.NativeEndian.PutUint64(writeBuffer[:], uint64(len(s.PostingLists)))
+	binary.NativeEndian.PutUint64(writeBuffer[:], uint64(s.PostingLists.Len()))
 	_, err = dst.Write(writeBuffer[:])
 	if err != nil {
 		return fmt.Errorf("failed to write number of posting lists: %w", err)
+	}
+	binary.NativeEndian.PutUint64(writeBuffer[:], uint64(s.PostingLists.DataSize()))
+	_, err = dst.Write(writeBuffer[:])
+	if err != nil {
+		return fmt.Errorf("failed to write size of posting lists data: %w", err)
 	}
 	binary.NativeEndian.PutUint64(writeBuffer[:], uint64(len(s.TokenFrequencies)))
 	_, err = dst.Write(writeBuffer[:])
@@ -474,18 +552,9 @@ func (s *Storage) SaveTo(name string) (err error) {
 	}
 
 	// Write posting lists
-	for index := range s.PostingLists {
-		pl := &s.PostingLists[index]
-
-		length := uint32(len(pl.Data))
-		_, err = dst.Write(pointers.UnsafeValueBytes(&length))
-		if err != nil {
-			return fmt.Errorf("failed to write posting list's length: %w", err)
-		}
-		_, err = dst.Write(pl.Data)
-		if err != nil {
-			return fmt.Errorf("failed to write posting list's contents: %w", err)
-		}
+	_, err = s.PostingLists.WriteTo(dst)
+	if err != nil {
+		return fmt.Errorf("failed to write posting lists: %w", err)
 	}
 
 	err = dst.Flush()
@@ -646,22 +715,24 @@ func (s *Storage) Load(name string) (err error) {
 		}
 	}
 
-	s.PostingLists = make([]PostingList, header.TotalPostingLists)
-	for index := range header.TotalPostingLists {
-		if uintptr(len(inUseBuffer)) < PostingListHeaderSize {
-			return fmt.Errorf("not enough space for loading fields from buffer")
+	postingListsHeadersSize := PostingListHeaderSize * uintptr(header.TotalPostingLists)
+	if uintptr(len(inUseBuffer)) < postingListsHeadersSize {
+		return fmt.Errorf("not enough space for loading posting lists from buffer")
+	}
+	if postingListsHeadersSize > 0 {
+		s.PostingLists.Headers = unsafe.Slice((*PostingListHeader)(unsafe.Pointer(&inUseBuffer[0])), header.TotalPostingLists)
+		inUseBuffer = inUseBuffer[postingListsHeadersSize:]
+
+		if uint64(len(inUseBuffer)) < header.TotalPostingListsDataSize {
+			return fmt.Errorf("not enough space for loading posting lists data from buffer")
 		}
 
-		pHeader := (*PostingListHeader)(unsafe.Pointer(&inUseBuffer[0]))
-		inUseBuffer = inUseBuffer[PostingListHeaderSize:]
-
-		if uint64(len(inUseBuffer)) < uint64(pHeader.Size) {
-			return fmt.Errorf("not enough space for loading posting list %d from buffer", index)
+		if expected := s.PostingLists.DataSize(); expected != int(header.TotalPostingListsDataSize) {
+			return fmt.Errorf("expecting a different amount of bytes for posting lists: %d != %d", expected, header.TotalPostingListsDataSize)
 		}
 
-		// Zero copy loading of posting list
-		s.PostingLists[index].Data = inUseBuffer[:pHeader.Size]
-		inUseBuffer = inUseBuffer[pHeader.Size:]
+		s.PostingLists.Reference = inUseBuffer[:header.TotalPostingListsDataSize]
+		inUseBuffer = inUseBuffer[header.TotalPostingListsDataSize:]
 	}
 
 	s.Size = uint64(size) - uint64(len(inUseBuffer))

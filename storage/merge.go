@@ -708,7 +708,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 	ctx.DstW.Reset(ctx.DstFile)
 
-	maxPlHeaders := min(5_000_000, len(ctx.PendingPostingLists))
+	maxPlHeaders := MaxPostingListHeadersBatch(len(ctx.PendingPostingLists))
 	var plHeaders = make([]PostingListHeader, 0, maxPlHeaders)
 	var plTotalDataSize, plHeadersOffset uint64
 	for _, pending := range ctx.PendingPostingLists {

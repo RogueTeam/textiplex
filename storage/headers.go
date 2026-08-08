@@ -7,6 +7,12 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
+const MaxPostingListHeaders = 5_000_000
+
+func MaxPostingListHeadersBatch(l int) (n int) {
+	return min(MaxPostingListHeaders, l)
+}
+
 const MagicNumber uint64 = 0x7E7127E9
 
 const (

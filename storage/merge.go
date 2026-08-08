@@ -708,10 +708,9 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 	ctx.DstW.Reset(ctx.DstFile)
 
-	const MaxPlHeaders = 1_000_000
-	var cumulativeOffset uint64
-	var plHeaders = make([]PostingListHeader, 0, min(MaxPlHeaders, len(ctx.PendingPostingLists)))
-	var totalPlsSize uint64
+	maxPlHeaders := min(5_000_000, len(ctx.PendingPostingLists))
+	var plHeaders = make([]PostingListHeader, 0, maxPlHeaders)
+	var plTotalDataSize, plHeadersOffset uint64
 	for _, pending := range ctx.PendingPostingLists {
 		switch {
 		case pending.IndexA != -1 && pending.IndexB != -1:
@@ -727,11 +726,11 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 			size := ctx.ReusableBitmap.GetSerializedSizeInBytes()
 			plHeaders = append(plHeaders, PostingListHeader{
-				Offset: cumulativeOffset,
+				Offset: plHeadersOffset,
 				Length: size,
 			})
-			cumulativeOffset += size
-			if len(plHeaders) >= MaxPlHeaders {
+			plHeadersOffset += size
+			if len(plHeaders) >= maxPlHeaders {
 				delta, err := ctx.DstFile.WriteAt(pointers.UnsafeSliceBytes(plHeaders), writeOffset)
 				if err != nil {
 					return fmt.Errorf("failed to write A&B header: %w", err)
@@ -741,7 +740,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 
 			nn, err := ctx.ReusableBitmap.WriteTo(ctx.DstW)
-			totalPlsSize += uint64(nn)
+			plTotalDataSize += uint64(nn)
 			if err != nil {
 				return fmt.Errorf("failed to write contents of posting list A&B: %w", err)
 			}
@@ -749,11 +748,11 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			rawA := a.PostingLists.Get(pending.IndexA)
 
 			plHeaders = append(plHeaders, PostingListHeader{
-				Offset: cumulativeOffset,
+				Offset: plHeadersOffset,
 				Length: uint64(len(rawA.Data)),
 			})
-			cumulativeOffset += uint64(len(rawA.Data))
-			if len(plHeaders) >= MaxPlHeaders {
+			plHeadersOffset += uint64(len(rawA.Data))
+			if len(plHeaders) >= maxPlHeaders {
 				delta, err := ctx.DstFile.WriteAt(pointers.UnsafeSliceBytes(plHeaders), writeOffset)
 				if err != nil {
 					return fmt.Errorf("failed to write A&B header: %w", err)
@@ -763,7 +762,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 
 			nn, err := ctx.DstW.Write(rawA.Data)
-			totalPlsSize += uint64(nn)
+			plTotalDataSize += uint64(nn)
 			if err != nil {
 				return fmt.Errorf("failed to write contents of posting list A: %w", err)
 			}
@@ -777,11 +776,11 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 			size := ctx.ReusableBitmap.GetSerializedSizeInBytes()
 			plHeaders = append(plHeaders, PostingListHeader{
-				Offset: cumulativeOffset,
+				Offset: plHeadersOffset,
 				Length: size,
 			})
-			cumulativeOffset += size
-			if len(plHeaders) >= MaxPlHeaders {
+			plHeadersOffset += size
+			if len(plHeaders) >= maxPlHeaders {
 				delta, err := ctx.DstFile.WriteAt(pointers.UnsafeSliceBytes(plHeaders), writeOffset)
 				if err != nil {
 					return fmt.Errorf("failed to write A&B header: %w", err)
@@ -791,7 +790,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 
 			nn, err := ctx.ReusableBitmap.WriteTo(ctx.DstW)
-			totalPlsSize += uint64(nn)
+			plTotalDataSize += uint64(nn)
 			if err != nil {
 				return fmt.Errorf("failed to write contents of posting list A&B: %w", err)
 			}
@@ -816,7 +815,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		TotalDocuments:            uint32(len(a.DocumentsIds)) + uint32(len(b.DocumentsIds)),
 		FieldCount:                ctx.FieldsOrder.Count(),
 		TotalPostingLists:         ctx.PostingListCursor,
-		TotalPostingListsDataSize: totalPlsSize,
+		TotalPostingListsDataSize: plTotalDataSize,
 		TotalTokenFrequencies:     ctx.FrequenciesCursor,
 	}
 

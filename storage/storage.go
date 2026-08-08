@@ -137,8 +137,15 @@ type PostingLists struct {
 	Entries   []PostingList
 }
 
-func (p *PostingLists) WriteTo(dst io.Writer) (n int64, err error) {
+func (p *PostingLists) WriteToFile(f *os.File, dst *bufio.Writer) (n int64, err error) {
 	if len(p.Headers) > 0 {
+		_, err := f.Seek(0, io.SeekEnd)
+		if err != nil {
+			return 0, fmt.Errorf("failed to seek to the end of the file: %w", err)
+		}
+
+		dst.Reset(f)
+
 		nn, err := dst.Write(pointers.UnsafeSliceBytes(p.Headers))
 		n += int64(nn)
 		if err != nil {
@@ -151,25 +158,71 @@ func (p *PostingLists) WriteTo(dst io.Writer) (n int64, err error) {
 			return n, fmt.Errorf("failed to write data: %w", err)
 		}
 	} else if len(p.Entries) > 0 {
-		var header PostingListHeader
-		for i, pl := range p.Entries {
-			header.Offset += header.Length
-			header.Length = uint64(len(pl.Data))
-
-			nn, err := dst.Write(pointers.UnsafeValueBytes(&header))
-			n += int64(nn)
-			if err != nil {
-				return n, fmt.Errorf("failed to write %d element header: %w", i, err)
-			}
+		info, err := f.Stat()
+		if err != nil {
+			return 0, fmt.Errorf("failed to stat file: %w", err)
 		}
 
+		writeOffset := info.Size()
+		plHeadersSize := PostingListHeaderSize * uintptr(p.Len())
+
+		err = f.Truncate(writeOffset + int64(plHeadersSize))
+		if err != nil {
+			return 0, fmt.Errorf("failed to reserve headers space: %w", err)
+		}
+
+		_, err = f.Seek(0, io.SeekEnd)
+		if err != nil {
+			return 0, fmt.Errorf("failed to seek to the end of the file: %w", err)
+		}
+
+		dst.Reset(f)
+
+		maxPlHeaders := MaxPostingListHeadersBatch(len(p.Entries))
+		var headers = make([]PostingListHeader, 0, maxPlHeaders)
+		var offset uint64
 		for i, pl := range p.Entries {
+			headers = append(headers, PostingListHeader{
+				Offset: offset,
+				Length: uint64(len(pl.Data)),
+			})
+			offset += uint64(len(pl.Data))
+			if len(headers) >= maxPlHeaders {
+				chunk := pointers.UnsafeSliceBytes(headers)
+				nn, err := f.WriteAt(chunk, writeOffset)
+				n += int64(nn)
+				writeOffset += int64(nn)
+				if err != nil {
+					return n, fmt.Errorf("failed to write headers: %w", err)
+				}
+				headers = headers[:0]
+			}
+
 			nn, err := dst.Write(pl.Data)
 			n += int64(nn)
 			if err != nil {
 				return n, fmt.Errorf("failed to write %d element data: %w", i, err)
 			}
 		}
+
+		if len(headers) > 0 {
+			nn, err := f.WriteAt(pointers.UnsafeSliceBytes(headers), writeOffset)
+			n += int64(nn)
+			writeOffset += int64(nn)
+			if err != nil {
+				return n, fmt.Errorf("failed to write remaining headers: %w", err)
+			}
+			headers = headers[:0]
+		}
+	}
+
+	err = dst.Flush()
+	if err != nil {
+		return n, fmt.Errorf("failed to flush pending bytes: %w", err)
+	}
+	err = f.Sync()
+	if err != nil {
+		return n, fmt.Errorf("failed to sync file: %w", err)
 	}
 	return n, nil
 }
@@ -445,11 +498,6 @@ func (s *Storage) SaveTo(name string) (err error) {
 		}
 	}()
 
-	err = file.Truncate(int64(s.Size))
-	if err != nil {
-		return fmt.Errorf("failed to truncate file size: %w", err)
-	}
-
 	var writeBuffer [8]byte
 	dst := bufio.NewWriterSize(file, 4<<20)
 
@@ -551,15 +599,20 @@ func (s *Storage) SaveTo(name string) (err error) {
 		}
 	}
 
-	// Write posting lists
-	_, err = s.PostingLists.WriteTo(dst)
-	if err != nil {
-		return fmt.Errorf("failed to write posting lists: %w", err)
-	}
-
 	err = dst.Flush()
 	if err != nil {
 		return fmt.Errorf("failed to flush remaining contents: %w", err)
+	}
+
+	err = file.Sync()
+	if err != nil {
+		return fmt.Errorf("failed to sync pending changes: %w", err)
+	}
+
+	// Write posting lists
+	_, err = s.PostingLists.WriteToFile(file, dst)
+	if err != nil {
+		return fmt.Errorf("failed to write posting lists: %w", err)
 	}
 
 	return nil
@@ -728,7 +781,7 @@ func (s *Storage) Load(name string) (err error) {
 		}
 
 		if expected := s.PostingLists.DataSize(); expected != int(header.TotalPostingListsDataSize) {
-			return fmt.Errorf("expecting a different amount of bytes for posting lists: %d != %d", expected, header.TotalPostingListsDataSize)
+			return fmt.Errorf("expecting a different amount of bytes for posting lists: Computed(%d) != Header(%d)", expected, header.TotalPostingListsDataSize)
 		}
 
 		s.PostingLists.Reference = inUseBuffer[:header.TotalPostingListsDataSize]

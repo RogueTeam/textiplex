@@ -3,18 +3,14 @@ package storage
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
-	"runtime"
-	"time"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/RogueTeam/textiplex/pointers"
-	"github.com/shirou/gopsutil/v4/mem"
 	"golang.org/x/sys/unix"
 )
 
@@ -262,7 +258,7 @@ type MergeContext struct {
 	PostingListCursor, FrequenciesCursor uint64
 	// Cached token frequencies
 	PostingListCount                              uint64
-	PostingLists                                  []PendingPostingList
+	PendingPostingLists                           []PendingPostingList
 	Buffer                                        [8]byte
 	CachedBitmapChunk                             [OffsetBitmapCachedSize]uint32
 	DocumentOffset                                uint32
@@ -282,7 +278,7 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 		finalToken.FrequenciesIndex = ctx.FrequenciesCursor
 		ctx.FrequenciesCursor += finalToken.FrequencyCount
 
-		ctx.PostingLists = append(ctx.PostingLists, PendingPostingList{
+		ctx.PendingPostingLists = append(ctx.PendingPostingLists, PendingPostingList{
 			IndexA: int64(tokenA.PostingListIndex),
 			IndexB: int64(tokenB.PostingListIndex),
 		})
@@ -294,7 +290,7 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 		ctx.FrequenciesCursor += finalToken.FrequencyCount
 
 		// Write the posting list
-		ctx.PostingLists = append(ctx.PostingLists, PendingPostingList{
+		ctx.PendingPostingLists = append(ctx.PendingPostingLists, PendingPostingList{
 			IndexA: int64(tokenA.PostingListIndex),
 			IndexB: -1,
 		})
@@ -306,7 +302,7 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 		ctx.FrequenciesCursor += finalToken.FrequencyCount
 
 		// Write the posting list
-		ctx.PostingLists = append(ctx.PostingLists, PendingPostingList{
+		ctx.PendingPostingLists = append(ctx.PendingPostingLists, PendingPostingList{
 			IndexA: -1,
 			IndexB: int64(tokenB.PostingListIndex),
 		})
@@ -371,23 +367,12 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		return fmt.Errorf("failed to write token frequencies: %w", err)
 	}
 
-	plSize := PendingPostingListSize * uintptr(ctx.PostingListCount)
-	necessarySize := int64(plSize)
-
-	var maxInMemoryPostingList int64
-	memCtx, cancel := context.WithTimeout(context.TODO(), time.Second)
-	defer cancel()
-	v, _ := mem.VirtualMemoryWithContext(memCtx)
-	if v != nil {
-		maxInMemoryPostingList = int64(v.Available / uint64(runtime.NumCPU()))
-	}
-
 	var memFile *os.File
 	var mmapMemFile []byte
-	if necessarySize < maxInMemoryPostingList {
-		ctx.PostingLists = make([]PendingPostingList, 0, ctx.PostingListCount)
-		defer func() { ctx.PostingLists = nil }() // Drop the reference as soon as posible
-	} else {
+	if ctx.PostingListCount > 0 {
+		plSize := PendingPostingListSize * uintptr(ctx.PostingListCount)
+		necessarySize := int64(plSize)
+
 		memFile, err = m.CreateTemp("*.tmp")
 		if err != nil {
 			return fmt.Errorf("failed to create temporary file: %w", err)
@@ -420,10 +405,8 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			return fmt.Errorf("failed to madvise huge page: %w", err)
 		}
 
-		if ctx.PostingListCount > 0 {
-			ptr := (*PendingPostingList)(unsafe.Pointer(&mmapMemFile[0]))
-			ctx.PostingLists = unsafe.Slice(ptr, ctx.PostingListCount)[:0]
-		}
+		ptr := (*PendingPostingList)(unsafe.Pointer(&mmapMemFile[0]))
+		ctx.PendingPostingLists = unsafe.Slice(ptr, ctx.PostingListCount)[:0]
 	}
 
 	// Phase 2, write A's only fields
@@ -497,7 +480,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 
 			// Write directly to the posting lists temporary file
-			ctx.PostingLists = append(ctx.PostingLists, PendingPostingList{
+			ctx.PendingPostingLists = append(ctx.PendingPostingLists, PendingPostingList{
 				IndexA: int64(token.PostingListIndex),
 				IndexB: -1,
 			})
@@ -571,7 +554,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			}
 
 			// Write directly to the posting lists temporary file
-			ctx.PostingLists = append(ctx.PostingLists, PendingPostingList{
+			ctx.PendingPostingLists = append(ctx.PendingPostingLists, PendingPostingList{
 				IndexA: -1,
 				IndexB: int64(token.PostingListIndex),
 			})
@@ -701,13 +684,38 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 
 	ctx.DstW.Flush()
 
+	err = ctx.DstFile.Sync()
+	if err != nil {
+		return fmt.Errorf("failed to sync remaining changes: %w", err)
+	}
+
+	info, err := ctx.DstFile.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	var writeOffset = info.Size()
+	plHeadersSize := uintptr(len(ctx.PendingPostingLists)) * PostingListHeaderSize
+	err = ctx.DstFile.Truncate(writeOffset + int64(plHeadersSize))
+	if err != nil {
+		return fmt.Errorf("failed to reserve enough space")
+	}
+
+	_, err = ctx.DstFile.Seek(0, io.SeekEnd)
+	if err != nil {
+		return fmt.Errorf("failed to seek to the end of the file: %w", err)
+	}
+
 	ctx.DstW.Reset(ctx.DstFile)
 
-	for _, pending := range ctx.PostingLists {
+	maxPlHeaders := MaxPostingListHeadersBatch(len(ctx.PendingPostingLists))
+	var plHeaders = make([]PostingListHeader, 0, maxPlHeaders)
+	var plTotalDataSize, plHeadersOffset uint64
+	for _, pending := range ctx.PendingPostingLists {
 		switch {
 		case pending.IndexA != -1 && pending.IndexB != -1:
-			rawA := &a.PostingLists[pending.IndexA]
-			rawB := &b.PostingLists[pending.IndexB]
+			rawA := a.PostingLists.Get(pending.IndexA)
+			rawB := b.PostingLists.Get(pending.IndexB)
 
 			ctx.ReusableBitmap.Clear()
 			rawA.UnsafeBitmap(&ctx.BitmapForPostingListRetrieval)
@@ -717,31 +725,49 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			addOffsetFrom(&ctx, &ctx.ReusableBitmap, &ctx.BitmapForPostingListRetrieval)
 
 			size := ctx.ReusableBitmap.GetSerializedSizeInBytes()
-			binary.NativeEndian.PutUint32(ctx.Buffer[:4], uint32(size))
-			_, err = ctx.DstW.Write(ctx.Buffer[:4])
-			if err != nil {
-				return fmt.Errorf("failed to write length of posting list A&B: %w", err)
+			plHeaders = append(plHeaders, PostingListHeader{
+				Offset: plHeadersOffset,
+				Length: size,
+			})
+			plHeadersOffset += size
+			if len(plHeaders) >= maxPlHeaders {
+				delta, err := ctx.DstFile.WriteAt(pointers.UnsafeSliceBytes(plHeaders), writeOffset)
+				if err != nil {
+					return fmt.Errorf("failed to write A&B header: %w", err)
+				}
+				writeOffset += int64(delta)
+				plHeaders = plHeaders[:0]
 			}
 
-			_, err = ctx.ReusableBitmap.WriteTo(ctx.DstW)
+			nn, err := ctx.ReusableBitmap.WriteTo(ctx.DstW)
+			plTotalDataSize += uint64(nn)
 			if err != nil {
 				return fmt.Errorf("failed to write contents of posting list A&B: %w", err)
 			}
 		case pending.IndexA != -1:
-			rawA := &a.PostingLists[pending.IndexA]
+			rawA := a.PostingLists.Get(pending.IndexA)
 
-			binary.NativeEndian.PutUint32(ctx.Buffer[:4], uint32(len(rawA.Data)))
-			_, err = ctx.DstW.Write(ctx.Buffer[:4])
-			if err != nil {
-				return fmt.Errorf("failed to write length of posting list A: %w", err)
+			plHeaders = append(plHeaders, PostingListHeader{
+				Offset: plHeadersOffset,
+				Length: uint64(len(rawA.Data)),
+			})
+			plHeadersOffset += uint64(len(rawA.Data))
+			if len(plHeaders) >= maxPlHeaders {
+				delta, err := ctx.DstFile.WriteAt(pointers.UnsafeSliceBytes(plHeaders), writeOffset)
+				if err != nil {
+					return fmt.Errorf("failed to write A&B header: %w", err)
+				}
+				writeOffset += int64(delta)
+				plHeaders = plHeaders[:0]
 			}
 
-			_, err = ctx.DstW.Write(rawA.Data)
+			nn, err := ctx.DstW.Write(rawA.Data)
+			plTotalDataSize += uint64(nn)
 			if err != nil {
 				return fmt.Errorf("failed to write contents of posting list A: %w", err)
 			}
 		case pending.IndexB != -1:
-			rawB := &b.PostingLists[pending.IndexB]
+			rawB := b.PostingLists.Get(pending.IndexB)
 
 			ctx.ReusableBitmap.Clear()
 			rawB.UnsafeBitmap(&ctx.BitmapForPostingListRetrieval)
@@ -749,29 +775,48 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			addOffsetFrom(&ctx, &ctx.ReusableBitmap, &ctx.BitmapForPostingListRetrieval)
 
 			size := ctx.ReusableBitmap.GetSerializedSizeInBytes()
-			binary.NativeEndian.PutUint32(ctx.Buffer[:4], uint32(size))
-			_, err = ctx.DstW.Write(ctx.Buffer[:4])
-			if err != nil {
-				return fmt.Errorf("failed to write length of posting list A&B: %w", err)
+			plHeaders = append(plHeaders, PostingListHeader{
+				Offset: plHeadersOffset,
+				Length: size,
+			})
+			plHeadersOffset += size
+			if len(plHeaders) >= maxPlHeaders {
+				delta, err := ctx.DstFile.WriteAt(pointers.UnsafeSliceBytes(plHeaders), writeOffset)
+				if err != nil {
+					return fmt.Errorf("failed to write A&B header: %w", err)
+				}
+				writeOffset += int64(delta)
+				plHeaders = plHeaders[:0]
 			}
 
-			_, err = ctx.ReusableBitmap.WriteTo(ctx.DstW)
+			nn, err := ctx.ReusableBitmap.WriteTo(ctx.DstW)
+			plTotalDataSize += uint64(nn)
 			if err != nil {
 				return fmt.Errorf("failed to write contents of posting list A&B: %w", err)
 			}
 		}
 	}
 
+	if len(plHeaders) > 0 {
+		delta, err := ctx.DstFile.WriteAt(pointers.UnsafeSliceBytes(plHeaders), writeOffset)
+		if err != nil {
+			return fmt.Errorf("failed to write A&B header: %w", err)
+		}
+		writeOffset += int64(delta)
+		plHeaders = plHeaders[:0]
+	}
+
 	ctx.DstW.Flush()
 
 	// File Header
 	header := Header{
-		Magic:                 MagicNumber,
-		Version:               VersionV1,
-		TotalDocuments:        uint32(len(a.DocumentsIds)) + uint32(len(b.DocumentsIds)),
-		FieldCount:            ctx.FieldsOrder.Count(),
-		TotalPostingLists:     ctx.PostingListCursor,
-		TotalTokenFrequencies: ctx.FrequenciesCursor,
+		Magic:                     MagicNumber,
+		Version:                   VersionV1,
+		TotalDocuments:            uint32(len(a.DocumentsIds)) + uint32(len(b.DocumentsIds)),
+		FieldCount:                ctx.FieldsOrder.Count(),
+		TotalPostingLists:         ctx.PostingListCursor,
+		TotalPostingListsDataSize: plTotalDataSize,
+		TotalTokenFrequencies:     ctx.FrequenciesCursor,
 	}
 
 	_, err = ctx.DstFile.WriteAt(pointers.UnsafeValueBytes(&header), 0)

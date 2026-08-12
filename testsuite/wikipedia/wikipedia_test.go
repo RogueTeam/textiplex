@@ -5,14 +5,12 @@ import (
 	"time"
 
 	"github.com/RogueTeam/textiplex/testsuite/wikipedia"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestPages(t *testing.T) {
-	assertions := assert.New(t)
-
 	pages, err := wikipedia.Pages()
-	if !assertions.NoError(err, "should retrieve pages") {
+	if err != nil {
+		t.Skipf("Wikipedia sample is not ready use go generate over the repository to retrieve it: go generate ./...")
 		return
 	}
 

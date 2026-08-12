@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.9.0](https://github.com/RogueTeam/textiplex/compare/v1.8.0...v1.9.0) (2026-08-12)
+
+
+### Features
+
+* added placeholders for avx ([1601ab1](https://github.com/RogueTeam/textiplex/commit/1601ab178e3b7ff651cabe7c2d5acac2b739785a))
+* initial support for unrolling at 8 size ([901af31](https://github.com/RogueTeam/textiplex/commit/901af311b86b326dc01ce3f9c1c25848c652dfa6))
+* initial support for zero copy posting lists ([0f301b1](https://github.com/RogueTeam/textiplex/commit/0f301b1c108c6357469c90760cef5ef584619cd7))
+
+
+### Bug Fixes
+
+* added build tags for compiling with or without simd enabled ([761111d](https://github.com/RogueTeam/textiplex/commit/761111dd402f9dc8336bc70895eb5cf56fea80b8))
+* always use mmap as file for posting lists indexes ([f0df1f0](https://github.com/RogueTeam/textiplex/commit/f0df1f01994a9a19c93a3a0769a35ba7b2b2b3f7))
+* batch writes of posting list headers ([3029bcf](https://github.com/RogueTeam/textiplex/commit/3029bcf7b2f727d48227b1347450fadf6f1b67f6))
+* direct bynary search to prevent call overhead ([15de0fb](https://github.com/RogueTeam/textiplex/commit/15de0fb0247c7af3b81f1b9618cef13c3de983e6))
+* direct call of scalar function on fallback ([af47296](https://github.com/RogueTeam/textiplex/commit/af47296f4158d3a953e6d843a664391717756acf))
+* do not use slices binarysearch call ([114ec61](https://github.com/RogueTeam/textiplex/commit/114ec61479ec5d8f1a90b689b5e7652655563107))
+* extracted posting lists header size logic to its own function ([92cb238](https://github.com/RogueTeam/textiplex/commit/92cb2383bf43d84b71852b3579f66da3698a9761))
+* fixed doc lengths reset ([203a786](https://github.com/RogueTeam/textiplex/commit/203a786cf97380c6c9e6185e407cca492d6e2944))
+* fixed storage build on preallocating space ([ee0e400](https://github.com/RogueTeam/textiplex/commit/ee0e40032294630c27bed1c3382b8f96cecfe953))
+* inline binary search for score ([2a830e8](https://github.com/RogueTeam/textiplex/commit/2a830e8ec6a829720ff34498454c403d0dfdb3cc))
+* inverted condition to use scalar loop by default ([c00b0c6](https://github.com/RogueTeam/textiplex/commit/c00b0c64dc485b9d0b0259956e8943945f1d025a))
+* make all binary search struct aware ([fcf5aeb](https://github.com/RogueTeam/textiplex/commit/fcf5aeb8d3689047766626c29765c911572766a2))
+* make all tests pass ([5265af1](https://github.com/RogueTeam/textiplex/commit/5265af1b9114df744b481d2a95667335624ecb8b))
+* make regexp for keywords match spanish special characters ([372ebff](https://github.com/RogueTeam/textiplex/commit/372ebff48b00c22b72d87e269d182773b32a91d3))
+* more aggresive simd loop unrolling ([0627555](https://github.com/RogueTeam/textiplex/commit/0627555c6921ca8e56dcb1a28e7454cdd3da796a))
+* remove MAP_POPULATE ([8862454](https://github.com/RogueTeam/textiplex/commit/8862454cdfc9f4cb7d5898554bc0595cfb33c2eb))
+* separated avx unrolling factor ([e3b8362](https://github.com/RogueTeam/textiplex/commit/e3b836289b93f2a18618af001648b8b92bcd034d))
+* support for mmap shared when opening the index and when preparing merge ([d6d48b7](https://github.com/RogueTeam/textiplex/commit/d6d48b7a84eadf316f045beab8601f590a11c6aa))
+* updated comparison for binary search ([f6ac493](https://github.com/RogueTeam/textiplex/commit/f6ac493314366d653885f0a7c8ff7f48e4829981))
+* use proper size for max posting lists headers in memory and proper naming for offset and total size ([88f0c1f](https://github.com/RogueTeam/textiplex/commit/88f0c1f60b7e87de8105ca44666e9b7bd4096632))
+
 ## [1.8.0](https://github.com/RogueTeam/textiplex/compare/v1.7.10...v1.8.0) (2026-08-04)
 
 

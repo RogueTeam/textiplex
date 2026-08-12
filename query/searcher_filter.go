@@ -24,7 +24,7 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 			bitmap := bitmapPool.Get()
 			bitmaps = append(bitmaps, bitmap)
 			for _, token := range state.Tokens {
-				s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&retrievalBitmap)
+				s.Storage.PostingLists.Get(int64(token.PostingListIndex)).UnsafeBitmap(&retrievalBitmap)
 				bitmap.Or(&retrievalBitmap)
 			}
 			return true
@@ -38,7 +38,7 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 		// No Musts: Shoulds define the set (union of Should posting lists).
 		s.Iter(&q.Shoulds, func(state *ClauseState) {
 			for _, token := range state.Tokens {
-				s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&retrievalBitmap)
+				s.Storage.PostingLists.Get(int64(token.PostingListIndex)).UnsafeBitmap(&retrievalBitmap)
 				ctx.Bitmap.Or(&retrievalBitmap)
 			}
 		})
@@ -49,7 +49,7 @@ func (s *Searcher) FilterDocuments(ctx *QueryContext, q *SimpleQuery) {
 		// MustNots subtract from whatever the set is.
 		s.IterCond(&q.MustNots, func(state *ClauseState) (next bool) {
 			for _, token := range state.Tokens {
-				s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&retrievalBitmap)
+				s.Storage.PostingLists.Get(int64(token.PostingListIndex)).UnsafeBitmap(&retrievalBitmap)
 				ctx.Bitmap.AndNot(&retrievalBitmap)
 			}
 

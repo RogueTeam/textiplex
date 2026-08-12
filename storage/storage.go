@@ -5,12 +5,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"iter"
 	"os"
+	"strings"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring"
-	"github.com/RogueTeam/textiplex/binarysearch"
 	"github.com/RogueTeam/textiplex/pointers"
 	"github.com/RogueTeam/textiplex/pool"
 	"github.com/tidwall/btree"
@@ -19,10 +20,44 @@ import (
 
 type Tokens []Token
 
+func (s *Tokens) BinarySearchString(ss string) (i int, found bool) {
+	n := len((*s))
+	// Define cmp(x[-1], target) < 0 and cmp(x[n], target) >= 0 .
+	// Invariant: cmp(x[i - 1], target) < 0, cmp(x[j], target) >= 0.
+	i, j := 0, n
+	for i < j {
+		h := int(uint(i+j) >> 1) // avoid overflow when computing h
+		// i ≤ h < j
+		if strings.Compare((*s)[h].Value.UnsafeString(), ss) < 0 {
+			i = h + 1 // preserves cmp(x[i - 1], target) < 0
+		} else {
+			j = h // preserves cmp(x[j], target) >= 0
+		}
+	}
+	// i == j, cmp(x[i-1], target) < 0, and cmp(x[j], target) (= cmp(x[i], target)) >= 0  =>  answer is i.
+	return i, i < n && (*s)[i].Value.UnsafeString() == ss
+}
+
+func (s *Tokens) BinarySearchBytes(b []byte) (i int, found bool) {
+	n := len((*s))
+	// Define cmp(x[-1], target) < 0 and cmp(x[n], target) >= 0 .
+	// Invariant: cmp(x[i - 1], target) < 0, cmp(x[j], target) >= 0.
+	i, j := 0, n
+	for i < j {
+		h := int(uint(i+j) >> 1) // avoid overflow when computing h
+		// i ≤ h < j
+		if bytes.Compare((*s)[h].Value.Bytes(), b) < 0 {
+			i = h + 1 // preserves cmp(x[i - 1], target) < 0
+		} else {
+			j = h // preserves cmp(x[j], target) >= 0
+		}
+	}
+	// i == j, cmp(x[i-1], target) < 0, and cmp(x[j], target) (= cmp(x[i], target)) >= 0  =>  answer is i.
+	return i, i < n && bytes.Equal((*s)[i].Value.Bytes(), b)
+}
+
 func (s *Tokens) GetString(ss string) (token *Token, found bool) {
-	idx, found := binarysearch.PointerBinarySearchFunc(*s, ss, func(e *Token, t string) int {
-		return bytes.Compare(e.Value.Bytes(), unsafe.Slice(unsafe.StringData(t), len(t)))
-	})
+	idx, found := s.BinarySearchString(ss)
 
 	if !found {
 		return nil, false
@@ -31,10 +66,7 @@ func (s *Tokens) GetString(ss string) (token *Token, found bool) {
 }
 
 func (s *Tokens) GetBytes(b []byte) (token *Token, found bool) {
-	idx, found := binarysearch.PointerBinarySearchFunc(*s, b, func(e *Token, t []byte) int {
-		return bytes.Compare(e.Value.Bytes(), b)
-	})
-
+	idx, found := s.BinarySearchBytes(b)
 	if !found {
 		return nil, false
 	}
@@ -42,9 +74,7 @@ func (s *Tokens) GetBytes(b []byte) (token *Token, found bool) {
 }
 
 func (s *Tokens) GetBytesOrNear(b []byte) (token *Token, found bool) {
-	idx, found := binarysearch.PointerBinarySearchFunc(*s, b, func(e *Token, t []byte) int {
-		return bytes.Compare(e.Value.Bytes(), b)
-	})
+	idx, found := s.BinarySearchBytes(b)
 
 	if !found && idx >= len(*s) {
 		return nil, false
@@ -60,9 +90,7 @@ func (s *Tokens) IterBytes(lo, hi []byte) (seq iter.Seq[*Token]) {
 	var startIndex, endIndex int
 	if lo != nil {
 		var found bool
-		startIndex, found = binarysearch.PointerBinarySearchFunc(*s, lo, func(e *Token, t []byte) int {
-			return bytes.Compare(e.Value.Bytes(), t)
-		})
+		startIndex, found = s.BinarySearchBytes(lo)
 		if !found && startIndex >= len(*s) {
 			return func(yield func(*Token) bool) {}
 		}
@@ -72,9 +100,7 @@ func (s *Tokens) IterBytes(lo, hi []byte) (seq iter.Seq[*Token]) {
 		endIndex = len(*s) - 1
 	} else {
 		var found bool
-		endIndex, found = binarysearch.PointerBinarySearchFunc(*s, hi, func(e *Token, t []byte) int {
-			return bytes.Compare(e.Value.Bytes(), t)
-		})
+		endIndex, found = s.BinarySearchBytes(hi)
 		if !found && endIndex >= len(*s) {
 			return func(yield func(*Token) bool) {}
 		}
@@ -102,7 +128,132 @@ type Field struct {
 	TotalTokenFrequenciesCount uint64
 	// DocumentLength entries
 	// Keys are indexes of the documents
-	DocumentLengths []DocumentLengthEntry
+	DocumentLengths DocumentsLengths
+}
+
+type PostingLists struct {
+	Reference []byte
+	Headers   []PostingListHeader
+	Entries   []PostingList
+}
+
+func (p *PostingLists) WriteToFile(f *os.File, dst *bufio.Writer) (n int64, err error) {
+	if len(p.Headers) > 0 {
+		_, err := f.Seek(0, io.SeekEnd)
+		if err != nil {
+			return 0, fmt.Errorf("failed to seek to the end of the file: %w", err)
+		}
+
+		dst.Reset(f)
+
+		nn, err := dst.Write(pointers.UnsafeSliceBytes(p.Headers))
+		n += int64(nn)
+		if err != nil {
+			return n, fmt.Errorf("failed to write headers: %w", err)
+		}
+
+		nn, err = dst.Write(p.Reference)
+		n += int64(nn)
+		if err != nil {
+			return n, fmt.Errorf("failed to write data: %w", err)
+		}
+	} else if len(p.Entries) > 0 {
+		info, err := f.Stat()
+		if err != nil {
+			return 0, fmt.Errorf("failed to stat file: %w", err)
+		}
+
+		writeOffset := info.Size()
+		plHeadersSize := PostingListHeaderSize * uintptr(p.Len())
+
+		err = f.Truncate(writeOffset + int64(plHeadersSize))
+		if err != nil {
+			return 0, fmt.Errorf("failed to reserve headers space: %w", err)
+		}
+
+		_, err = f.Seek(0, io.SeekEnd)
+		if err != nil {
+			return 0, fmt.Errorf("failed to seek to the end of the file: %w", err)
+		}
+
+		dst.Reset(f)
+
+		maxPlHeaders := MaxPostingListHeadersBatch(len(p.Entries))
+		var headers = make([]PostingListHeader, 0, maxPlHeaders)
+		var offset uint64
+		for i, pl := range p.Entries {
+			headers = append(headers, PostingListHeader{
+				Offset: offset,
+				Length: uint64(len(pl.Data)),
+			})
+			offset += uint64(len(pl.Data))
+			if len(headers) >= maxPlHeaders {
+				chunk := pointers.UnsafeSliceBytes(headers)
+				nn, err := f.WriteAt(chunk, writeOffset)
+				n += int64(nn)
+				writeOffset += int64(nn)
+				if err != nil {
+					return n, fmt.Errorf("failed to write headers: %w", err)
+				}
+				headers = headers[:0]
+			}
+
+			nn, err := dst.Write(pl.Data)
+			n += int64(nn)
+			if err != nil {
+				return n, fmt.Errorf("failed to write %d element data: %w", i, err)
+			}
+		}
+
+		if len(headers) > 0 {
+			nn, err := f.WriteAt(pointers.UnsafeSliceBytes(headers), writeOffset)
+			n += int64(nn)
+			writeOffset += int64(nn)
+			if err != nil {
+				return n, fmt.Errorf("failed to write remaining headers: %w", err)
+			}
+			headers = headers[:0]
+		}
+	}
+
+	err = dst.Flush()
+	if err != nil {
+		return n, fmt.Errorf("failed to flush pending bytes: %w", err)
+	}
+	err = f.Sync()
+	if err != nil {
+		return n, fmt.Errorf("failed to sync file: %w", err)
+	}
+	return n, nil
+}
+
+func (p *PostingLists) Len() (n int) {
+	return max(len(p.Headers), len(p.Entries))
+}
+
+func (p *PostingLists) DataSize() (n int) {
+	if len(p.Headers) > 0 {
+		for _, header := range p.Headers {
+			n += int(header.Length)
+		}
+		return n
+	}
+	for _, entry := range p.Entries {
+		n += len(entry.Data)
+	}
+	return n
+}
+
+func (p *PostingLists) Get(idx int64) (pl *PostingList) {
+	switch {
+	case len(p.Headers) > 0:
+		header := &p.Headers[idx]
+		return &PostingList{Data: p.Reference[header.Offset : header.Offset+header.Length]}
+	case len(p.Entries) > 0:
+		return &p.Entries[idx]
+	default:
+		panic(fmt.Sprintf("slice of length: %d got invalid index: %d", 0, idx))
+	}
 }
 
 type PostingList struct {
@@ -136,9 +287,9 @@ type Storage struct {
 	// index form and human-readble form
 	DocumentsIds []DocumentId
 	// Posting lists used once the caller knows which fields-tokens to query
-	PostingLists []PostingList
+	PostingLists PostingLists
 	// Token frequencies
-	TokenFrequencies []TokenFrequencyEntry
+	TokenFrequencies TokenFrequencies
 	// Used to determine if the storage was already initialized or not
 	Initialized bool
 }
@@ -251,7 +402,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 		}
 	}
 
-	s.PostingLists = make([]PostingList, 0, postingListsCounter)
+	s.PostingLists.Entries = make([]PostingList, 0, postingListsCounter)
 	s.TokenFrequencies = make([]TokenFrequencyEntry, 0, tokensFreqsCounter)
 
 	// A single reused bitmap plus a reused scratch buffer. Posting lists are
@@ -298,8 +449,8 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 			s.Size += uint64(PostingListHeaderSize)
 			s.Size += uint64(size)
 
-			plIndex := uint64(len(s.PostingLists))
-			s.PostingLists = append(s.PostingLists, PostingList{Data: pdBytes})
+			plIndex := uint64(s.PostingLists.Len())
+			s.PostingLists.Entries = append(s.PostingLists.Entries, PostingList{Data: pdBytes})
 
 			freqIndex := uint64(len(s.TokenFrequencies))
 			s.TokenFrequencies = append(s.TokenFrequencies, pd.Freqs...)
@@ -347,11 +498,6 @@ func (s *Storage) SaveTo(name string) (err error) {
 		}
 	}()
 
-	err = file.Truncate(int64(s.Size))
-	if err != nil {
-		return fmt.Errorf("failed to truncate file size: %w", err)
-	}
-
 	var writeBuffer [8]byte
 	dst := bufio.NewWriterSize(file, 4<<20)
 
@@ -376,10 +522,15 @@ func (s *Storage) SaveTo(name string) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to write number of fields: %w", err)
 	}
-	binary.NativeEndian.PutUint64(writeBuffer[:], uint64(len(s.PostingLists)))
+	binary.NativeEndian.PutUint64(writeBuffer[:], uint64(s.PostingLists.Len()))
 	_, err = dst.Write(writeBuffer[:])
 	if err != nil {
 		return fmt.Errorf("failed to write number of posting lists: %w", err)
+	}
+	binary.NativeEndian.PutUint64(writeBuffer[:], uint64(s.PostingLists.DataSize()))
+	_, err = dst.Write(writeBuffer[:])
+	if err != nil {
+		return fmt.Errorf("failed to write size of posting lists data: %w", err)
 	}
 	binary.NativeEndian.PutUint64(writeBuffer[:], uint64(len(s.TokenFrequencies)))
 	_, err = dst.Write(writeBuffer[:])
@@ -448,24 +599,20 @@ func (s *Storage) SaveTo(name string) (err error) {
 		}
 	}
 
-	// Write posting lists
-	for index := range s.PostingLists {
-		pl := &s.PostingLists[index]
-
-		length := uint32(len(pl.Data))
-		_, err = dst.Write(pointers.UnsafeValueBytes(&length))
-		if err != nil {
-			return fmt.Errorf("failed to write posting list's length: %w", err)
-		}
-		_, err = dst.Write(pl.Data)
-		if err != nil {
-			return fmt.Errorf("failed to write posting list's contents: %w", err)
-		}
-	}
-
 	err = dst.Flush()
 	if err != nil {
 		return fmt.Errorf("failed to flush remaining contents: %w", err)
+	}
+
+	err = file.Sync()
+	if err != nil {
+		return fmt.Errorf("failed to sync pending changes: %w", err)
+	}
+
+	// Write posting lists
+	_, err = s.PostingLists.WriteToFile(file, dst)
+	if err != nil {
+		return fmt.Errorf("failed to write posting lists: %w", err)
 	}
 
 	return nil
@@ -522,7 +669,7 @@ func (s *Storage) Load(name string) (err error) {
 		0,
 		int(size),
 		unix.PROT_READ,
-		unix.MAP_PRIVATE,
+		unix.MAP_SHARED,
 	)
 	if err != nil {
 		return fmt.Errorf("failed mmap file: %w", err)
@@ -621,22 +768,24 @@ func (s *Storage) Load(name string) (err error) {
 		}
 	}
 
-	s.PostingLists = make([]PostingList, header.TotalPostingLists)
-	for index := range header.TotalPostingLists {
-		if uintptr(len(inUseBuffer)) < PostingListHeaderSize {
-			return fmt.Errorf("not enough space for loading fields from buffer")
+	postingListsHeadersSize := PostingListHeaderSize * uintptr(header.TotalPostingLists)
+	if uintptr(len(inUseBuffer)) < postingListsHeadersSize {
+		return fmt.Errorf("not enough space for loading posting lists from buffer")
+	}
+	if postingListsHeadersSize > 0 {
+		s.PostingLists.Headers = unsafe.Slice((*PostingListHeader)(unsafe.Pointer(&inUseBuffer[0])), header.TotalPostingLists)
+		inUseBuffer = inUseBuffer[postingListsHeadersSize:]
+
+		if uint64(len(inUseBuffer)) < header.TotalPostingListsDataSize {
+			return fmt.Errorf("not enough space for loading posting lists data from buffer")
 		}
 
-		pHeader := (*PostingListHeader)(unsafe.Pointer(&inUseBuffer[0]))
-		inUseBuffer = inUseBuffer[PostingListHeaderSize:]
-
-		if uint64(len(inUseBuffer)) < uint64(pHeader.Size) {
-			return fmt.Errorf("not enough space for loading posting list %d from buffer", index)
+		if expected := s.PostingLists.DataSize(); expected != int(header.TotalPostingListsDataSize) {
+			return fmt.Errorf("expecting a different amount of bytes for posting lists: Computed(%d) != Header(%d)", expected, header.TotalPostingListsDataSize)
 		}
 
-		// Zero copy loading of posting list
-		s.PostingLists[index].Data = inUseBuffer[:pHeader.Size]
-		inUseBuffer = inUseBuffer[pHeader.Size:]
+		s.PostingLists.Reference = inUseBuffer[:header.TotalPostingListsDataSize]
+		inUseBuffer = inUseBuffer[header.TotalPostingListsDataSize:]
 	}
 
 	s.Size = uint64(size) - uint64(len(inUseBuffer))

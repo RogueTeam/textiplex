@@ -89,7 +89,7 @@ func TestFieldStructure(t *testing.T) {
 		docs            []*storage.Document
 		fieldHash       uint64
 		wantTokenValues []string
-		wantDocLengths  []storage.DocumentLengthEntry
+		wantDocLengths  storage.DocumentsLengths
 		wantAvgdl       float64
 	}
 
@@ -104,7 +104,7 @@ func TestFieldStructure(t *testing.T) {
 			},
 			fieldHash:       42,
 			wantTokenValues: []string{"alpha", "beta"},
-			wantDocLengths:  []storage.DocumentLengthEntry{{Index: 0, Length: 4}},
+			wantDocLengths:  storage.DocumentsLengths{{Index: 0, Length: 4}},
 			wantAvgdl:       4.0,
 		},
 		{
@@ -115,7 +115,7 @@ func TestFieldStructure(t *testing.T) {
 			},
 			fieldHash:       1,
 			wantTokenValues: []string{"foo"},
-			wantDocLengths: []storage.DocumentLengthEntry{
+			wantDocLengths: storage.DocumentsLengths{
 				{Index: 0, Length: 2},
 				{Index: 1, Length: 8},
 			},
@@ -128,7 +128,7 @@ func TestFieldStructure(t *testing.T) {
 				testsuite.MakeDoc("doc-b", testsuite.MakeField(1, 3, testsuite.MakeToken("foo", 3))),
 			},
 			fieldHash: 1,
-			wantDocLengths: []storage.DocumentLengthEntry{
+			wantDocLengths: storage.DocumentsLengths{
 				{Index: 1, Length: 3},
 			},
 			wantAvgdl: 3.0,
@@ -236,7 +236,7 @@ func TestPostingLists(t *testing.T) {
 
 			assertions.Equal(tc.wantDocFreq, tok.FrequencyCount)
 
-			s.PostingLists[tok.PostingListIndex].UnsafeBitmap(&bitmapForPostingListRetrieval)
+			s.PostingLists.Get(int64(tok.PostingListIndex)).UnsafeBitmap(&bitmapForPostingListRetrieval)
 			assertions.Equal(tc.wantDocIndices, bitmapForPostingListRetrieval.ToArray())
 		})
 	}
@@ -423,8 +423,8 @@ func TestRoundTrip(t *testing.T) {
 							assertions.Equal(origTok.FrequencyCount, loadedTok.FrequencyCount)
 							assertions.Equal(origTok.Value, loadedTok.Value)
 
-							original.PostingLists[origTok.PostingListIndex].UnsafeBitmap(&origBitmapForPostingListRetrieval)
-							loaded.PostingLists[loadedTok.PostingListIndex].UnsafeBitmap(&loadedBitmapForPostingListRetrieval)
+							original.PostingLists.Get(int64(origTok.PostingListIndex)).UnsafeBitmap(&origBitmapForPostingListRetrieval)
+							loaded.PostingLists.Get(int64(loadedTok.PostingListIndex)).UnsafeBitmap(&loadedBitmapForPostingListRetrieval)
 
 							assertions.Equal(origBitmapForPostingListRetrieval.GetCardinality(), loadedBitmapForPostingListRetrieval.GetCardinality())
 
@@ -436,7 +436,7 @@ func TestRoundTrip(t *testing.T) {
 				})
 			}
 
-			assertions.Len(loaded.PostingLists, len(original.PostingLists))
+			assertions.Equal(loaded.PostingLists.Len(), original.PostingLists.Len())
 			assertions.Len(loaded.TokenFrequencies, len(original.TokenFrequencies))
 		})
 	}
@@ -476,7 +476,7 @@ func TestReset(t *testing.T) {
 			assertions.False(s.Initialized)
 			assertions.Nil(s.DocumentsIds)
 			assertions.Nil(s.Fields)
-			assertions.Nil(s.PostingLists)
+			assertions.Zero(s.PostingLists)
 			assertions.Nil(s.TokenFrequencies)
 
 			s.BuildFrom(tc.docs...)

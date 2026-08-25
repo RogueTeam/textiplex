@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.9.1](https://github.com/RogueTeam/textiplex/compare/v1.8.0...v1.9.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* correct go version ([6de12b6](https://github.com/RogueTeam/textiplex/commit/6de12b6ca0eb53ac4355f0a09ba55dcbac02e6e7))
+
 ## [1.9.0](https://github.com/RogueTeam/textiplex/compare/v1.8.0...v1.9.0) (2026-08-12)
 
 

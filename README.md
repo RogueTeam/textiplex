@@ -430,7 +430,7 @@ textiplex makes deliberate trade-offs you should know before building on it.
 
 **AGPL-3.0.** textiplex is free to use under the terms of the GNU Affero General Public License v3. If you run textiplex as part of a networked service, the AGPL requires you to make the complete corresponding source of that service available to users. Commercial licensing is available; contact antoniodonis.job.contact@gmail.com.
 
-**No built-in compression.** textiplex does not compress index data. Even so, the raw index is compact: with a stop-word-filtering tokenizer the output is typically 40–50% of the source corpus size; with stop words included, 50–70%. Compression is delegated to the filesystem — deploy textiplex on ZFS (`lz4`/`zstd`) or btrfs (`zstd`) and you get it for free with no overhead inside the hot path. textiplex does one thing and does it well; filesystem compression is a solved problem.
+**No built-in compression.** textiplex does not compress index data. Even so, the raw index is compact: with a stop-word-filtering tokenizer the output is typically 40–50% of the source corpus size; with stop words included, 50–70%. Compression is delegated to the filesystem — deploy textiplex on btrfs (`zstd`) and you get it for free with no overhead inside the hot path. textiplex does one thing and does it well; filesystem compression is a solved problem.
 
 ## Status
 

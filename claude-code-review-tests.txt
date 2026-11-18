@@ -1,0 +1,89 @@
+=== RUN   TestPoC_WriterRestartOverwritesExistingSegment
+    01-vulnerabilities_test.go:169: docs in index after restart: 5 (expected 105); hits for first-run token: 0 (expected 100)
+--- PASS: TestPoC_WriterRestartOverwritesExistingSegment (0.00s)
+=== RUN   TestPoC_MergeSwallowsWriteErrorAndWriterDeletesInputs
+    01-vulnerabilities_test.go:212: === RUN   TestPoC_MergeSwallowsWriteErrorAndWriterDeletesInputs
+        RESULT Writer.Merge err=<nil>
+        RESULT segments left=1
+        RESULT load merged err=not enough space for loading posting lists data from buffer
+        --- PASS: TestPoC_MergeSwallowsWriteErrorAndWriterDeletesInputs (0.01s)
+        PASS
+        
+--- PASS: TestPoC_MergeSwallowsWriteErrorAndWriterDeletesInputs (0.01s)
+=== RUN   TestPoC_SaveToFailureDeletesPreviousIndex
+    01-vulnerabilities_test.go:243: === RUN   TestPoC_SaveToFailureDeletesPreviousIndex
+        RESULT old index size=7996
+        RESULT SaveTo err=failed to flush remaining contents: write /tmp/TestPoC_SaveToFailureDeletesPreviousIndex1873452213/001/index.bin: file too large
+        RESULT old index exists=false
+        --- PASS: TestPoC_SaveToFailureDeletesPreviousIndex (0.01s)
+        PASS
+        
+--- PASS: TestPoC_SaveToFailureDeletesPreviousIndex (0.01s)
+=== RUN   TestPoC_SaveToOverMappedFileSIGBUS
+    01-vulnerabilities_test.go:273: child: exit 2
+        unexpected fault address 0x7fb5e509e490
+        fatal error: fault
+        [signal SIGBUS: bus error code=0x2 addr=0x7fb5e509e490 pc=0x59937c]
+    01-vulnerabilities_test.go:274: index size before=308296 after=0
+--- PASS: TestPoC_SaveToOverMappedFileSIGBUS (0.02s)
+=== RUN   TestPoC_DocIdUseAfterCloseSIGSEGV
+    01-vulnerabilities_test.go:304: child: exit 2
+        unexpected fault address 0x7f6b86a01040
+        fatal error: fault
+        [signal SIGSEGV: segmentation violation code=0x1 addr=0x7f6b86a01040 pc=0x48f854]
+--- PASS: TestPoC_DocIdUseAfterCloseSIGSEGV (0.01s)
+=== RUN   TestPoC_FailedLoadLeavesDanglingSlices
+    01-vulnerabilities_test.go:331: child: exit 2
+        RESULT load err=not enough space for loading fields from buffer len(DocumentsIds)=100
+        unexpected fault address 0x7f197175c038
+        fatal error: fault
+        [signal SIGSEGV: segmentation violation code=0x1 addr=0x7f197175c038 pc=0x5e992d]
+--- PASS: TestPoC_FailedLoadLeavesDanglingSlices (0.01s)
+=== RUN   TestPoC_TinyFileFatalOOM
+    01-vulnerabilities_test.go:366: file size=57 bytes; child: exit 2
+        === RUN   TestPoC_TinyFileFatalOOM
+        runtime: out of memory: cannot allocate 4194304-byte block (1034780672 in use)
+        fatal error: out of memory
+--- PASS: TestPoC_TinyFileFatalOOM (0.26s)
+=== RUN   TestPoC_LoadPanicsOnOverflowingCounts
+    01-vulnerabilities_test.go:399: Load err=<nil> panic=runtime error: unsafe.Slice: len out of range
+--- PASS: TestPoC_LoadPanicsOnOverflowingCounts (0.00s)
+=== RUN   TestPoC_CorruptReferencePanicsAtQueryTime
+    01-vulnerabilities_test.go:430: Load accepted file; query panic=runtime error: index out of range [4294967295] with length 1
+--- PASS: TestPoC_CorruptReferencePanicsAtQueryTime (0.00s)
+=== RUN   TestPoC_LoadAcceptsNonIndexFile
+    01-vulnerabilities_test.go:444: Load(4 KiB of zeros) err=<nil> docs=0
+    01-vulnerabilities_test.go:454: Load(magic=0xDEADBEEF, version=999) err=<nil>
+--- PASS: TestPoC_LoadAcceptsNonIndexFile (0.00s)
+=== RUN   TestPoC_LongValuesSilentlyTruncated
+    01-vulnerabilities_test.go:484: token table: 2 entries, identical values: true
+    01-vulnerabilities_test.go:488: query full value  -> 0 hits (expected 1)
+    01-vulnerabilities_test.go:489: query 128B prefix -> 1 hits (2 docs carry it)
+    01-vulnerabilities_test.go:490: doc ids equal after truncation: true
+--- PASS: TestPoC_LongValuesSilentlyTruncated (0.00s)
+=== RUN   TestPoC_ReverseSkipUnderflowPanics
+    01-vulnerabilities_test.go:516: skip=10 reverse=true over 3 hits: panic=runtime error: slice bounds out of range [:18446744073709551609] with capacity 3
+--- PASS: TestPoC_ReverseSkipUnderflowPanics (0.00s)
+=== RUN   TestStraceMerge
+    01-vulnerabilities_test.go:528: set POC_STRACE_DIR
+--- SKIP: TestStraceMerge (0.00s)
+=== RUN   TestPoC_MergeInFreshProcessTruncatesItsOwnInput
+    01-vulnerabilities_test.go:586: child: exit 2 (expected 200 docs)
+        panic: runtime error: slice bounds out of range [:3289392] with capacity 100 [recovered, repanicked]
+        panic({0x82b588?, 0xb56f8382000?})
+        /var/home/user/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.4.linux-amd64/src/runtime/panic.go:859 +0x125
+        created by sync.(*WaitGroup).Go in goroutine 19
+        segments left: 2
+    01-vulnerabilities_test.go:589: input segment 1 after crash: load err=<nil> docs=0 (was 100)
+    01-vulnerabilities_test.go:590: panic site:
+        github.com/RogueTeam/textiplex/storage.(*Merger).preparationPass.func1(0xb56f7eae008, 0xb56f7eae608, 0xb56f7e4ab60, 0x857d5b2aa5836ac2)
+        github.com/RogueTeam/textiplex/storage.(*Merger).preparationPass(0xb56f7e51eb8?, 0xb56f7e4ab60)
+--- PASS: TestPoC_MergeInFreshProcessTruncatesItsOwnInput (0.01s)
+=== RUN   TestPoC_MergeEmptyDirectorySpinsForever
+    01-vulnerabilities_test.go:619: Writer.Merge() on an empty directory still running after 2s (busy loop)
+--- PASS: TestPoC_MergeEmptyDirectorySpinsForever (2.00s)
+=== RUN   TestMakeSegments
+    01-vulnerabilities_test.go:627: set POC_MKSEG_DIR
+--- SKIP: TestMakeSegments (0.00s)
+PASS
+ok  	github.com/RogueTeam/textiplex/claude/reviews	(cached)

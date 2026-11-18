@@ -20,7 +20,7 @@ Most search engines in Go are ports or wrappers of JVM-era architectures — Luc
 
 ## Benchmarks
 
-All benchmarks run on an **Intel Core i9-10900K @ 3.70 GHz** (10 cores / 20 threads), Linux, amd64.
+The Wikipedia run and the comparison tables against Bluge and Bleve were measured on an **Intel Core i9-10900K @ 3.70 GHz** (10 cores / 20 threads), Linux, amd64, at an earlier version of the code. Numbers for the current code, measured on a different machine, are in [Current numbers](#current-numbers-i7-1280p).
 
 ### Full English Wikipedia — the headline result
 
@@ -59,6 +59,8 @@ Segment creation stayed inside a bounded memory envelope on a consumer desktop C
 | Bluge upstream (offline) | 12.28s | — | 8.20 GB | 131.0M |
 | Bleve (offline) | 24.28s | — | 10.07 GB | 146.5M |
 
+The `Load` row predates the current loader, which maps the file and slices it in place instead of parsing it. See [Current numbers](#current-numbers-i7-1280p) for how it behaves now.
+
 ### Improvement ratios — `BuildFrom` (2.84s) vs full offline build
 
 | Comparison | Time | Heap | Allocs |
@@ -69,7 +71,7 @@ Segment creation stayed inside a bounded memory envelope on a consumer desktop C
 
 ### Query latency
 
-Boolean query benchmarks, same 1M-doc corpus (lower is better):
+Boolean query benchmarks over a 1,000-document corpus (one 200-token body field per document, a 50-term vocabulary shared by every document plus one unique term per document), lower is better:
 
 | Query | textiplex | Bluge fork | Bluge upstream |
 |---|---|---|---|
@@ -77,6 +79,30 @@ Boolean query benchmarks, same 1M-doc corpus (lower is better):
 | Selective | **1.1 µs / 22 allocs** | 4.7 µs / 41 | 3.7 µs / 42 |
 | Should | **308 µs / 34 allocs** | 353 µs / 2063 | 369 µs / 2065 |
 | Must | **304 µs / 34 allocs** | 384 µs / 2074 | 419 µs / 2075 |
+
+### Current numbers (i7-1280P)
+
+Current code, measured on an **Intel Core i7-1280P** (12th gen, 20 threads), Linux, amd64, Go 1.27.4. These are not comparable with the i9-10900K tables above: the CPU and the code both differ. Each benchmark ran once (`-count=1`), so treat timing differences under about 10% as noise. Heap and allocation counts don't depend on timing and are exact.
+
+Construction and loading, same 1M-document corpus as above:
+
+| Operation | Time | Throughput | Heap | Allocs |
+|---|---|---|---|---|
+| `BuildFrom` | 1.80 s | — | 1.70 GB | 21.4M |
+| `Writer.Batch` + `Writer.Merge` (1M docs to one segment on disk) | 1.95 s | — | 1.75 GB | 21.4M |
+| `Merge` 2×500K→1M | 0.74 s | 1,037 MB/s | 0.95 GB | 15.0M |
+| `Load` | 3.4 ms | — | 2.1 KB | 7 |
+
+`Load` maps the file and slices it without reading the pages, so its time does not grow with the amount of data read and no throughput figure is given. Heap is the total allocated per operation (`B/op`), not peak resident memory.
+
+Queries, same 1,000-document corpus as above:
+
+| Query | textiplex |
+|---|---|
+| Combined (Must + Should + MustNot) | 4.7 µs / 60 allocs |
+| Selective | 1.2 µs / 38 allocs |
+| Should | 47.9 µs / 65 allocs |
+| Must | 52.4 µs / 79 allocs |
 
 ## File format
 
@@ -87,11 +113,12 @@ Boolean query benchmarks, same 1M-doc corpus (lower is better):
 │  total_docs (4B) | padding (4B)                     │
 │  field_count (8B)                                   │
 │  total_posting_lists (8B)                           │
+│  total_posting_lists_data_size (8B)                 │
 │  total_token_frequencies (8B)                       │
 ├─────────────────────────────────────────────────────┤
 │                  DOC ID TABLE                       │
 │  [size (8B) | data (128B)] × total_docs             │
-│  (fixed 136B stride; sorted alphabetically;         │
+│  (fixed 136B stride; insertion order, not sorted;   │
 │   position = internal doc ID; loaded zero-copy)     │
 ├─────────────────────────────────────────────────────┤
 │           TOKEN FREQUENCIES REGION                  │
@@ -121,15 +148,17 @@ Boolean query benchmarks, same 1M-doc corpus (lower is better):
 │  └───────────────────────────────────────────────┘  │
 ├─────────────────────────────────────────────────────┤
 │              POSTING LISTS REGION                   │
-│  [bitmap_size (4B) | roaring bitmap bytes]          │
-│  × total_posting_lists                              │
+│  [offset (8B) | length (8B)] × total_posting_lists  │
+│  followed by total_posting_lists_data_size bytes    │
+│  of roaring bitmaps (offsets relative to the        │
+│  start of the bitmap bytes)                         │
 └─────────────────────────────────────────────────────┘
 ```
 
 ### Invariants
 
 - Doc IDs and token values are stored as `RawValue`: an 8-byte length plus a fixed `MaxRawValueSize`-byte (currently **128**) inline buffer. The doc ID stride is therefore **136 B**; the token entry stride (3 × 8 B index fields + `RawValue`) is **160 B**; the doc-length entry stride is **8 B** (two `uint32` fields, no padding). These fixed strides allow the respective tables to be mapped directly over the mmap'd file as native Go slices with zero allocation and zero deserialization.
-- Doc IDs sorted alphabetically. Position in the table is the internal doc ID used in posting lists and TF entries.
+- Doc IDs are stored in the order the documents were passed to `BuildFrom`; `Merge` appends the second segment's IDs after the first's. They are not sorted. Position in the table is the internal doc ID used in posting lists and TF entries.
 - Token frequencies are written immediately after the doc ID table, before the field blocks. Each entry is a packed 8 B record (`doc_index uint32 | frequency uint32`, no padding); the `FrequenciesIndex` field in each token entry is an absolute offset into this region.
 - Doc length entries within each field sorted by `doc_index` ascending, enabling merge-scan during BM25 scoring.
 - Token entries within each field sorted alphabetically, enabling binary search and range iteration.
@@ -216,7 +245,7 @@ if err := writer.Merge(); err != nil {
 }
 ```
 
-`Merge` performs a parallel bottom-up pairwise merge, using up to 8 workers or `runtime.NumCPU()` (whichever is smaller), until exactly one segment remains. Intermediate files are written to `TemporaryDirectory` and moved into `Directory` on completion.
+`Merge` performs a parallel bottom-up pairwise merge with `runtime.NumCPU()` workers until exactly one segment remains. The `MaxWorkers` field currently has no effect. Each merged segment is written directly into `Directory`, and both of its input segments are deleted once that merge returns. `TemporaryDirectory` only holds scratch files used while a merge runs.
 
 Call `Merge` after all `Batch` calls are done. Do not call it while background batching goroutines are still running.
 

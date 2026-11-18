@@ -7,11 +7,12 @@
 │  total_docs (4B) | padding (4B)                     │
 │  field_count (8B)                                   │
 │  total_posting_lists (8B)                           │
+│  total_posting_lists_data_size (8B)                 │
 │  total_token_frequencies (8B)                       │
 ├─────────────────────────────────────────────────────┤
 │                  DOC ID TABLE                       │
 │  [size (8B) | data (128B)] × total_docs             │
-│  (fixed 136B stride; sorted alphabetically;         │
+│  (fixed 136B stride; insertion order, not sorted;   │
 │   position = internal ID; mapped zero-copy)         │
 ├─────────────────────────────────────────────────────┤
 │           TOKEN FREQUENCIES REGION                  │
@@ -42,8 +43,10 @@
 │  ...repeated for each field...                      │
 ├─────────────────────────────────────────────────────┤
 │              POSTING LISTS REGION                   │
-│  [bitmap_size (4B) | roaring bitmap bytes]          │
-│  × total_posting_lists                              │
+│  [offset (8B) | length (8B)] × total_posting_lists  │
+│  followed by total_posting_lists_data_size bytes    │
+│  of roaring bitmaps (offsets relative to the        │
+│  start of the bitmap bytes)                         │
 │  (indexed by posting_list_index)                    │
 └─────────────────────────────────────────────────────┘
 ```
@@ -51,7 +54,7 @@
 ## Invariants
 
 - Doc IDs and token values are stored as `RawValue`: an 8-byte length plus a fixed `MaxRawValueSize`-byte (currently **128**) inline buffer. The doc ID stride is therefore **136 B**; the token entry stride (3 × 8 B index fields + `RawValue`) is **160 B**; the doc-length entry stride is **8 B** (two `uint32` fields, no padding). The fixed stride is what allows the doc ID table and each field's token table to be mapped directly over the file as native Go slices (`unsafe.Slice`) with zero allocation and zero deserialization.
-- Doc IDs are sorted alphabetically. A document's position in the table is its internal sequential ID used in posting lists and TF entries.
+- Doc IDs are stored in the order the documents were passed to `BuildFrom`; `Merge` appends B's IDs after A's. They are not sorted. A document's position in the table is its internal sequential ID used in posting lists and TF entries.
 - Token frequencies are written immediately after the doc ID table, before the field blocks. Each `TokenFrequencyEntry` is a fixed 8 B record: `doc_index (uint32, 4B) | frequency (uint32, 4B)` — both fields are naturally aligned, so the struct carries no padding. The `FrequenciesIndex` in a token entry is an absolute offset into this region; the relevant slice is `TokenFrequencies[FrequenciesIndex : FrequenciesIndex+FrequencyCount]`.
 - Doc length entries within each field block are sorted by doc_index ascending. This enables a merge scan during BM25 scoring instead of binary search.
 - Token entries within each field block are sorted alphabetically by token bytes, so they are binary-searched in place at query time — no btree is built at load. (A btree is used only as a transient accumulator during `BuildFrom`.)
@@ -76,7 +79,7 @@ Because the doc-ID domain is itself `uint32`, no single posting list can seriali
 
 `Storage.Size` is set by both `BuildFrom` and `Load`:
 
-- After `BuildFrom`: exact byte count that `SaveTo` will write. `SaveTo` uses it to `Truncate` + mmap the output before writing.
+- After `BuildFrom`: exact byte count that `SaveTo` will write. `SaveTo` itself does not read it.
 - After `Load`: number of bytes consumed from the mapped file (equal to the file size for a single-storage file).
 
 ## Canonical write path
@@ -85,20 +88,22 @@ Because the doc-ID domain is itself `uint32`, no single posting list can seriali
 var s Storage
 s.BuildFrom(docs...)          // computes s.Size
 
-err := s.SaveTo("index.bin")  // Truncate(s.Size) + mmap(PROT_WRITE) + msync;
-                              // writes directly into the mapped region with no
-                              // heap staging buffer, removes the file on error
+err := s.SaveTo("index.bin")  // create + buffered sequential writes + fsync;
+                              // removes the file on error
 ```
 
-`SaveTo` owns the whole write: it truncates the output to `s.Size`, maps it
-`PROT_WRITE`, appends every section into the mapped slice, and `msync`s. There is
-no separate "write into a caller-provided buffer" entry point.
+`SaveTo` owns the whole write: it creates the output with `os.Create` (an
+existing file at that path is truncated), streams the header, doc ID table, token
+frequencies and field blocks through a 4 MiB buffered writer, `fsync`s, then
+appends the posting-list headers and bitmap bytes and `fsync`s again. If any step
+fails the file is removed. There is no separate "write into a caller-provided
+buffer" entry point.
 
 ## Canonical read path
 
 ```go
 var s Storage
-err := s.Load("index.bin")   // open + mmap(PROT_READ, MAP_PRIVATE) + madvise
+err := s.Load("index.bin")   // open + mmap(PROT_READ, MAP_SHARED) + madvise
 defer s.Close()              // munmap + close fd
 
 // s is now queryable; token/doc/TF tables are mapped in place as fixed-stride
@@ -207,8 +212,10 @@ Where:
 
 ## Benchmarks
 
-All benchmarks run on an Intel Core i9-10900K @ 3.70GHz (10C/20T). The 1M-doc
-corpus has 3 fields per document, 1 unique token per field (Bluge-equivalent).
+The table below was measured on an Intel Core i9-10900K @ 3.70GHz (10C/20T) at
+an earlier version of the code. The 1M-doc corpus has 3 fields per document,
+1 unique token per field (Bluge-equivalent). Numbers for the current code are in
+[Current numbers](#current-numbers-i7-1280p).
 
 | Operation | Time | Throughput | Heap | Allocs |
 |---|---|---|---|---|
@@ -223,10 +230,26 @@ Build vs Bluge fork: **1.9× faster, 3.0× less heap, 3.1× fewer allocs.**
 Build vs Bluge upstream: **4.3× faster, 3.9× less heap, 3.9× fewer allocs.**
 Build vs Bleve: **8.5× faster, 4.7× less heap, 4.4× fewer allocs.**
 
-The fixed-stride layout makes `Load` a pure mmap-and-slice operation: doc
-IDs, token tables, doc-length tables and token-frequency tables are mapped in
-place with no per-record parsing, which is why load throughput reaches
-804 MB/s and the merge runs at 375 MB/s while holding only the working set.
+The `Load` row predates the current loader. The fixed-stride layout now makes
+`Load` a pure mmap-and-slice operation: doc IDs, token tables, doc-length tables
+and token-frequency tables are mapped in place with no per-record parsing.
+
+### Current numbers (i7-1280P)
+
+Current code on an Intel Core i7-1280P (12th gen, 20 threads), Linux, amd64,
+Go 1.27.4, same 1M-doc corpus. Not comparable with the i9-10900K table above:
+the CPU and the code both differ. One run per benchmark (`-count=1`), so treat
+timing differences under about 10% as noise; heap and allocation counts are exact.
+
+| Operation | Time | Throughput | Heap | Allocs |
+|---|---|---|---|---|
+| BuildFrom | 1.80 s | — | 1.70 GB | 21.4M |
+| Merge 2×500K→1M | 0.74 s | 1,037 MB/s | 0.95 GB | 15.0M |
+| Load | 3.4 ms | — | 2.1 KB | 7 |
+
+`Load` maps the file without reading its pages, so its time does not grow with
+the amount of data read and no throughput figure is given. Heap is the total
+allocated per operation (`B/op`), not peak resident memory.
 
 ### Full English Wikipedia
 

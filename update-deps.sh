@@ -1,6 +1,6 @@
 #!/bin/sh
 
-go get -u github.com/RoaringBitmap/roaring@latest
+go get -u github.com/RoaringBitmap/roaring/v2@latest
 go get -u github.com/alecthomas/participle/v2@latest
 go get -u github.com/stretchr/testify@latest
 go get -u github.com/tidwall/btree/v2@latest

@@ -3,7 +3,7 @@ package query
 import (
 	"bytes"
 
-	"github.com/RoaringBitmap/roaring"
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/RogueTeam/textiplex/levenshtein"
 	"github.com/RogueTeam/textiplex/storage"
 )
@@ -160,7 +160,9 @@ func (s *Searcher) Iter(c *Clause, handle HandleClauseFunc) {
 
 		var fieldFound bool
 		state.Field, fieldFound = s.Storage.Fields[entry.FieldHash]
-		if fieldFound {
+		// A field can exist with no tokens (every value was empty); there is
+		// nothing to range over and Tokens[0] would panic.
+		if fieldFound && len(state.Field.Tokens) > 0 {
 			var (
 				lo = entry.Value.Low
 				hi = entry.Value.High
@@ -297,7 +299,9 @@ func (s *Searcher) IterCond(c *Clause, handle HandleClauseCondFunc) {
 
 		var fieldFound bool
 		state.Field, fieldFound = s.Storage.Fields[entry.FieldHash]
-		if fieldFound {
+		// A field can exist with no tokens (every value was empty); there is
+		// nothing to range over and Tokens[0] would panic.
+		if fieldFound && len(state.Field.Tokens) > 0 {
 			var (
 				lo = entry.Value.Low
 				hi = entry.Value.High

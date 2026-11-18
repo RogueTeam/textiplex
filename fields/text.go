@@ -16,6 +16,10 @@ func TextField(dst *storage.FieldDefinition, tokPool *pool.Pool[storage.TokenDef
 
 	var wideTokens []*storage.TokenDefinition
 	tokensMap := make(map[uint64]*storage.TokenDefinition)
+	// Tokens whose hash is already taken by a different value. xxh3 is not
+	// collision resistant, so whoever controls the indexed text could
+	// otherwise make one token silently count as another.
+	var collided map[string]*storage.TokenDefinition
 	var tokensSize uint64
 	for rawToken := range tokenizer(text) {
 		if rawToken == nil || len(rawToken.Value) == 0 {
@@ -27,7 +31,19 @@ func TextField(dst *storage.FieldDefinition, tokPool *pool.Pool[storage.TokenDef
 		tokenHash := xxh3.Hash(rawToken.Value)
 
 		token, found := tokensMap[tokenHash]
-		if !found {
+		if found && !bytes.Equal(token.Value, rawToken.Value) {
+			if collided == nil {
+				collided = make(map[string]*storage.TokenDefinition)
+			}
+			token, found = collided[string(rawToken.Value)]
+			if !found {
+				token = tokPool.Get()
+				wideTokens = append(wideTokens, token)
+				*token = storage.TokenDefinition{Value: rawToken.Value}
+				collided[string(rawToken.Value)] = token
+				tokensSize += TokenSize(token)
+			}
+		} else if !found {
 			token = tokPool.Get()
 			wideTokens = append(wideTokens, token)
 

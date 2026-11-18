@@ -3,8 +3,9 @@ package storage_test
 import (
 	"os"
 	"testing"
+	"unsafe"
 
-	"github.com/RoaringBitmap/roaring"
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/RogueTeam/textiplex/storage"
 	"github.com/RogueTeam/textiplex/testsuite"
 	"github.com/stretchr/testify/assert"
@@ -488,6 +489,17 @@ func TestReset(t *testing.T) {
 
 // ── LoadBytes error handling ──────────────────────────────────────────────────
 
+func TestLoadRejectsNewerVersion(t *testing.T) {
+	assertions := assert.New(t)
+	h := storage.Header{Magic: storage.MagicNumber, Version: storage.CurrentVersion + 1}
+	filename := testsuite.TempFilename(t, "future_*.bin")
+	buf := append(append([]byte(nil), unsafe.Slice((*byte)(unsafe.Pointer(&h)), storage.HeaderSize)...), make([]byte, 64)...)
+	assertions.NoError(os.WriteFile(filename, buf, 0o600))
+
+	var s storage.Storage
+	assertions.ErrorIs(s.Load(filename), storage.ErrUnsupportedVersion)
+}
+
 func TestLoadBytesErrors(t *testing.T) {
 	type Test struct {
 		name    string
@@ -495,16 +507,43 @@ func TestLoadBytesErrors(t *testing.T) {
 		wantErr string
 	}
 
+	header := func(mutate func(h *storage.Header)) []byte {
+		h := storage.Header{Magic: storage.MagicNumber, Version: storage.VersionV1}
+		mutate(&h)
+		return append([]byte(nil), unsafe.Slice((*byte)(unsafe.Pointer(&h)), storage.HeaderSize)...)
+	}
+	withPadding := func(b []byte, n int) []byte { return append(b, make([]byte, n)...) }
+
 	tests := []Test{
 		{
 			name:    "empty buffer",
 			buf:     []byte{},
-			wantErr: "doesn't even have enough space",
+			wantErr: "smaller than the",
 		},
 		{
 			name:    "buffer smaller than header",
 			buf:     make([]byte, 4),
-			wantErr: "doesn't even have enough space",
+			wantErr: "smaller than the",
+		},
+		{
+			name:    "zero filled file",
+			buf:     make([]byte, 4096),
+			wantErr: "bad magic number",
+		},
+		{
+			name:    "v2 without footer",
+			buf:     withPadding(header(func(h *storage.Header) { h.Version = storage.VersionV2 }), 64),
+			wantErr: "footer missing",
+		},
+		{
+			name:    "field count larger than the file",
+			buf:     withPadding(header(func(h *storage.Header) { h.FieldCount = 1 << 34 }), 1),
+			wantErr: "fields but only",
+		},
+		{
+			name:    "token frequency count overflowing the size check",
+			buf:     withPadding(header(func(h *storage.Header) { h.TotalTokenFrequencies = 1<<61 + 1 }), 64),
+			wantErr: "token frequencies",
 		},
 	}
 
@@ -523,7 +562,10 @@ func TestLoadBytesErrors(t *testing.T) {
 			if !assertions.Error(err) {
 				return
 			}
+			assertions.ErrorIs(err, storage.ErrCorrupt)
 			assertions.Contains(err.Error(), tc.wantErr)
+			assertions.Nil(s.DocumentsIds, "failed load must leave the storage empty")
+			assertions.Nil(s.Buffer, "failed load must not keep the mapping")
 		})
 	}
 }

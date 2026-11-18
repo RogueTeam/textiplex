@@ -1,6 +1,7 @@
 package textiplex_test
 
 import (
+	"os"
 	"runtime"
 	"strconv"
 	"sync"
@@ -17,11 +18,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var DoHeavyTest = os.Getenv("TEST_HEAVY") == "1"
+
 var DefaultTokenizer = en.TokenizerWithoutStopwords
 
 const MaxBatchSize = 1024 * 1024 * 1024 // 1GB
 
 func BenchmarkHeavyWriter(b *testing.B) {
+	if !DoHeavyTest {
+		b.Skip("Test heavy not set")
+		return
+	}
+
 	b.StopTimer()
 
 	var writer = textiplex.Writer{

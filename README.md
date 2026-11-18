@@ -20,7 +20,7 @@ Most search engines in Go are ports or wrappers of JVM-era architectures — Luc
 
 ## Benchmarks
 
-All benchmarks run on an **Intel Core i9-10900K @ 3.70 GHz** (10 cores / 20 threads), Linux, amd64.
+The Wikipedia run and the comparison tables against Bluge and Bleve were measured on an **Intel Core i9-10900K @ 3.70 GHz** (10 cores / 20 threads), Linux, amd64, at an earlier version of the code. Numbers for the current code, measured on a different machine, are in [Current numbers](#current-numbers-i7-1280p).
 
 ### Full English Wikipedia — the headline result
 
@@ -59,6 +59,8 @@ Segment creation stayed inside a bounded memory envelope on a consumer desktop C
 | Bluge upstream (offline) | 12.28s | — | 8.20 GB | 131.0M |
 | Bleve (offline) | 24.28s | — | 10.07 GB | 146.5M |
 
+The `Load` row predates the current loader, which maps the file and slices it in place instead of parsing it. See [Current numbers](#current-numbers-i7-1280p) for how it behaves now.
+
 ### Improvement ratios — `BuildFrom` (2.84s) vs full offline build
 
 | Comparison | Time | Heap | Allocs |
@@ -69,7 +71,7 @@ Segment creation stayed inside a bounded memory envelope on a consumer desktop C
 
 ### Query latency
 
-Boolean query benchmarks, same 1M-doc corpus (lower is better):
+Boolean query benchmarks over a 1,000-document corpus (one 200-token body field per document, a 50-term vocabulary shared by every document plus one unique term per document), lower is better:
 
 | Query | textiplex | Bluge fork | Bluge upstream |
 |---|---|---|---|
@@ -77,6 +79,30 @@ Boolean query benchmarks, same 1M-doc corpus (lower is better):
 | Selective | **1.1 µs / 22 allocs** | 4.7 µs / 41 | 3.7 µs / 42 |
 | Should | **308 µs / 34 allocs** | 353 µs / 2063 | 369 µs / 2065 |
 | Must | **304 µs / 34 allocs** | 384 µs / 2074 | 419 µs / 2075 |
+
+### Current numbers (i7-1280P)
+
+Current code, measured on an **Intel Core i7-1280P** (12th gen, 20 threads), Linux, amd64, Go 1.27.4. These are not comparable with the i9-10900K tables above: the CPU and the code both differ. Each benchmark ran once (`-count=1`), so treat timing differences under about 10% as noise. Heap and allocation counts don't depend on timing and are exact.
+
+Construction and loading, same 1M-document corpus as above:
+
+| Operation | Time | Throughput | Heap | Allocs |
+|---|---|---|---|---|
+| `BuildFrom` | 1.80 s | — | 1.70 GB | 21.4M |
+| `Writer.Batch` + `Writer.Merge` (1M docs to one segment on disk) | 1.95 s | — | 1.75 GB | 21.4M |
+| `Merge` 2×500K→1M | 0.74 s | 1,037 MB/s | 0.95 GB | 15.0M |
+| `Load` | 3.4 ms | — | 2.1 KB | 7 |
+
+`Load` maps the file and slices it without reading the pages, so its time does not grow with the amount of data read and no throughput figure is given. Heap is the total allocated per operation (`B/op`), not peak resident memory.
+
+Queries, same 1,000-document corpus as above:
+
+| Query | textiplex |
+|---|---|
+| Combined (Must + Should + MustNot) | 4.7 µs / 60 allocs |
+| Selective | 1.2 µs / 38 allocs |
+| Should | 47.9 µs / 65 allocs |
+| Must | 52.4 µs / 79 allocs |
 
 ## File format
 
@@ -87,11 +113,12 @@ Boolean query benchmarks, same 1M-doc corpus (lower is better):
 │  total_docs (4B) | padding (4B)                     │
 │  field_count (8B)                                   │
 │  total_posting_lists (8B)                           │
+│  total_posting_lists_data_size (8B)                 │
 │  total_token_frequencies (8B)                       │
 ├─────────────────────────────────────────────────────┤
 │                  DOC ID TABLE                       │
 │  [size (8B) | data (128B)] × total_docs             │
-│  (fixed 136B stride; sorted alphabetically;         │
+│  (fixed 136B stride; insertion order, not sorted;   │
 │   position = internal doc ID; loaded zero-copy)     │
 ├─────────────────────────────────────────────────────┤
 │           TOKEN FREQUENCIES REGION                  │
@@ -121,15 +148,23 @@ Boolean query benchmarks, same 1M-doc corpus (lower is better):
 │  └───────────────────────────────────────────────┘  │
 ├─────────────────────────────────────────────────────┤
 │              POSTING LISTS REGION                   │
-│  [bitmap_size (4B) | roaring bitmap bytes]          │
-│  × total_posting_lists                              │
+│  [offset (8B) | length (8B)] × total_posting_lists  │
+│  followed by total_posting_lists_data_size bytes    │
+│  of roaring bitmaps (offsets relative to the        │
+│  start of the bitmap bytes)                         │
+├─────────────────────────────────────────────────────┤
+│                  FOOTER (version 2)                 │
+│  checksum (8B, xxh3 of every byte before it)        │
+│  footer magic (8B)                                  │
 └─────────────────────────────────────────────────────┘
 ```
+
+Files are written in format version 2, which adds the footer. Version 1 files (no footer) are still read, so existing indexes keep working; merging them produces version 2 output. `Load` rejects files with the wrong magic number (including files written on a machine of the other byte order), a newer version, or a version 2 file whose footer is missing, i.e. one that was truncated or never finished writing.
 
 ### Invariants
 
 - Doc IDs and token values are stored as `RawValue`: an 8-byte length plus a fixed `MaxRawValueSize`-byte (currently **128**) inline buffer. The doc ID stride is therefore **136 B**; the token entry stride (3 × 8 B index fields + `RawValue`) is **160 B**; the doc-length entry stride is **8 B** (two `uint32` fields, no padding). These fixed strides allow the respective tables to be mapped directly over the mmap'd file as native Go slices with zero allocation and zero deserialization.
-- Doc IDs sorted alphabetically. Position in the table is the internal doc ID used in posting lists and TF entries.
+- Doc IDs are stored in the order the documents were passed to `BuildFrom`; `Merge` appends the second segment's IDs after the first's. They are not sorted. Position in the table is the internal doc ID used in posting lists and TF entries.
 - Token frequencies are written immediately after the doc ID table, before the field blocks. Each entry is a packed 8 B record (`doc_index uint32 | frequency uint32`, no padding); the `FrequenciesIndex` field in each token entry is an absolute offset into this region.
 - Doc length entries within each field sorted by `doc_index` ascending, enabling merge-scan during BM25 scoring.
 - Token entries within each field sorted alphabetically, enabling binary search and range iteration.
@@ -208,6 +243,10 @@ if err := writer.Batch(batch); err != nil {
 
 `Batch` is safe to call from multiple goroutines. Each call writes an independent segment to `Directory`. You can call it as many times as needed before merging.
 
+Each segment is written under a temporary name, synced, and renamed into place, so a crash never leaves a partial segment. Segment numbers continue after the highest segment already in `Directory`, and a segment never replaces an existing file, so a restarted process cannot overwrite earlier batches. Only one process should write to a `Directory` at a time.
+
+`Batch` returns `storage.ErrValueTooLong` if a document ID or a token is longer than 128 bytes (`storage.MaxRawValueSize`), instead of storing it cut short.
+
 #### Merging segments
 
 ```go
@@ -216,9 +255,13 @@ if err := writer.Merge(); err != nil {
 }
 ```
 
-`Merge` performs a parallel bottom-up pairwise merge, using up to 8 workers or `runtime.NumCPU()` (whichever is smaller), until exactly one segment remains. Intermediate files are written to `TemporaryDirectory` and moved into `Directory` on completion.
+`Merge` performs a parallel bottom-up pairwise merge until at most one segment remains, with up to `MaxWorkers` merges at a time (default `runtime.NumCPU()`). Lower `MaxWorkers` to bound peak memory. `TemporaryDirectory` only holds scratch files used while a merge runs; merged segments are written into `Directory`.
 
-Call `Merge` after all `Batch` calls are done. Do not call it while background batching goroutines are still running.
+Merging is crash-safe. Each pairwise merge first records its two inputs in a `<output>.seg.parents` file, writes the output under a temporary name, syncs it and renames it into place, and only then deletes the inputs and the record. If the process dies at any point, the next `Merge` finishes or discards the interrupted merge, so no documents are lost or duplicated, and deletes temporary segment files the crash left behind. `Directory` only counts `*.seg` files as segments; temporary and record files are ignored. (The test suite kills `Merge` with `SIGKILL` hundreds of times at random points and checks every document survives exactly once.)
+
+Set `VerifySegments: true` to check every input with `storage.Verify` (checksum and internal references) before merging it. A damaged segment is then reported instead of merged and deleted. It costs one extra full read of each input.
+
+Call `Merge` after all `Batch` calls are done. Do not call it while background batching goroutines are still running: `Merge` treats unfinished segment files in `Directory` as crash leftovers and deletes them.
 
 ---
 
@@ -272,7 +315,9 @@ for docId := range seq {
 }
 ```
 
-`QueryString` returns an `iter.Seq[[]byte]` of raw document IDs in score order. The sequence is lazy: documents are scored on iteration, so breaking early is cheap.
+`QueryString` returns an `iter.Seq[[]byte]` of raw document IDs in score order. The sequence is lazy: documents are scored on iteration, so breaking early is cheap. Each yielded ID is a copy, so you can keep it after the loop or after `Close`.
+
+`Close` and `Reset` wait for queries that are reading the index. An iteration that is still running when the reader is closed or reset stops early rather than reading the closed index. It is safe to call them from inside the loop.
 
 `skip` is a zero-based offset that skips the first N results — use it for pagination. `reverse` inverts the iteration order over the scored result set.
 
@@ -426,7 +471,11 @@ textiplex makes deliberate trade-offs you should know before building on it.
 
 **No delete or update.** Once a document is indexed it cannot be removed or modified in place. To reflect changes, re-index the affected segment and merge. For most batch-oriented workloads (ETL pipelines, crawlers, periodic sync jobs) the re-index cost is low enough that this is not a practical constraint. If your workload requires per-document mutation at query time, textiplex is not the right fit.
 
-**Single segment required at query time.** `Reader` expects exactly one segment in the directory. Before opening a reader, merge all outstanding segments with `Writer.Merge()`. This is enforced at runtime: `Reset` returns an error if the directory contains more than one entry.
+**Single segment required at query time.** `Reader` expects exactly one segment in the directory. Before opening a reader, merge all outstanding segments with `Writer.Merge()`. This is enforced at runtime: `Reset` returns an error if the directory contains more than one `*.seg` file.
+
+**128-byte document IDs and tokens.** Document IDs and tokens are stored in fixed 128-byte slots. Longer values are rejected with `storage.ErrValueTooLong`; hash or shorten long IDs (URLs, paths) before indexing them.
+
+**Integrity checks are opt-in.** `Load` checks a file's structure but does not read every byte, so it stays fast on large indexes. Call `Storage.Verify()` to check the checksum and every internal reference, for example after copying an index from another machine. A damaged index is not supposed to crash a query: damaged parts are dropped from results. This is fuzz-tested (`FuzzCorruptIndex` in `claude/reviews`) over mutated index files of both format versions.
 
 **AGPL-3.0.** textiplex is free to use under the terms of the GNU Affero General Public License v3. If you run textiplex as part of a networked service, the AGPL requires you to make the complete corresponding source of that service available to users. Commercial licensing is available; contact antoniodonis.job.contact@gmail.com.
 

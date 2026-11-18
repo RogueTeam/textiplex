@@ -7,11 +7,12 @@
 │  total_docs (4B) | padding (4B)                     │
 │  field_count (8B)                                   │
 │  total_posting_lists (8B)                           │
+│  total_posting_lists_data_size (8B)                 │
 │  total_token_frequencies (8B)                       │
 ├─────────────────────────────────────────────────────┤
 │                  DOC ID TABLE                       │
 │  [size (8B) | data (128B)] × total_docs             │
-│  (fixed 136B stride; sorted alphabetically;         │
+│  (fixed 136B stride; insertion order, not sorted;   │
 │   position = internal ID; mapped zero-copy)         │
 ├─────────────────────────────────────────────────────┤
 │           TOKEN FREQUENCIES REGION                  │
@@ -42,16 +43,22 @@
 │  ...repeated for each field...                      │
 ├─────────────────────────────────────────────────────┤
 │              POSTING LISTS REGION                   │
-│  [bitmap_size (4B) | roaring bitmap bytes]          │
-│  × total_posting_lists                              │
+│  [offset (8B) | length (8B)] × total_posting_lists  │
+│  followed by total_posting_lists_data_size bytes    │
+│  of roaring bitmaps (offsets relative to the        │
+│  start of the bitmap bytes)                         │
 │  (indexed by posting_list_index)                    │
+├─────────────────────────────────────────────────────┤
+│                  FOOTER (version 2)                 │
+│  checksum (8B, xxh3 of every byte before it)        │
+│  footer magic (8B)                                  │
 └─────────────────────────────────────────────────────┘
 ```
 
 ## Invariants
 
 - Doc IDs and token values are stored as `RawValue`: an 8-byte length plus a fixed `MaxRawValueSize`-byte (currently **128**) inline buffer. The doc ID stride is therefore **136 B**; the token entry stride (3 × 8 B index fields + `RawValue`) is **160 B**; the doc-length entry stride is **8 B** (two `uint32` fields, no padding). The fixed stride is what allows the doc ID table and each field's token table to be mapped directly over the file as native Go slices (`unsafe.Slice`) with zero allocation and zero deserialization.
-- Doc IDs are sorted alphabetically. A document's position in the table is its internal sequential ID used in posting lists and TF entries.
+- Doc IDs are stored in the order the documents were passed to `BuildFrom`; `Merge` appends B's IDs after A's. They are not sorted. A document's position in the table is its internal sequential ID used in posting lists and TF entries.
 - Token frequencies are written immediately after the doc ID table, before the field blocks. Each `TokenFrequencyEntry` is a fixed 8 B record: `doc_index (uint32, 4B) | frequency (uint32, 4B)` — both fields are naturally aligned, so the struct carries no padding. The `FrequenciesIndex` in a token entry is an absolute offset into this region; the relevant slice is `TokenFrequencies[FrequenciesIndex : FrequenciesIndex+FrequencyCount]`.
 - Doc length entries within each field block are sorted by doc_index ascending. This enables a merge scan during BM25 scoring instead of binary search.
 - Token entries within each field block are sorted alphabetically by token bytes, so they are binary-searched in place at query time — no btree is built at load. (A btree is used only as a transient accumulator during `BuildFrom`.)
@@ -76,29 +83,47 @@ Because the doc-ID domain is itself `uint32`, no single posting list can seriali
 
 `Storage.Size` is set by both `BuildFrom` and `Load`:
 
-- After `BuildFrom`: exact byte count that `SaveTo` will write. `SaveTo` uses it to `Truncate` + mmap the output before writing.
-- After `Load`: number of bytes consumed from the mapped file (equal to the file size for a single-storage file).
+- After `BuildFrom`: exact byte count that `SaveTo` will write, footer included. `SaveTo` itself does not read it.
+- After `Load`: number of bytes consumed from the mapped file. For version 2 files this is the whole file, footer included; version 1 files may carry trailing bytes that are not counted.
 
 ## Canonical write path
 
 ```go
 var s Storage
-s.BuildFrom(docs...)          // computes s.Size
+err := s.BuildFrom(docs...)   // computes s.Size; ErrValueTooLong for >128 B values
 
-err := s.SaveTo("index.bin")  // Truncate(s.Size) + mmap(PROT_WRITE) + msync;
-                              // writes directly into the mapped region with no
-                              // heap staging buffer, removes the file on error
+err = s.SaveTo("index.bin")   // temp file + buffered writes + checksum footer
+                              // + fsync + rename + directory fsync
 ```
 
-`SaveTo` owns the whole write: it truncates the output to `s.Size`, maps it
-`PROT_WRITE`, appends every section into the mapped slice, and `msync`s. There is
-no separate "write into a caller-provided buffer" entry point.
+`SaveTo` owns the whole write. It writes to a temporary file next to the
+destination (`.index.bin.<random>.tmp`): the header, doc ID table, token frequencies and
+field blocks through a 4 MiB buffered writer, then the posting-list headers and
+bitmap bytes, then the footer with the xxh3 checksum of everything before it.
+It then syncs the file, renames it over the destination and syncs the directory.
+
+Until the rename, the destination is untouched: a failure or crash leaves any
+existing index intact, and processes that have the old file loaded keep reading
+it (the rename gives the new file a new inode instead of truncating the mapped
+one). New files get the usual `0666` minus the umask, like `os.Create`; a
+replaced file keeps its permissions, and a destination that is a symlink has
+its target replaced, not the link. `SaveToNew` does the same but refuses to replace an existing file
+(`errors.Is(err, os.ErrExist)`). There is no separate "write into a
+caller-provided buffer" entry point.
+
+`BuildFrom` returns `ErrValueTooLong` for a document ID or token over
+`MaxRawValueSize` bytes and `ErrTooManyDocuments` past the `uint32` document
+limit, leaving the storage unchanged. A storage loaded from a file is closed
+only once the new one is built, so documents may point into the old mapping
+(for example to rebuild an index from its own tokens). A token listed twice in one document's field
+has its frequencies summed, and a field listed twice in one document has its
+lengths summed.
 
 ## Canonical read path
 
 ```go
 var s Storage
-err := s.Load("index.bin")   // open + mmap(PROT_READ, MAP_PRIVATE) + madvise
+err := s.Load("index.bin")   // open + mmap(PROT_READ, MAP_SHARED) + madvise
 defer s.Close()              // munmap + close fd
 
 // s is now queryable; token/doc/TF tables are mapped in place as fixed-stride
@@ -109,18 +134,51 @@ defer s.Close()              // munmap + close fd
 `Load` maps the file read-only and points every table (`DocumentsIds`,
 `TokenFrequencies`, each field's `DocumentLengths` and `Tokens`, and the posting
 lists) directly into the mapped pages via `unsafe.Slice`. Nothing is copied out
-of the mapping, so the `Storage` is valid only until `Close`.
+of the mapping, so the `Storage` is valid only until `Close`. `Close` clears the
+storage so that stale use fails cleanly; slices taken from it before `Close`
+must not be used afterwards. `Load` on a storage that is already loaded closes
+it first.
+
+Before mapping any table, `Load` checks the magic number, the version, and (for
+version 2) the footer, then checks that every table fits in the remaining bytes.
+Size checks divide instead of multiplying, so a damaged count cannot overflow
+past them, and the field count is bounded by the file size before anything is
+allocated. Errors caused by the file's contents wrap `ErrCorrupt` (or
+`ErrUnsupportedVersion`), and a failed `Load` leaves the storage empty.
+
+`Load` does not read every byte, so it stays fast on large files. `Verify` does:
+
+```go
+if err := s.Verify(); err != nil { // errors.Is(err, ErrCorrupt); ErrChecksum for a bad checksum
+    log.Fatal(err)
+}
+```
+
+It compares the file's xxh3 with the footer (version 2), then checks every
+internal reference: doc IDs and tokens fit their 128-byte slots, tokens are
+strictly sorted, each token's frequencies and posting list are in range, name
+the same documents, and reference only existing documents. Version 1 files get
+the reference checks only.
 
 ## Posting list decoding
 
 A `PostingList` is a thin `{ Data []byte }` view into the mmap'd file. Decode
-it into a roaring bitmap with `UnsafeBitmap`, which clears the destination and
-uses `FromUnsafeBytes` — the bitmap aliases the mmap buffer with no copy:
+posting list `i` into a roaring bitmap with `PostingLists.Bitmap`, which clears
+the destination and uses `FromUnsafeBytes` — the bitmap aliases the mmap buffer
+with no copy:
 
 ```go
 var bm roaring.Bitmap
-pl.UnsafeBitmap(&bm)        // clears bm, then zero-copy decode into it
+err := s.PostingLists.Bitmap(int64(token.PostingListIndex), &bm) // zero-copy, no allocation
 ```
+
+`Bitmap` returns an error wrapping `ErrCorrupt` and leaves `bm` empty if the
+index or its header points outside the file, the bytes do not decode, or the
+bitmap references a document past the document count. Queries ignore the error
+and so drop a damaged posting list instead of crashing. Use the token's
+frequencies through `Storage.FrequenciesOf(token)`, which returns `nil` for an
+out-of-range token instead of panicking. `PostingLists.Get(i).UnsafeBitmap(&bm)`
+still works, but skips the document range check.
 
 Because the decoded bitmap points into read-only mmap pages, it must not be
 mutated in place. Clone first if you need to modify it:
@@ -139,7 +197,7 @@ every doc ID in `b` must sort after every doc ID in `a`. This is guaranteed
 when the corpus is partitioned by range before building each batch.
 
 ```go
-m := storage.Merger{TempDir: "/tmp"} // temp files written here during merge
+m := storage.Merger{TempDir: "/tmp"} // scratch files written here during merge
 
 err := m.Merge("merged.bin", &a, &b)
 
@@ -147,6 +205,15 @@ var merged Storage
 err = merged.Load("merged.bin")
 defer merged.Close()
 ```
+
+The output is written like `SaveTo`: to a temporary file next to
+`merged.bin`, with a checksum footer, synced and renamed into place, so a
+failed or interrupted merge never leaves a partial `merged.bin` and never
+touches its inputs. Every write error is checked. Set `NoReplace: true` to make
+`Merge` refuse to replace an existing file. A damaged input (an out-of-range
+reference or a posting list that does not decode) makes `Merge` return an
+error wrapping `ErrCorrupt` instead of panicking or copying the damage into a
+new file with a fresh checksum.
 
 ### Merge semantics
 
@@ -207,8 +274,10 @@ Where:
 
 ## Benchmarks
 
-All benchmarks run on an Intel Core i9-10900K @ 3.70GHz (10C/20T). The 1M-doc
-corpus has 3 fields per document, 1 unique token per field (Bluge-equivalent).
+The table below was measured on an Intel Core i9-10900K @ 3.70GHz (10C/20T) at
+an earlier version of the code. The 1M-doc corpus has 3 fields per document,
+1 unique token per field (Bluge-equivalent). Numbers for the current code are in
+[Current numbers](#current-numbers-i7-1280p).
 
 | Operation | Time | Throughput | Heap | Allocs |
 |---|---|---|---|---|
@@ -223,10 +292,26 @@ Build vs Bluge fork: **1.9× faster, 3.0× less heap, 3.1× fewer allocs.**
 Build vs Bluge upstream: **4.3× faster, 3.9× less heap, 3.9× fewer allocs.**
 Build vs Bleve: **8.5× faster, 4.7× less heap, 4.4× fewer allocs.**
 
-The fixed-stride layout makes `Load` a pure mmap-and-slice operation: doc
-IDs, token tables, doc-length tables and token-frequency tables are mapped in
-place with no per-record parsing, which is why load throughput reaches
-804 MB/s and the merge runs at 375 MB/s while holding only the working set.
+The `Load` row predates the current loader. The fixed-stride layout now makes
+`Load` a pure mmap-and-slice operation: doc IDs, token tables, doc-length tables
+and token-frequency tables are mapped in place with no per-record parsing.
+
+### Current numbers (i7-1280P)
+
+Current code on an Intel Core i7-1280P (12th gen, 20 threads), Linux, amd64,
+Go 1.27.4, same 1M-doc corpus. Not comparable with the i9-10900K table above:
+the CPU and the code both differ. One run per benchmark (`-count=1`), so treat
+timing differences under about 10% as noise; heap and allocation counts are exact.
+
+| Operation | Time | Throughput | Heap | Allocs |
+|---|---|---|---|---|
+| BuildFrom | 1.80 s | — | 1.70 GB | 21.4M |
+| Merge 2×500K→1M | 0.74 s | 1,037 MB/s | 0.95 GB | 15.0M |
+| Load | 3.4 ms | — | 2.1 KB | 7 |
+
+`Load` maps the file without reading its pages, so its time does not grow with
+the amount of data read and no throughput figure is given. Heap is the total
+allocated per operation (`B/op`), not peak resident memory.
 
 ### Full English Wikipedia
 

@@ -152,11 +152,14 @@ func (a *Levenshtein) Matches() iter.Seq[*storage.Token] {
 				return
 			}
 
-			stack := make([]State, 1, key.Value.Size+1)
+			// Bytes() is bounded by MaxRawValueSize; Size comes from the index
+			// file and must not size an allocation or a loop on its own.
+			keyBytes := key.Value.Bytes()
+			stack := make([]State, 1, len(keyBytes)+1)
 			stack[0] = a.Start()
 			matched := 0
-			for matched < int(key.Value.Size) {
-				ns := a.Step(stack[matched], key.Value.Data[matched])
+			for matched < len(keyBytes) {
+				ns := a.Step(stack[matched], keyBytes[matched])
 				if a.Dead(ns) {
 					break
 				}
@@ -164,7 +167,7 @@ func (a *Levenshtein) Matches() iter.Seq[*storage.Token] {
 				matched++
 			}
 
-			if matched == int(key.Value.Size) && a.Accept(stack[matched]) {
+			if matched == len(keyBytes) && a.Accept(stack[matched]) {
 				if !yield(key) {
 					return
 				}
@@ -173,7 +176,7 @@ func (a *Levenshtein) Matches() iter.Seq[*storage.Token] {
 				}
 			}
 
-			next := a.NextSeek(stack, key.Value.Bytes(), matched)
+			next := a.NextSeek(stack, keyBytes, matched)
 			if next == nil {
 				return
 			}

@@ -9,14 +9,19 @@ import (
 	"os"
 	"unsafe"
 
-	"github.com/RoaringBitmap/roaring"
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/RogueTeam/textiplex/pointers"
 	"golang.org/x/sys/unix"
 )
 
 // Handles merges between storages
 type Merger struct {
+	// Directory for scratch files used during a merge. The output itself is
+	// always written next to its final name.
 	TempDir string
+	// Never replace an existing file at the output name: Merge fails with an
+	// error matching os.ErrExist instead.
+	NoReplace bool
 }
 
 func (m *Merger) CreateTemp(pattern string) (file *os.File, err error) {
@@ -71,11 +76,9 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 		for tokenIdx := range field.Tokens {
 			token := &field.Tokens[tokenIdx]
 
-			freqs := ctx.StorageA.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
-
-			_, err = ctx.DstW.Write(pointers.UnsafeSliceBytes(freqs))
+			err = writeFrequencies(ctx, token)
 			if err != nil {
-				return fmt.Errorf("failed to write A's token frequencies: %w", err)
+				return err
 			}
 		}
 	}
@@ -95,21 +98,9 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 			token := &field.Tokens[tokenIdx]
 
 			// Write directly to frequencies temporary file
-			freqs := ctx.StorageB.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
-
-			for index := range freqs {
-				freq := &freqs[index]
-
-				binary.NativeEndian.PutUint32(ctx.Buffer[:4], ctx.DocumentOffset+freq.DocumentIndex)
-				_, err = ctx.DstW.Write(ctx.Buffer[:4])
-				if err != nil {
-					return fmt.Errorf("failed to write B's token frequency index: %w", err)
-				}
-
-				_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&freq.Frequency))
-				if err != nil {
-					return fmt.Errorf("failed to write B's token frequency: %w", err)
-				}
+			err = writeShiftedFrequencies(ctx, token)
+			if err != nil {
+				return err
 			}
 		}
 	}
@@ -129,31 +120,18 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 				case aIdx >= aLen:
 					tokenB := &fieldB.Tokens[bIdx]
 
-					freqsB := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
-					for index := range freqsB {
-						freq := &freqsB[index]
-
-						binary.NativeEndian.PutUint32(ctx.Buffer[:4], ctx.DocumentOffset+freq.DocumentIndex)
-						_, err = ctx.DstW.Write(ctx.Buffer[:4])
-						if err != nil {
-							return fmt.Errorf("failed to write B's token frequency index: %w", err)
-						}
-
-						_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&freq.Frequency))
-						if err != nil {
-							return fmt.Errorf("failed to write B's token frequency: %w", err)
-						}
+					err = writeShiftedFrequencies(ctx, tokenB)
+					if err != nil {
+						return err
 					}
 
 					bIdx++
 				case bIdx >= bLen:
 					tokenA := &fieldA.Tokens[aIdx]
 
-					freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
-
-					_, err = ctx.DstW.Write(pointers.UnsafeSliceBytes(freqsA))
+					err = writeFrequencies(ctx, tokenA)
 					if err != nil {
-						return fmt.Errorf("failed to write A's token frequencies: %w", err)
+						return err
 					}
 
 					aIdx++
@@ -163,27 +141,14 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 						tokenA := &fieldA.Tokens[aIdx]
 						tokenB := &fieldB.Tokens[bIdx]
 
-						freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
-
-						_, err = ctx.DstW.Write(pointers.UnsafeSliceBytes(freqsA))
+						err = writeFrequencies(ctx, tokenA)
 						if err != nil {
-							return fmt.Errorf("failed to write A's token frequencies: %w", err)
+							return err
 						}
 
-						freqsB := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
-						for index := range freqsB {
-							freq := &freqsB[index]
-
-							binary.NativeEndian.PutUint32(ctx.Buffer[:4], ctx.DocumentOffset+freq.DocumentIndex)
-							_, err = ctx.DstW.Write(ctx.Buffer[:4])
-							if err != nil {
-								return fmt.Errorf("failed to write B's token frequency index: %w", err)
-							}
-
-							_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&freq.Frequency))
-							if err != nil {
-								return fmt.Errorf("failed to write B's token frequency: %w", err)
-							}
+						err = writeShiftedFrequencies(ctx, tokenB)
+						if err != nil {
+							return err
 						}
 
 						aIdx++
@@ -191,31 +156,18 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 					case -1:
 						tokenA := &fieldA.Tokens[aIdx]
 
-						freqsA := ctx.StorageA.TokenFrequencies[tokenA.FrequenciesIndex : tokenA.FrequenciesIndex+tokenA.FrequencyCount]
-
-						_, err = ctx.DstW.Write(pointers.UnsafeSliceBytes(freqsA))
+						err = writeFrequencies(ctx, tokenA)
 						if err != nil {
-							return fmt.Errorf("failed to write A's token frequencies: %w", err)
+							return err
 						}
 
 						aIdx++
 					default:
 						tokenB := &fieldB.Tokens[bIdx]
 
-						freqsB := ctx.StorageB.TokenFrequencies[tokenB.FrequenciesIndex : tokenB.FrequenciesIndex+tokenB.FrequencyCount]
-						for index := range freqsB {
-							freq := &freqsB[index]
-
-							binary.NativeEndian.PutUint32(ctx.Buffer[:4], ctx.DocumentOffset+freq.DocumentIndex)
-							_, err = ctx.DstW.Write(ctx.Buffer[:4])
-							if err != nil {
-								return fmt.Errorf("failed to write B's token frequency index: %w", err)
-							}
-
-							_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&freq.Frequency))
-							if err != nil {
-								return fmt.Errorf("failed to write B's token frequency: %w", err)
-							}
+						err = writeShiftedFrequencies(ctx, tokenB)
+						if err != nil {
+							return err
 						}
 
 						bIdx++
@@ -232,6 +184,69 @@ func (m *Merger) preparationPass(ctx *MergeContext) (err error) {
 		}
 	}
 
+	return nil
+}
+
+// writeFrequencies writes A's frequencies unchanged (A's documents keep their
+// indexes), after checking every document index against A's document table.
+func writeFrequencies(ctx *MergeContext, token *Token) (err error) {
+	freqs, err := ctx.StorageA.frequenciesOf(token)
+	if err != nil {
+		return fmt.Errorf("storage A: %w", err)
+	}
+	if len(freqs) == 0 {
+		return nil
+	}
+	aDocuments := uint32(len(ctx.StorageA.DocumentsIds))
+	for index := range freqs {
+		if freqs[index].DocumentIndex >= aDocuments {
+			return fmt.Errorf("storage A: %w", corruptf("token %q references document %d of %d", token.Value.Bytes(), freqs[index].DocumentIndex, aDocuments))
+		}
+	}
+	_, err = ctx.DstW.Write(pointers.UnsafeSliceBytes(freqs))
+	if err != nil {
+		return fmt.Errorf("failed to write A's token frequencies: %w", err)
+	}
+	return nil
+}
+
+// checkDocumentLengths rejects document-length entries that name a document
+// the storage does not have (B's would also overflow when shifted).
+func checkDocumentLengths(s *Storage, field *Field) (err error) {
+	documents := uint32(len(s.DocumentsIds))
+	for i := range field.DocumentLengths {
+		if field.DocumentLengths[i].Index >= documents {
+			return corruptf("document length %d references document %d of %d", i, field.DocumentLengths[i].Index, documents)
+		}
+	}
+	return nil
+}
+
+// writeShiftedFrequencies writes B's frequencies for token with every document
+// index shifted past A's documents.
+func writeShiftedFrequencies(ctx *MergeContext, token *Token) (err error) {
+	freqs, err := ctx.StorageB.frequenciesOf(token)
+	if err != nil {
+		return fmt.Errorf("storage B: %w", err)
+	}
+	bDocuments := uint32(len(ctx.StorageB.DocumentsIds))
+	for index := range freqs {
+		freq := &freqs[index]
+		if freq.DocumentIndex >= bDocuments {
+			return fmt.Errorf("storage B: %w", corruptf("token %q references document %d of %d", token.Value.Bytes(), freq.DocumentIndex, bDocuments))
+		}
+
+		binary.NativeEndian.PutUint32(ctx.Buffer[:4], ctx.DocumentOffset+freq.DocumentIndex)
+		_, err = ctx.DstW.Write(ctx.Buffer[:4])
+		if err != nil {
+			return fmt.Errorf("failed to write B's token frequency index: %w", err)
+		}
+
+		_, err = ctx.DstW.Write(pointers.UnsafeValueBytes(&freq.Frequency))
+		if err != nil {
+			return fmt.Errorf("failed to write B's token frequency: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -315,34 +330,45 @@ func (m *Merger) writeCollisionToken(ctx *MergeContext, fieldHash uint64, tokenA
 	return nil
 }
 
-// Merges storages B and B into the specified file
+// Merge merges storages A and B into the file name; B's documents follow A's.
 // Document ids should not collide in both storage
 // otherwise undefined behavior will ocurr
+//
+// The output is written under a temporary name next to name and only renamed
+// into place once it is complete and synced, so name never holds a partial
+// file and a failure leaves any existing file at name untouched. Damaged
+// inputs make Merge return an error wrapping ErrCorrupt rather than panic or
+// silently drop postings.
 func (m *Merger) Merge(name string, a, b *Storage) (err error) {
+	if total := uint64(len(a.DocumentsIds)) + uint64(len(b.DocumentsIds)); total > MaxDocuments {
+		return fmt.Errorf("%w: merging %d documents", ErrTooManyDocuments, total)
+	}
 	var ctx = MergeContext{
 		DocumentOffset: uint32(len(a.DocumentsIds)),
 		StorageA:       a,
 		StorageB:       b,
 	}
 
-	ctx.DstFile, err = os.Create(name)
+	af, err := createAtomic(name, m.NoReplace)
 	if err != nil {
 		return fmt.Errorf("failed to create destination file: %w", err)
 	}
-	defer func() {
-		ctx.DstFile.Close()
-		if err != nil {
-			os.Remove(name)
-		}
-	}()
+	defer af.Abort()
+	ctx.DstFile = af.File
 
 	// Reserve the space for the header and the document ids inmediatly
 	docIdsSize := (int64(DocumentIdSize) * (int64(len(a.DocumentsIds)) + int64(len(b.DocumentsIds))))
 	reserveSize := int64(HeaderSize) + docIdsSize
 
-	ctx.DstFile.Truncate(reserveSize)
+	err = ctx.DstFile.Truncate(reserveSize)
+	if err != nil {
+		return fmt.Errorf("failed to reserve header and document ids: %w", err)
+	}
 	// Seek after the header to write document ids directly
-	ctx.DstFile.Seek(int64(HeaderSize), 0)
+	_, err = ctx.DstFile.Seek(int64(HeaderSize), io.SeekStart)
+	if err != nil {
+		return fmt.Errorf("failed to seek past the header: %w", err)
+	}
 
 	if len(a.DocumentsIds) > 0 {
 		_, err := ctx.DstFile.Write(pointers.UnsafeSliceBytes(a.DocumentsIds))
@@ -358,7 +384,10 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 	}
 
-	ctx.DstFile.Seek(reserveSize, io.SeekStart)
+	_, err = ctx.DstFile.Seek(reserveSize, io.SeekStart)
+	if err != nil {
+		return fmt.Errorf("failed to seek past the document ids: %w", err)
+	}
 
 	ctx.DstW = bufio.NewWriterSize(ctx.DstFile, DefaultBufferedWriterSize)
 
@@ -395,6 +424,10 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			return fmt.Errorf("failed to mmap file: %w", err)
 		}
 		defer unix.Munmap(mmapMemFile)
+
+		// The mapping keeps the scratch file alive; dropping its name now means
+		// a crash cannot leave it behind in TempDir.
+		os.Remove(memFile.Name())
 
 		err = unix.Madvise(mmapMemFile, unix.MADV_SEQUENTIAL)
 		if err != nil {
@@ -440,6 +473,9 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		_, err = ctx.DstW.Write(ctx.Buffer[:])
 		if err != nil {
 			return fmt.Errorf("failed to write A's documents lengths: %w: %d", err, fieldHash)
+		}
+		if err = checkDocumentLengths(ctx.StorageA, field); err != nil {
+			return fmt.Errorf("storage A: %w", err)
 		}
 		if len(field.DocumentLengths) > 0 {
 			_, err = ctx.DstW.Write(pointers.UnsafeSliceBytes(field.DocumentLengths))
@@ -521,6 +557,9 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			return fmt.Errorf("failed to write B's documents lengths: %w: %d", err, fieldHash)
 		}
 
+		if err = checkDocumentLengths(ctx.StorageB, field); err != nil {
+			return fmt.Errorf("storage B: %w", err)
+		}
 		for index := range field.DocumentLengths {
 			dl := &field.DocumentLengths[index]
 
@@ -581,7 +620,18 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		fieldB := b.Fields[fieldHash]
 
 		var totalDocumentLengths = fieldA.TotalDocumentsLength + fieldB.TotalDocumentsLength
-		var avgDocumentLength = float32(float64(totalDocumentLengths) / float64(len(fieldA.DocumentLengths)+len(fieldB.DocumentLengths)))
+		if err = checkDocumentLengths(ctx.StorageA, fieldA); err != nil {
+			return fmt.Errorf("storage A: %w", err)
+		}
+		if err = checkDocumentLengths(ctx.StorageB, fieldB); err != nil {
+			return fmt.Errorf("storage B: %w", err)
+		}
+		// No document has a length in this field: avoid 0/0 = NaN, which would
+		// make every BM25 score in the field NaN. BuildFrom stores 0 here too.
+		var avgDocumentLength float32
+		if lengths := len(fieldA.DocumentLengths) + len(fieldB.DocumentLengths); lengths > 0 {
+			avgDocumentLength = float32(float64(totalDocumentLengths) / float64(lengths))
+		}
 		var tokensCount = CountTokensBetweenCollisionFields(fieldA, fieldB)
 
 		// Write the field header inmediatly
@@ -682,11 +732,9 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 	}
 
-	ctx.DstW.Flush()
-
-	err = ctx.DstFile.Sync()
+	err = ctx.DstW.Flush()
 	if err != nil {
-		return fmt.Errorf("failed to sync remaining changes: %w", err)
+		return fmt.Errorf("failed to flush fields: %w", err)
 	}
 
 	info, err := ctx.DstFile.Stat()
@@ -698,7 +746,7 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	plHeadersSize := uintptr(len(ctx.PendingPostingLists)) * PostingListHeaderSize
 	err = ctx.DstFile.Truncate(writeOffset + int64(plHeadersSize))
 	if err != nil {
-		return fmt.Errorf("failed to reserve enough space")
+		return fmt.Errorf("failed to reserve posting list headers: %w", err)
 	}
 
 	_, err = ctx.DstFile.Seek(0, io.SeekEnd)
@@ -714,14 +762,15 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 	for _, pending := range ctx.PendingPostingLists {
 		switch {
 		case pending.IndexA != -1 && pending.IndexB != -1:
-			rawA := a.PostingLists.Get(pending.IndexA)
-			rawB := b.PostingLists.Get(pending.IndexB)
-
 			ctx.ReusableBitmap.Clear()
-			rawA.UnsafeBitmap(&ctx.BitmapForPostingListRetrieval)
+			if err := a.PostingLists.Bitmap(pending.IndexA, &ctx.BitmapForPostingListRetrieval); err != nil {
+				return fmt.Errorf("storage A: %w", err)
+			}
 			ctx.ReusableBitmap.Or(&ctx.BitmapForPostingListRetrieval)
 
-			rawB.UnsafeBitmap(&ctx.BitmapForPostingListRetrieval)
+			if err := b.PostingLists.Bitmap(pending.IndexB, &ctx.BitmapForPostingListRetrieval); err != nil {
+				return fmt.Errorf("storage B: %w", err)
+			}
 			addOffsetFrom(&ctx, &ctx.ReusableBitmap, &ctx.BitmapForPostingListRetrieval)
 
 			size := ctx.ReusableBitmap.GetSerializedSizeInBytes()
@@ -745,13 +794,21 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				return fmt.Errorf("failed to write contents of posting list A&B: %w", err)
 			}
 		case pending.IndexA != -1:
-			rawA := a.PostingLists.Get(pending.IndexA)
+			// Copied verbatim: A's document indexes do not change. Decode it once
+			// anyway so a damaged posting list is reported, not propagated.
+			rawA, err := a.PostingLists.data(pending.IndexA)
+			if err != nil {
+				return fmt.Errorf("storage A: %w", err)
+			}
+			if err = a.PostingLists.Bitmap(pending.IndexA, &ctx.BitmapForPostingListRetrieval); err != nil {
+				return fmt.Errorf("storage A: %w", err)
+			}
 
 			plHeaders = append(plHeaders, PostingListHeader{
 				Offset: plHeadersOffset,
-				Length: uint64(len(rawA.Data)),
+				Length: uint64(len(rawA)),
 			})
-			plHeadersOffset += uint64(len(rawA.Data))
+			plHeadersOffset += uint64(len(rawA))
 			if len(plHeaders) >= maxPlHeaders {
 				delta, err := ctx.DstFile.WriteAt(pointers.UnsafeSliceBytes(plHeaders), writeOffset)
 				if err != nil {
@@ -761,16 +818,16 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 				plHeaders = plHeaders[:0]
 			}
 
-			nn, err := ctx.DstW.Write(rawA.Data)
+			nn, err := ctx.DstW.Write(rawA)
 			plTotalDataSize += uint64(nn)
 			if err != nil {
 				return fmt.Errorf("failed to write contents of posting list A: %w", err)
 			}
 		case pending.IndexB != -1:
-			rawB := b.PostingLists.Get(pending.IndexB)
-
 			ctx.ReusableBitmap.Clear()
-			rawB.UnsafeBitmap(&ctx.BitmapForPostingListRetrieval)
+			if err := b.PostingLists.Bitmap(pending.IndexB, &ctx.BitmapForPostingListRetrieval); err != nil {
+				return fmt.Errorf("storage B: %w", err)
+			}
 
 			addOffsetFrom(&ctx, &ctx.ReusableBitmap, &ctx.BitmapForPostingListRetrieval)
 
@@ -806,12 +863,15 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		plHeaders = plHeaders[:0]
 	}
 
-	ctx.DstW.Flush()
+	err = ctx.DstW.Flush()
+	if err != nil {
+		return fmt.Errorf("failed to flush posting lists: %w", err)
+	}
 
 	// File Header
 	header := Header{
 		Magic:                     MagicNumber,
-		Version:                   VersionV1,
+		Version:                   CurrentVersion,
 		TotalDocuments:            uint32(len(a.DocumentsIds)) + uint32(len(b.DocumentsIds)),
 		FieldCount:                ctx.FieldsOrder.Count(),
 		TotalPostingLists:         ctx.PostingListCursor,
@@ -824,5 +884,11 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		return fmt.Errorf("failed to write header: %w ", err)
 	}
 
+	if err = appendFooter(ctx.DstFile); err != nil {
+		return err
+	}
+	if err = af.Commit(); err != nil {
+		return fmt.Errorf("failed to commit %s: %w", name, err)
+	}
 	return nil
 }

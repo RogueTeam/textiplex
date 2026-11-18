@@ -23,7 +23,7 @@ func (s *Searcher) FieldScore(ctx *QueryContext, fieldHash uint64) {
 
 		token := &field.Tokens[tokenIdx]
 
-		s.Storage.PostingLists.Get(int64(token.PostingListIndex)).UnsafeBitmap(&retrievalBitmap)
+		s.Storage.PostingLists.Bitmap(int64(token.PostingListIndex), &retrievalBitmap)
 
 		resolved := roaring.FastAnd(pending, &retrievalBitmap)
 		if resolved.IsEmpty() {

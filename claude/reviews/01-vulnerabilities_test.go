@@ -1,13 +1,15 @@
-// Proof-of-concept tests for storage-layer vulnerabilities and data-loss paths.
+// Regression tests for the storage-layer vulnerabilities and data-loss paths
+// found in the review. Each test reproduces the original attack or failure
+// and asserts that it is now handled.
 //
-// Tests that are expected to kill the process (SIGSEGV, SIGBUS, fatal OOM) or
-// that need process-wide resource limits re-execute the test binary as a child
-// (POC_CHILD=1) and assert on the child's exit status and output.
+// Scenarios that used to kill the process (SIGSEGV, SIGBUS, fatal OOM) or that
+// need process-wide resource limits re-execute the test binary as a child
+// (POC_CHILD=1), so a regression fails the test instead of the whole run.
 package reviews_test
 
 import (
-	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -47,6 +49,20 @@ func runChild(t *testing.T, name string, env ...string) (string, *exec.ExitError
 	return string(out), ee
 }
 
+// requireChildOK fails the test unless the child exited cleanly and printed
+// every expected RESULT line.
+func requireChildOK(t *testing.T, out string, ee *exec.ExitError, want ...string) {
+	t.Helper()
+	if ee != nil {
+		t.Fatalf("child died (%s):\n%s", signaled(ee), out)
+	}
+	for _, w := range want {
+		if !strings.Contains(out, w) {
+			t.Fatalf("child output lacks %q:\n%s", w, out)
+		}
+	}
+}
+
 func signaled(ee *exec.ExitError) string {
 	if ee == nil {
 		return "exit 0"
@@ -83,7 +99,9 @@ func mkBatch(docs ...*storage.Document) *fields.Batch {
 func saveIndex(t *testing.T, path string, docs ...*storage.Document) {
 	t.Helper()
 	var s storage.Storage
-	s.BuildFrom(docs...)
+	if err := s.BuildFrom(docs...); err != nil {
+		t.Fatalf("BuildFrom: %v", err)
+	}
 	if err := s.SaveTo(path); err != nil {
 		t.Fatalf("SaveTo: %v", err)
 	}
@@ -96,7 +114,7 @@ func newReader() *textiplex.Reader {
 	}
 }
 
-// query returns copies of the matching doc ids.
+// query returns the matching doc ids.
 func query(t *testing.T, r *textiplex.Reader, q string) (ids []string) {
 	t.Helper()
 	seq, err := r.QueryString(0, textiplex.SortFieldBM25, false, q)
@@ -109,20 +127,44 @@ func query(t *testing.T, r *textiplex.Reader, q string) (ids []string) {
 	return ids
 }
 
-func countDocs(t *testing.T, dir string) (n int, err error) {
+func segmentFiles(t *testing.T, dir string) (names []string) {
 	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), textiplex.SegmentExtension) && !strings.HasPrefix(e.Name(), ".") {
+			names = append(names, e.Name())
+		}
+	}
+	return names
+}
+
+// countDocs loads the single segment in dir, verifies it, and returns its
+// document count.
+func countDocs(dir string) (n int, err error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return 0, err
 	}
-	if len(entries) != 1 {
-		return 0, fmt.Errorf("expected one segment, got %d", len(entries))
+	var segs []string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), textiplex.SegmentExtension) && !strings.HasPrefix(e.Name(), ".") {
+			segs = append(segs, e.Name())
+		}
+	}
+	if len(segs) != 1 {
+		return 0, fmt.Errorf("expected one segment, got %d (%v)", len(segs), segs)
 	}
 	var s storage.Storage
-	if err := s.Load(filepath.Join(dir, entries[0].Name())); err != nil {
+	if err := s.Load(filepath.Join(dir, segs[0])); err != nil {
 		return 0, err
 	}
 	defer s.Close()
+	if err := s.Verify(); err != nil {
+		return 0, err
+	}
 	return len(s.DocumentsIds), nil
 }
 
@@ -134,12 +176,26 @@ func setFileSizeLimit(t *testing.T, limit uint64) {
 	}
 }
 
+// toV1 rewrites a version 2 file as the original version 1 format: version
+// field 0, no footer.
+func toV1(data []byte) []byte {
+	out := append([]byte(nil), data[:len(data)-int(storage.FooterSize)]...)
+	binary.NativeEndian.PutUint16(out[8:], storage.VersionV1)
+	return out
+}
+
+// tokenOffset is the file offset of token 0 of the only field of an index of
+// n documents with one token each.
+func tokenOffset(n int) int {
+	return int(storage.HeaderSize) + n*int(storage.DocumentIdSize) + n*int(storage.TokenFrequencyEntrySize) +
+		int(storage.FieldHeaderSize) + n*int(storage.DocumentLengthEntrySize)
+}
+
 // ------------------------------------------------------- 1. data loss -------
 
-// Writer names segments from an in-memory counter that starts at 0 and opens
-// them with os.Create (O_TRUNC). A second Writer on the same directory (e.g.
-// after a process restart) silently overwrites existing segments.
-func TestPoC_WriterRestartOverwritesExistingSegment(t *testing.T) {
+// Was: a new Writer reused segment names from 0 and os.Create truncated the
+// existing segment, silently losing the first run's documents.
+func TestRegression_WriterRestartKeepsExistingSegments(t *testing.T) {
 	dir, tmp := t.TempDir(), t.TempDir()
 
 	w1 := &textiplex.Writer{Directory: dir, TemporaryDirectory: tmp}
@@ -156,7 +212,7 @@ func TestPoC_WriterRestartOverwritesExistingSegment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	n, err := countDocs(t, dir)
+	n, err := countDocs(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,17 +221,37 @@ func TestPoC_WriterRestartOverwritesExistingSegment(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer r.Close()
-	alpha := query(t, r, "+tag:alpha")
-	t.Logf("docs in index after restart: %d (expected 105); hits for first-run token: %d (expected 100)", n, len(alpha))
-	if n == 105 && len(alpha) == 100 {
-		t.Fatal("no data loss observed")
+	if alpha := query(t, r, "+tag:alpha"); n != 105 || len(alpha) != 100 {
+		t.Fatalf("docs=%d (want 105), first-run hits=%d (want 100)", n, len(alpha))
 	}
 }
 
-// Merger.Merge ignores the error of its final bufio Flush. If the disk fills
-// up (simulated with RLIMIT_FSIZE -> EFBIG) Merge returns nil with a truncated
-// output, and Writer.Merge then deletes both input segments.
-func TestPoC_MergeSwallowsWriteErrorAndWriterDeletesInputs(t *testing.T) {
+// Was: a Writer in a fresh process named its merge output after its own first
+// input, truncating it mid-merge: a crash plus 100 documents lost.
+func TestRegression_MergeInFreshProcessKeepsItsInputs(t *testing.T) {
+	if isChild() {
+		dir, tmp := os.Getenv("POC_DIR"), os.Getenv("POC_TMP")
+		w := &textiplex.Writer{Directory: dir, TemporaryDirectory: tmp, MaxWorkers: 1} // fresh process
+		err := w.Merge()
+		fmt.Printf("RESULT Writer.Merge err=%v\n", err)
+		n, lerr := countDocs(dir)
+		fmt.Printf("RESULT docs=%d err=%v\n", n, lerr)
+		return
+	}
+	dir, tmp := t.TempDir(), t.TempDir()
+	w1 := &textiplex.Writer{Directory: dir, TemporaryDirectory: tmp}
+	for i := range 2 {
+		if err := w1.Batch(mkBatch(manyDocs(fmt.Sprintf("seg%d", i), 100, "alpha")...)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, ee := runChild(t, t.Name(), "POC_DIR="+dir, "POC_TMP="+tmp)
+	requireChildOK(t, out, ee, "RESULT Writer.Merge err=<nil>", "RESULT docs=200 err=<nil>")
+}
+
+// Was: Merge ignored its final flush error (disk full) and returned success
+// with a truncated file; Writer then deleted both inputs.
+func TestRegression_MergeWriteErrorKeepsInputs(t *testing.T) {
 	if isChild() {
 		dir, tmp := os.Getenv("POC_DIR"), os.Getenv("POC_TMP")
 		w := &textiplex.Writer{Directory: dir, TemporaryDirectory: tmp}
@@ -183,10 +259,10 @@ func TestPoC_MergeSwallowsWriteErrorAndWriterDeletesInputs(t *testing.T) {
 		_ = w.Batch(mkBatch(manyDocs("b", 3000, "beta", "gamma")...))
 
 		// Measure the size the merged segment needs, on a scratch copy.
-		entries, _ := os.ReadDir(dir)
+		segs := segmentFiles(t, dir)
 		var a, b storage.Storage
-		_ = a.Load(filepath.Join(dir, entries[0].Name()))
-		_ = b.Load(filepath.Join(dir, entries[1].Name()))
+		_ = a.Load(filepath.Join(dir, segs[0]))
+		_ = b.Load(filepath.Join(dir, segs[1]))
 		probe := filepath.Join(tmp, "probe.seg")
 		if err := (&storage.Merger{TempDir: tmp}).Merge(probe, &a, &b); err != nil {
 			t.Fatal(err)
@@ -199,89 +275,177 @@ func TestPoC_MergeSwallowsWriteErrorAndWriterDeletesInputs(t *testing.T) {
 		// "Disk" is 1 byte short of what the merged file needs.
 		setFileSizeLimit(t, uint64(info.Size()-1))
 		err := w.Merge()
-		fmt.Printf("RESULT Writer.Merge err=%v\n", err)
+		fmt.Printf("RESULT merge failed=%v\n", err != nil)
 
-		entries, _ = os.ReadDir(dir)
-		fmt.Printf("RESULT segments left=%d\n", len(entries))
-		var merged storage.Storage
-		fmt.Printf("RESULT load merged err=%v\n", merged.Load(filepath.Join(dir, entries[0].Name())))
+		segs = segmentFiles(t, dir)
+		fmt.Printf("RESULT segments=%d\n", len(segs))
+		total := 0
+		for _, name := range segs {
+			var s storage.Storage
+			if err := s.Load(filepath.Join(dir, name)); err != nil {
+				fmt.Printf("RESULT load %s err=%v\n", name, err)
+				continue
+			}
+			if err := s.Verify(); err != nil {
+				fmt.Printf("RESULT verify %s err=%v\n", name, err)
+			}
+			total += len(s.DocumentsIds)
+			s.Close()
+		}
+		fmt.Printf("RESULT total docs=%d\n", total)
 		return
 	}
 
 	out, ee := runChild(t, t.Name(), "POC_DIR="+t.TempDir(), "POC_TMP="+t.TempDir())
-	t.Log(out)
-	if ee != nil {
-		t.Fatalf("child failed: %s", signaled(ee))
-	}
-	if !strings.Contains(out, "RESULT Writer.Merge err=<nil>") ||
-		!strings.Contains(out, "RESULT segments left=1") ||
-		strings.Contains(out, "RESULT load merged err=<nil>") {
-		t.Fatal("did not reproduce")
+	requireChildOK(t, out, ee, "RESULT merge failed=true", "RESULT segments=2", "RESULT total docs=6000")
+	if strings.Contains(out, "RESULT load") || strings.Contains(out, "RESULT verify") {
+		t.Fatalf("an input was damaged:\n%s", out)
 	}
 }
 
-// SaveTo opens the destination with os.Create (truncating it in place) and
-// removes the file on any error. Rewriting an existing index and hitting an
-// error mid-write (disk full, quota, EIO) deletes the previous good index.
-func TestPoC_SaveToFailureDeletesPreviousIndex(t *testing.T) {
+// Was: SaveTo truncated the destination first and removed it on error, so a
+// failed rewrite deleted the previous good index.
+func TestRegression_SaveToFailureKeepsPreviousIndex(t *testing.T) {
 	if isChild() {
 		path := filepath.Join(os.Getenv("POC_DIR"), "index.bin")
 		saveIndex(t, path, manyDocs("old", 50, "alpha")...)
 		info, _ := os.Stat(path)
-		fmt.Printf("RESULT old index size=%d\n", info.Size())
 
 		setFileSizeLimit(t, uint64(info.Size()*4))
 		var s storage.Storage
-		s.BuildFrom(manyDocs("new", 5000, "alpha", "beta")...) // larger than the limit
+		_ = s.BuildFrom(manyDocs("new", 5000, "alpha", "beta")...) // larger than the limit
 		err := s.SaveTo(path)
-		fmt.Printf("RESULT SaveTo err=%v\n", err)
-		_, statErr := os.Stat(path)
-		fmt.Printf("RESULT old index exists=%v\n", statErr == nil)
+		fmt.Printf("RESULT SaveTo failed=%v\n", err != nil)
+
+		var old storage.Storage
+		lerr := old.Load(path)
+		fmt.Printf("RESULT old index load err=%v docs=%d\n", lerr, len(old.DocumentsIds))
+		leftovers, _ := filepath.Glob(filepath.Join(os.Getenv("POC_DIR"), ".*.tmp"))
+		fmt.Printf("RESULT temp files left=%d\n", len(leftovers))
 		return
 	}
 	out, ee := runChild(t, t.Name(), "POC_DIR="+t.TempDir())
-	t.Log(out)
-	if ee != nil || !strings.Contains(out, "RESULT old index exists=false") {
-		t.Fatal("did not reproduce")
+	requireChildOK(t, out, ee, "RESULT SaveTo failed=true", "RESULT old index load err=<nil> docs=50", "RESULT temp files left=0")
+}
+
+// Was: no crash recovery; a crash after the merged output appeared but before
+// the inputs were deleted left documents duplicated. Now Merge records its
+// inputs and finishes the job on the next run.
+func TestRegression_MergeRecoversAfterCrash(t *testing.T) {
+	buildPair := func(t *testing.T) (dir string, segs []string) {
+		dir = t.TempDir()
+		w := &textiplex.Writer{Directory: dir, TemporaryDirectory: t.TempDir()}
+		for i := range 2 {
+			if err := w.Batch(mkBatch(manyDocs(fmt.Sprintf("s%d", i), 50, "alpha")...)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return dir, segmentFiles(t, dir)
+	}
+
+	t.Run("crash after output committed", func(t *testing.T) {
+		dir, segs := buildPair(t)
+		var a, b storage.Storage
+		a.Load(filepath.Join(dir, segs[0]))
+		b.Load(filepath.Join(dir, segs[1]))
+		out := filepath.Join(dir, "00000000000000FF.seg")
+		os.WriteFile(out+".parents", []byte(segs[0]+"\n"+segs[1]+"\n"), 0o644)
+		if err := (&storage.Merger{TempDir: t.TempDir()}).Merge(out, &a, &b); err != nil {
+			t.Fatal(err)
+		}
+		a.Close()
+		b.Close()
+		// crash here: inputs, output and record all present
+
+		w := &textiplex.Writer{Directory: dir, TemporaryDirectory: t.TempDir()}
+		if err := w.Merge(); err != nil {
+			t.Fatal(err)
+		}
+		if n, err := countDocs(dir); err != nil || n != 100 {
+			t.Fatalf("docs=%d err=%v, want 100 (no duplicates)", n, err)
+		}
+		if _, err := os.Stat(out + ".parents"); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("merge record left behind")
+		}
+	})
+
+	t.Run("crash before output committed", func(t *testing.T) {
+		dir, segs := buildPair(t)
+		out := filepath.Join(dir, "00000000000000FF.seg")
+		os.WriteFile(out+".parents", []byte(segs[0]+"\n"+segs[1]+"\n"), 0o644)
+		os.WriteFile(filepath.Join(dir, ".00000000000000FF.seg.123.tmp"), make([]byte, 4096), 0o644) // partial output
+
+		w := &textiplex.Writer{Directory: dir, TemporaryDirectory: t.TempDir()}
+		if err := w.Merge(); err != nil {
+			t.Fatal(err)
+		}
+		if n, err := countDocs(dir); err != nil || n != 100 {
+			t.Fatalf("docs=%d err=%v, want 100", n, err)
+		}
+	})
+
+	t.Run("record naming a non-segment is refused", func(t *testing.T) {
+		dir, _ := buildPair(t)
+		victim := filepath.Join(dir, "precious.txt")
+		os.WriteFile(victim, []byte("keep me"), 0o644)
+		saveIndex(t, filepath.Join(dir, "00000000000000FF.seg"), mkDoc("x", "alpha"))
+		os.WriteFile(filepath.Join(dir, "00000000000000FF.seg.parents"), []byte("precious.txt\n"), 0o644)
+
+		w := &textiplex.Writer{Directory: dir, TemporaryDirectory: t.TempDir()}
+		if err := w.Merge(); err == nil {
+			t.Fatal("merge accepted a record naming a non-segment")
+		}
+		if _, err := os.Stat(victim); err != nil {
+			t.Fatal("non-segment file was deleted")
+		}
+	})
+}
+
+// Was: Writer.Merge on an empty directory spun forever.
+func TestRegression_MergeEmptyDirectoryReturns(t *testing.T) {
+	w := &textiplex.Writer{Directory: t.TempDir(), TemporaryDirectory: t.TempDir()}
+	done := make(chan error, 1)
+	go func() { done <- w.Merge() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Writer.Merge() on an empty directory did not return")
 	}
 }
 
 // ------------------------------------------ 2. memory-safety / lifetime ------
 
-// os.Create truncates a file that is still mmap'd (MAP_SHARED) by a loaded
-// Storage. Touching the mapping afterwards raises SIGBUS. Here the loaded
-// storage is re-saved to its own path (an in-place rewrite): the process dies
-// half-way and the index on disk is destroyed.
-func TestPoC_SaveToOverMappedFileSIGBUS(t *testing.T) {
-	path := filepath.Join(os.Getenv("POC_DIR"), "index.bin")
+// Was: re-saving a loaded index to its own path truncated the mapped file:
+// SIGBUS and a 0-byte index.
+func TestRegression_SaveToOverMappedFile(t *testing.T) {
 	if isChild() {
+		path := filepath.Join(os.Getenv("POC_DIR"), "index.bin")
 		var s storage.Storage
 		if err := s.Load(path); err != nil {
 			t.Fatal(err)
 		}
-		_ = s.SaveTo(path)
-		fmt.Println("RESULT survived")
+		err := s.SaveTo(path)
+		fmt.Printf("RESULT SaveTo err=%v\n", err)
+		fmt.Printf("RESULT old mapping still readable: %s\n", s.DocumentsIds[len(s.DocumentsIds)-1].Value.UnsafeString())
+		s.Close()
+		var again storage.Storage
+		lerr := again.Load(path)
+		fmt.Printf("RESULT reload err=%v docs=%d verify=%v\n", lerr, len(again.DocumentsIds), again.Verify())
 		return
 	}
 	dir := t.TempDir()
-	path = filepath.Join(dir, "index.bin")
-	saveIndex(t, path, manyDocs("doc", 2000, "alpha")...)
-	before, _ := os.Stat(path)
-
+	saveIndex(t, filepath.Join(dir, "index.bin"), manyDocs("doc", 2000, "alpha")...)
 	out, ee := runChild(t, t.Name(), "POC_DIR="+dir)
-	after, _ := os.Stat(path)
-	t.Logf("child: %s\n%s", signaled(ee), faultLines(out))
-	t.Logf("index size before=%d after=%d", before.Size(), after.Size())
-	if signaled(ee) != "exit 2" || !strings.Contains(out, "SIGBUS") {
-		t.Fatal("did not reproduce SIGBUS")
-	}
+	requireChildOK(t, out, ee, "RESULT SaveTo err=<nil>", "RESULT old mapping still readable: doc-001999",
+		"RESULT reload err=<nil> docs=2000 verify=<nil>")
 }
 
-// Doc ids yielded by Reader.QueryString alias the mmap. After Close (or a
-// Reset to swap in a freshly merged index) any retained id is a dangling
-// pointer into unmapped memory: the process gets SIGSEGV, which recover()
-// cannot catch.
-func TestPoC_DocIdUseAfterCloseSIGSEGV(t *testing.T) {
+// Was: ids yielded by Reader.QueryString pointed into the mapping; after Close
+// they were dangling (SIGSEGV).
+func TestRegression_DocIdsSurviveClose(t *testing.T) {
 	if isChild() {
 		dir := os.Getenv("POC_DIR")
 		r := newReader()
@@ -291,46 +455,93 @@ func TestPoC_DocIdUseAfterCloseSIGSEGV(t *testing.T) {
 		seq, _ := r.QueryString(0, textiplex.SortFieldBM25, false, "+tag:alpha")
 		var kept [][]byte
 		for id := range seq {
-			kept = append(kept, id) // e.g. cached, or handed to another goroutine
+			kept = append(kept, id)
+			if len(kept) == 3 {
+				_ = r.Close() // closing from inside the loop must neither deadlock nor crash
+			}
 		}
-		_ = r.Close()
-		defer func() { fmt.Println("RESULT recovered:", recover()) }()
-		fmt.Println("RESULT id after close:", string(kept[0]))
+		fmt.Printf("RESULT kept=%d first=%s\n", len(kept), kept[0])
 		return
 	}
 	dir := t.TempDir()
 	saveIndex(t, filepath.Join(dir, "0.seg"), manyDocs("doc", 10, "alpha")...)
 	out, ee := runChild(t, t.Name(), "POC_DIR="+dir)
-	t.Logf("child: %s\n%s", signaled(ee), faultLines(out))
-	if !strings.Contains(out, "SIGSEGV") || strings.Contains(out, "RESULT recovered") {
-		t.Fatal("did not reproduce")
-	}
+	requireChildOK(t, out, ee, "RESULT kept=3 first=doc-0000")
 }
 
-// When Load fails after it has already mapped some tables, the deferred
-// Munmap releases the region but s.DocumentsIds / s.TokenFrequencies keep
-// pointing into it.
-func TestPoC_FailedLoadLeavesDanglingSlices(t *testing.T) {
+// Queries racing Close and Reset must neither crash nor read a closed index.
+// Run with -race.
+func TestRegression_ConcurrentQueriesAndReset(t *testing.T) {
 	if isChild() {
-		var s storage.Storage
-		err := s.Load(os.Getenv("POC_FILE"))
-		fmt.Printf("RESULT load err=%v len(DocumentsIds)=%d\n", err, len(s.DocumentsIds))
-		fmt.Println("RESULT first id:", s.DocumentsIds[0].Value.UnsafeString())
+		dir := os.Getenv("POC_DIR")
+		r := newReader()
+		if err := r.Reset(dir); err != nil {
+			t.Fatal(err)
+		}
+		stop := make(chan struct{})
+		done := make(chan int)
+		for range 8 {
+			go func() {
+				n := 0
+				for {
+					select {
+					case <-stop:
+						done <- n
+						return
+					default:
+					}
+					seq, err := r.QueryString(0, textiplex.SortFieldBM25, false, "+tag:alpha")
+					if err != nil {
+						continue // closed between Reset calls
+					}
+					for id := range seq {
+						if !strings.HasPrefix(string(id), "doc-") {
+							panic("bad id " + string(id))
+						}
+						n++
+					}
+				}
+			}()
+		}
+		for i := range 200 {
+			if i%2 == 0 {
+				r.Close()
+			} else if err := r.Reset(dir); err != nil {
+				t.Fatal(err)
+			}
+		}
+		close(stop)
+		total := 0
+		for range 8 {
+			total += <-done
+		}
+		fmt.Printf("RESULT ok ids=%v\n", total > 0)
 		return
 	}
+	dir := t.TempDir()
+	saveIndex(t, filepath.Join(dir, "0.seg"), manyDocs("doc", 500, "alpha")...)
+	out, ee := runChild(t, t.Name(), "POC_DIR="+dir)
+	requireChildOK(t, out, ee, "RESULT ok")
+}
+
+// Was: a failed Load unmapped the file but left DocumentsIds pointing into it.
+func TestRegression_FailedLoadLeavesStorageEmpty(t *testing.T) {
 	dir := t.TempDir()
 	full := filepath.Join(dir, "full.bin")
 	saveIndex(t, full, manyDocs("doc", 100, "alpha")...)
 	data, _ := os.ReadFile(full)
-	// Keep header + doc ids + token freqs, drop the field blocks.
+	// Keep header + doc ids + token freqs, drop the field blocks (and footer).
 	cut := int(storage.HeaderSize) + 100*int(storage.DocumentIdSize) + 100*int(storage.TokenFrequencyEntrySize) + 1
 	broken := filepath.Join(dir, "broken.bin")
-	os.WriteFile(broken, data[:cut], 0o600)
+	os.WriteFile(broken, toV1(data)[:cut], 0o600)
 
-	out, ee := runChild(t, t.Name(), "POC_FILE="+broken)
-	t.Logf("child: %s\n%s", signaled(ee), faultLines(out))
-	if !strings.Contains(out, "len(DocumentsIds)=100") || !strings.Contains(out, "SIGSEGV") {
-		t.Fatal("did not reproduce")
+	var s storage.Storage
+	err := s.Load(broken)
+	if !errors.Is(err, storage.ErrCorrupt) {
+		t.Fatalf("Load err=%v, want ErrCorrupt", err)
+	}
+	if s.DocumentsIds != nil || s.Buffer != nil || s.File != nil || s.Fields != nil {
+		t.Fatal("failed Load left state behind")
 	}
 }
 
@@ -345,28 +556,21 @@ func craftHeader(totalDocs uint32, fieldCount, totalPL, plDataSize, totalTF uint
 	return append([]byte(nil), unsafe.Slice((*byte)(unsafe.Pointer(&h)), unsafe.Sizeof(h))...)
 }
 
-// A 57-byte file claiming 2^34 fields makes Load call
-// make(map[uint64]*Field, 2^34). The runtime aborts with a fatal
-// out-of-memory error (not a panic: recover() does not help).
-// The child runs under RLIMIT_AS so the sandbox is not exhausted.
-func TestPoC_TinyFileFatalOOM(t *testing.T) {
+// Was: a 57-byte file claiming 2^34 fields made Load allocate until the
+// runtime aborted with a fatal out-of-memory error.
+func TestRegression_TinyFileHugeFieldCount(t *testing.T) {
 	if isChild() {
 		lim := currentVmSize() + 1<<30
 		syscall.Setrlimit(syscall.RLIMIT_AS, &syscall.Rlimit{Cur: lim, Max: lim})
-		defer func() { fmt.Println("RESULT recovered:", recover()) }()
 		var s storage.Storage
 		err := s.Load(os.Getenv("POC_FILE"))
-		fmt.Println("RESULT load err:", err)
+		fmt.Printf("RESULT corrupt=%v\n", errors.Is(err, storage.ErrCorrupt))
 		return
 	}
 	file := filepath.Join(t.TempDir(), "evil.bin")
 	os.WriteFile(file, append(craftHeader(0, 1<<34, 0, 0, 0), 0), 0o600)
-	fi, _ := os.Stat(file)
 	out, ee := runChild(t, t.Name(), "POC_FILE="+file)
-	t.Logf("file size=%d bytes; child: %s\n%s", fi.Size(), signaled(ee), firstLines(out, 4))
-	if !strings.Contains(out, "out of memory") || strings.Contains(out, "RESULT recovered") {
-		t.Fatal("did not reproduce")
-	}
+	requireChildOK(t, out, ee, "RESULT corrupt=true")
 }
 
 func currentVmSize() uint64 {
@@ -381,124 +585,188 @@ func currentVmSize() uint64 {
 	return 4 << 30
 }
 
-// Size computations in Load are 64-bit multiplications that can wrap.
-// unsafe.Slice catches the wrap, so the result is a runtime panic out of Load
-// rather than an error.
-func TestPoC_LoadPanicsOnOverflowingCounts(t *testing.T) {
+// Was: wrapping size multiplications made Load panic.
+func TestRegression_OverflowingCountsAreErrors(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "evil.bin")
-	body := make([]byte, 64)
-	os.WriteFile(file, append(craftHeader(0, 0, 0, 0, (1<<61)+1), body...), 0o600)
+	os.WriteFile(file, append(craftHeader(0, 0, 0, 0, (1<<61)+1), make([]byte, 64)...), 0o600)
 
-	var panicked any
 	var err error
 	func() {
-		defer func() { panicked = recover() }()
+		defer func() {
+			if p := recover(); p != nil {
+				t.Fatalf("Load panicked: %v", p)
+			}
+		}()
 		var s storage.Storage
 		err = s.Load(file)
 	}()
-	t.Logf("Load err=%v panic=%v", err, panicked)
-	if panicked == nil {
-		t.Fatal("no panic")
+	if !errors.Is(err, storage.ErrCorrupt) {
+		t.Fatalf("Load err=%v, want ErrCorrupt", err)
 	}
 }
 
-// Load never checks cross-references inside the file (token -> posting list,
-// token -> frequency range, posting-list doc ids -> doc table). One flipped
-// field in an otherwise valid index loads fine and panics at query time.
-func TestPoC_CorruptReferencePanicsAtQueryTime(t *testing.T) {
+// Was: a flipped reference loaded fine and panicked at query time. Now the
+// query degrades instead of panicking, Verify reports it (checksum on v2, the
+// reference itself on v1), and Merge refuses to merge it.
+func TestRegression_CorruptReference(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "0.seg")
 	saveIndex(t, path, manyDocs("doc", 10, "alpha")...)
-
 	data, _ := os.ReadFile(path)
-	// header | 10 doc ids | 10 TF entries | field header | 10 doc lengths | token[0]
-	tokOff := int(storage.HeaderSize) + 10*int(storage.DocumentIdSize) + 10*int(storage.TokenFrequencyEntrySize) +
-		int(storage.FieldHeaderSize) + 10*int(storage.DocumentLengthEntrySize)
-	binary.LittleEndian.PutUint64(data[tokOff+8:], 0xFFFF_FFFF) // Token.PostingListIndex
+	binary.NativeEndian.PutUint64(data[tokenOffset(10)+8:], 0xFFFF_FFFF) // Token.PostingListIndex
 	os.WriteFile(path, data, 0o600)
 
 	r := newReader()
 	if err := r.Reset(dir); err != nil {
-		t.Fatalf("Load rejected the corrupt file (good): %v", err)
+		t.Fatalf("Load: %v", err)
 	}
-	defer r.Close()
-	var panicked any
 	func() {
-		defer func() { panicked = recover() }()
+		defer func() {
+			if p := recover(); p != nil {
+				t.Fatalf("query panicked: %v", p)
+			}
+		}()
 		query(t, r, "+tag:alpha")
 	}()
-	t.Logf("Load accepted file; query panic=%v", panicked)
-	if panicked == nil {
-		t.Fatal("no panic")
+	if err := r.Storage.Verify(); !errors.Is(err, storage.ErrChecksum) {
+		t.Fatalf("Verify v2 err=%v, want ErrChecksum", err)
+	}
+	r.Close()
+
+	// Same damage in a v1 file (no checksum): Verify finds the reference.
+	v1 := filepath.Join(t.TempDir(), "v1.seg")
+	os.WriteFile(v1, toV1(data), 0o600)
+	var a storage.Storage
+	if err := a.Load(v1); err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if err := a.Verify(); !errors.Is(err, storage.ErrCorrupt) || errors.Is(err, storage.ErrChecksum) {
+		t.Fatalf("Verify v1 err=%v, want reference error", err)
+	}
+
+	var b storage.Storage
+	good := filepath.Join(t.TempDir(), "good.seg")
+	saveIndex(t, good, manyDocs("zz", 5, "alpha")...)
+	b.Load(good)
+	defer b.Close()
+	out := filepath.Join(t.TempDir(), "merged.seg")
+	if err := (&storage.Merger{TempDir: t.TempDir()}).Merge(out, &a, &b); !errors.Is(err, storage.ErrCorrupt) {
+		t.Fatalf("Merge err=%v, want ErrCorrupt", err)
+	}
+	if _, err := os.Stat(out); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("failed merge left an output file")
 	}
 }
 
-// No magic / version / checksum validation: arbitrary bytes load as a valid
-// (empty) index, e.g. a merge output whose header was never written.
-func TestPoC_LoadAcceptsNonIndexFile(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "zeros.bin")
-	os.WriteFile(file, make([]byte, 4096), 0o600)
-	var s storage.Storage
-	err := s.Load(file)
-	defer s.Close()
-	t.Logf("Load(4 KiB of zeros) err=%v docs=%d", err, len(s.DocumentsIds))
+// Was: no magic/version check, so zeros or foreign files loaded as an empty
+// index.
+func TestRegression_LoadRejectsNonIndexFiles(t *testing.T) {
+	cases := map[string][]byte{
+		"zeros": make([]byte, 4096),
+		"wrong magic": func() []byte {
+			h := craftHeader(0, 0, 0, 0, 0)
+			binary.NativeEndian.PutUint64(h, 0xDEADBEEF)
+			return append(h, 0)
+		}(),
+		"text": []byte(strings.Repeat("not an index, just some text. ", 10)),
+	}
+	for name, content := range cases {
+		file := filepath.Join(t.TempDir(), "f.bin")
+		os.WriteFile(file, content, 0o600)
+		var s storage.Storage
+		if err := s.Load(file); !errors.Is(err, storage.ErrCorrupt) {
+			t.Errorf("%s: Load err=%v, want ErrCorrupt", name, err)
+		}
+	}
 
-	file2 := filepath.Join(t.TempDir(), "wrongmagic.bin")
+	future := filepath.Join(t.TempDir(), "future.bin")
 	h := craftHeader(0, 0, 0, 0, 0)
-	binary.LittleEndian.PutUint64(h, 0xDEADBEEF)
-	binary.LittleEndian.PutUint16(h[8:], 999)
-	os.WriteFile(file2, append(h, 0), 0o600)
-	var s2 storage.Storage
-	err2 := s2.Load(file2)
-	defer s2.Close()
-	t.Logf("Load(magic=0xDEADBEEF, version=999) err=%v", err2)
-	if err != nil || err2 != nil {
-		t.Fatal("did not reproduce")
+	binary.NativeEndian.PutUint16(h[8:], storage.CurrentVersion+1)
+	os.WriteFile(future, append(h, make([]byte, 64)...), 0o600)
+	var s storage.Storage
+	if err := s.Load(future); !errors.Is(err, storage.ErrUnsupportedVersion) {
+		t.Errorf("future version: Load err=%v", err)
 	}
 }
 
-// ------------------------------------------- 4. silent truncation (data) ----
-
-// Tokens and doc ids are stored in a fixed 128-byte RawValue. RawValueFrom
-// truncates silently, so:
-//   - a >128-byte keyword can never be found by its real value
-//   - two values sharing a 128-byte prefix collapse; one posting list is shadowed
-//   - two doc ids sharing a 128-byte prefix become indistinguishable
-func TestPoC_LongValuesSilentlyTruncated(t *testing.T) {
-	prefix := strings.Repeat("a", 128)
-	longX, longY := prefix+"-x", prefix+"-y"
-	idPrefix := "https://example.com/" + strings.Repeat("p", 120)
-
+// Indexes written before the format change (version 1, no footer) still load,
+// query and verify.
+func TestRegression_Version1FilesStillLoad(t *testing.T) {
 	dir := t.TempDir()
-	saveIndex(t, filepath.Join(dir, "0.seg"),
-		mkDoc(idPrefix+"/doc-1", longX),
-		mkDoc(idPrefix+"/doc-2", longY),
-	)
+	path := filepath.Join(dir, "0.seg")
+	saveIndex(t, path, manyDocs("doc", 20, "alpha")...)
+	data, _ := os.ReadFile(path)
+	os.WriteFile(path, toV1(data), 0o600)
+
 	r := newReader()
 	if err := r.Reset(dir); err != nil {
 		t.Fatal(err)
 	}
 	defer r.Close()
+	if r.Storage.Version != storage.VersionV1 {
+		t.Fatalf("version=%d", r.Storage.Version)
+	}
+	if hits := query(t, r, "+tag:alpha"); len(hits) != 20 {
+		t.Fatalf("hits=%d", len(hits))
+	}
+	if err := r.Storage.Verify(); err != nil {
+		t.Fatal(err)
+	}
+}
 
-	tokens := r.Storage.Fields[xxh3.HashString(tagField)].Tokens
-	t.Logf("token table: %d entries, identical values: %v", len(tokens),
-		bytes.Equal(tokens[0].Value.Bytes(), tokens[1].Value.Bytes()))
-	hitsX := query(t, r, "+tag:"+longX)
-	hitsPrefix := query(t, r, "+tag:"+prefix)
-	t.Logf("query full value  -> %d hits (expected 1)", len(hitsX))
-	t.Logf("query 128B prefix -> %d hits (2 docs carry it)", len(hitsPrefix))
-	t.Logf("doc ids equal after truncation: %v",
-		r.Storage.DocumentsIds[0].Value.UnsafeString() == r.Storage.DocumentsIds[1].Value.UnsafeString())
-	if len(hitsX) == 1 {
-		t.Fatal("did not reproduce")
+// ------------------------------------------- 4. silent truncation (data) ----
+
+// Was: values over 128 bytes were cut short, making them unsearchable and
+// merging distinct values. Now BuildFrom (and so Writer.Batch) refuses them.
+func TestRegression_LongValuesRejected(t *testing.T) {
+	long := strings.Repeat("a", storage.MaxRawValueSize+1)
+	exact := strings.Repeat("b", storage.MaxRawValueSize)
+
+	var s storage.Storage
+	if err := s.BuildFrom(mkDoc("id", long)); !errors.Is(err, storage.ErrValueTooLong) {
+		t.Fatalf("long token: err=%v", err)
+	}
+	if s.DocumentsIds != nil {
+		t.Fatal("failed BuildFrom left documents behind")
+	}
+	if err := s.BuildFrom(mkDoc(long, "x")); !errors.Is(err, storage.ErrValueTooLong) {
+		t.Fatalf("long doc id: err=%v", err)
+	}
+	if err := s.BuildFrom(mkDoc(exact, exact)); err != nil {
+		t.Fatalf("128-byte values must be accepted: %v", err)
+	}
+
+	w := &textiplex.Writer{Directory: t.TempDir(), TemporaryDirectory: t.TempDir()}
+	if err := w.Batch(mkBatch(mkDoc("id", long))); !errors.Is(err, storage.ErrValueTooLong) {
+		t.Fatalf("Writer.Batch err=%v", err)
+	}
+}
+
+// Duplicate tokens in one document's field used to desynchronise the posting
+// list from the frequencies; they are now summed.
+func TestRegression_DuplicateTokensAreSummed(t *testing.T) {
+	var s storage.Storage
+	if err := s.BuildFrom(mkDoc("d1", "alpha", "alpha", "beta"), mkDoc("d2", "alpha")); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Verify(); err != nil {
+		t.Fatal(err)
+	}
+	tok, ok := s.Fields[xxh3.HashString(tagField)].Tokens.GetString("alpha")
+	if !ok {
+		t.Fatal("alpha missing")
+	}
+	freqs := s.FrequenciesOf(tok)
+	if len(freqs) != 2 || freqs[0].Frequency != 2 || freqs[1].Frequency != 1 {
+		t.Fatalf("freqs=%+v", freqs)
 	}
 }
 
 // --------------------------------------------- 5. adjacent (reader.go) ------
 
-// Reader.Query with reverse=true computes uint(len(scores))-skip, which wraps
-// when skip > len(scores): a caller-controlled pagination offset panics.
-func TestPoC_ReverseSkipUnderflowPanics(t *testing.T) {
+// Was: reverse=true with skip > hits computed uint(len)-skip and panicked.
+func TestRegression_ReverseSkipPastEnd(t *testing.T) {
 	dir := t.TempDir()
 	saveIndex(t, filepath.Join(dir, "0.seg"), manyDocs("doc", 3, "alpha")...)
 	r := newReader()
@@ -506,117 +774,36 @@ func TestPoC_ReverseSkipUnderflowPanics(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer r.Close()
-	var panicked any
-	func() {
-		defer func() { panicked = recover() }()
-		seq, _ := r.QueryString(10, textiplex.SortFieldBM25, true, "+tag:alpha")
-		for range seq {
-		}
-	}()
-	t.Logf("skip=10 reverse=true over 3 hits: panic=%v", panicked)
-	if panicked == nil {
-		t.Fatal("no panic")
+	seq, _ := r.QueryString(10, textiplex.SortFieldBM25, true, "+tag:alpha")
+	n := 0
+	for range seq {
+		n++
+	}
+	if n != 0 {
+		t.Fatalf("got %d results", n)
+	}
+	seq, _ = r.QueryString(1, textiplex.SortFieldBM25, true, "+tag:alpha")
+	n = 0
+	for range seq {
+		n++
+	}
+	if n != 2 {
+		t.Fatalf("skip=1 reverse: got %d results, want 2", n)
 	}
 }
 
 // ------------------------------------------------------------- strace hook ---
 
-// Run under strace to observe the syscall order of Writer.Merge (see report).
+// Run under strace to check the syscall order of Writer.Merge: the merged
+// file and the directory are synced before the inputs are unlinked.
 func TestStraceMerge(t *testing.T) {
 	dir := os.Getenv("POC_STRACE_DIR")
 	if dir == "" {
 		t.Skip("set POC_STRACE_DIR")
 	}
 	w := &textiplex.Writer{Directory: dir, TemporaryDirectory: os.Getenv("POC_STRACE_TMP"), MaxWorkers: 1}
-	w.SegmentCounter.Store(1000) // avoid the name-collision bug so the trace shows the happy path
 	if err := w.Merge(); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func lastLines(s string, n int) string {
-	lines := strings.Split(strings.TrimSpace(s), "\n")
-	if len(lines) > n {
-		lines = lines[len(lines)-n:]
-	}
-	return strings.Join(lines, "\n")
-}
-
-func firstLines(s string, n int) string {
-	lines := strings.Split(strings.TrimSpace(s), "\n")
-	if len(lines) > n {
-		lines = lines[:n]
-	}
-	return strings.Join(lines, "\n")
-}
-
-func faultLines(s string) string {
-	var keep []string
-	for _, l := range strings.Split(s, "\n") {
-		if strings.Contains(l, "RESULT") || strings.Contains(l, "fatal error") ||
-			strings.Contains(l, "unexpected fault") || strings.Contains(l, "[signal ") {
-			keep = append(keep, strings.TrimSpace(l))
-		}
-	}
-	return strings.Join(keep, "\n")
-}
-
-// A Writer that merges segments written by an earlier process starts its
-// counter at 0, so the merge output name collides with an *input* segment.
-// os.Create truncates the input while it is mmap'd and being read.
-func TestPoC_MergeInFreshProcessTruncatesItsOwnInput(t *testing.T) {
-	if isChild() {
-		dir, tmp := os.Getenv("POC_DIR"), os.Getenv("POC_TMP")
-		w := &textiplex.Writer{Directory: dir, TemporaryDirectory: tmp, MaxWorkers: 1} // fresh process
-		err := w.Merge()
-		fmt.Printf("RESULT Writer.Merge err=%v\n", err)
-		n, lerr := countDocs(t, dir)
-		fmt.Printf("RESULT docs after merge=%d load err=%v\n", n, lerr)
-		return
-	}
-	dir, tmp := t.TempDir(), t.TempDir()
-	w1 := &textiplex.Writer{Directory: dir, TemporaryDirectory: tmp}
-	for i := range 2 {
-		if err := w1.Batch(mkBatch(manyDocs(fmt.Sprintf("seg%d", i), 100, "alpha")...)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	out, ee := runChild(t, t.Name(), "POC_DIR="+dir, "POC_TMP="+tmp)
-	entries, _ := os.ReadDir(dir)
-	t.Logf("child: %s (expected 200 docs)\n%s\nsegments left: %d", signaled(ee), firstLines(grepLines(out, "RESULT|panic|fatal|signal|goroutine 1"), 6), len(entries))
-	var segA storage.Storage
-	lerr := segA.Load(filepath.Join(dir, "0000000000000001.seg"))
-	t.Logf("input segment 1 after crash: load err=%v docs=%d (was 100)", lerr, len(segA.DocumentsIds))
-	t.Logf("panic site:\n%s", firstLines(grepLines(out, "textiplex/storage."), 2))
-	if ee == nil && strings.Contains(out, "docs after merge=200 ") {
-		t.Fatal("no data loss")
-	}
-}
-
-func grepLines(s, pattern string) string {
-	var keep []string
-	for _, l := range strings.Split(s, "\n") {
-		for _, p := range strings.Split(pattern, "|") {
-			if strings.Contains(l, p) {
-				keep = append(keep, strings.TrimSpace(l))
-				break
-			}
-		}
-	}
-	return strings.Join(keep, "\n")
-}
-
-// Writer.Merge on an empty directory never returns: zero entries is neither
-// "done" (==1) nor an error, so the loop spins on os.ReadDir forever.
-func TestPoC_MergeEmptyDirectorySpinsForever(t *testing.T) {
-	w := &textiplex.Writer{Directory: t.TempDir(), TemporaryDirectory: t.TempDir()}
-	done := make(chan error, 1)
-	go func() { done <- w.Merge() }()
-	select {
-	case err := <-done:
-		t.Fatalf("returned: %v", err)
-	case <-time.After(2 * time.Second):
-		t.Log("Writer.Merge() on an empty directory still running after 2s (busy loop)")
 	}
 }
 

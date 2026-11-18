@@ -48,6 +48,10 @@
 │  of roaring bitmaps (offsets relative to the        │
 │  start of the bitmap bytes)                         │
 │  (indexed by posting_list_index)                    │
+├─────────────────────────────────────────────────────┤
+│                  FOOTER (version 2)                 │
+│  checksum (8B, xxh3 of every byte before it)        │
+│  footer magic (8B)                                  │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -79,25 +83,37 @@ Because the doc-ID domain is itself `uint32`, no single posting list can seriali
 
 `Storage.Size` is set by both `BuildFrom` and `Load`:
 
-- After `BuildFrom`: exact byte count that `SaveTo` will write. `SaveTo` itself does not read it.
-- After `Load`: number of bytes consumed from the mapped file (equal to the file size for a single-storage file).
+- After `BuildFrom`: exact byte count that `SaveTo` will write, footer included. `SaveTo` itself does not read it.
+- After `Load`: number of bytes consumed from the mapped file. For version 2 files this is the whole file, footer included; version 1 files may carry trailing bytes that are not counted.
 
 ## Canonical write path
 
 ```go
 var s Storage
-s.BuildFrom(docs...)          // computes s.Size
+err := s.BuildFrom(docs...)   // computes s.Size; ErrValueTooLong for >128 B values
 
-err := s.SaveTo("index.bin")  // create + buffered sequential writes + fsync;
-                              // removes the file on error
+err = s.SaveTo("index.bin")   // temp file + buffered writes + checksum footer
+                              // + fsync + rename + directory fsync
 ```
 
-`SaveTo` owns the whole write: it creates the output with `os.Create` (an
-existing file at that path is truncated), streams the header, doc ID table, token
-frequencies and field blocks through a 4 MiB buffered writer, `fsync`s, then
-appends the posting-list headers and bitmap bytes and `fsync`s again. If any step
-fails the file is removed. There is no separate "write into a caller-provided
-buffer" entry point.
+`SaveTo` owns the whole write. It writes to a temporary file next to the
+destination (`.index.bin.*.tmp`): the header, doc ID table, token frequencies and
+field blocks through a 4 MiB buffered writer, then the posting-list headers and
+bitmap bytes, then the footer with the xxh3 checksum of everything before it.
+It then syncs the file, renames it over the destination and syncs the directory.
+
+Until the rename, the destination is untouched: a failure or crash leaves any
+existing index intact, and processes that have the old file loaded keep reading
+it (the rename gives the new file a new inode instead of truncating the mapped
+one). `SaveToNew` does the same but refuses to replace an existing file
+(`errors.Is(err, os.ErrExist)`). There is no separate "write into a
+caller-provided buffer" entry point.
+
+`BuildFrom` returns `ErrValueTooLong` for a document ID or token over
+`MaxRawValueSize` bytes and `ErrTooManyDocuments` past the `uint32` document
+limit, leaving the storage empty. A token listed twice in one document's field
+has its frequencies summed, and a field listed twice in one document has its
+lengths summed.
 
 ## Canonical read path
 
@@ -114,18 +130,51 @@ defer s.Close()              // munmap + close fd
 `Load` maps the file read-only and points every table (`DocumentsIds`,
 `TokenFrequencies`, each field's `DocumentLengths` and `Tokens`, and the posting
 lists) directly into the mapped pages via `unsafe.Slice`. Nothing is copied out
-of the mapping, so the `Storage` is valid only until `Close`.
+of the mapping, so the `Storage` is valid only until `Close`. `Close` clears the
+storage so that stale use fails cleanly; slices taken from it before `Close`
+must not be used afterwards. `Load` on a storage that is already loaded closes
+it first.
+
+Before mapping any table, `Load` checks the magic number, the version, and (for
+version 2) the footer, then checks that every table fits in the remaining bytes.
+Size checks divide instead of multiplying, so a damaged count cannot overflow
+past them, and the field count is bounded by the file size before anything is
+allocated. Errors caused by the file's contents wrap `ErrCorrupt` (or
+`ErrUnsupportedVersion`), and a failed `Load` leaves the storage empty.
+
+`Load` does not read every byte, so it stays fast on large files. `Verify` does:
+
+```go
+if err := s.Verify(); err != nil { // errors.Is(err, ErrCorrupt); ErrChecksum for a bad checksum
+    log.Fatal(err)
+}
+```
+
+It compares the file's xxh3 with the footer (version 2), then checks every
+internal reference: doc IDs and tokens fit their 128-byte slots, tokens are
+strictly sorted, each token's frequencies and posting list are in range, name
+the same documents, and reference only existing documents. Version 1 files get
+the reference checks only.
 
 ## Posting list decoding
 
 A `PostingList` is a thin `{ Data []byte }` view into the mmap'd file. Decode
-it into a roaring bitmap with `UnsafeBitmap`, which clears the destination and
-uses `FromUnsafeBytes` — the bitmap aliases the mmap buffer with no copy:
+posting list `i` into a roaring bitmap with `PostingLists.Bitmap`, which clears
+the destination and uses `FromUnsafeBytes` — the bitmap aliases the mmap buffer
+with no copy:
 
 ```go
 var bm roaring.Bitmap
-pl.UnsafeBitmap(&bm)        // clears bm, then zero-copy decode into it
+err := s.PostingLists.Bitmap(int64(token.PostingListIndex), &bm) // zero-copy, no allocation
 ```
+
+`Bitmap` returns an error wrapping `ErrCorrupt` and leaves `bm` empty if the
+index or its header points outside the file, the bytes do not decode, or the
+bitmap references a document past the document count. Queries ignore the error
+and so drop a damaged posting list instead of crashing. Use the token's
+frequencies through `Storage.FrequenciesOf(token)`, which returns `nil` for an
+out-of-range token instead of panicking. `PostingLists.Get(i).UnsafeBitmap(&bm)`
+still works, but skips the document range check.
 
 Because the decoded bitmap points into read-only mmap pages, it must not be
 mutated in place. Clone first if you need to modify it:
@@ -144,7 +193,7 @@ every doc ID in `b` must sort after every doc ID in `a`. This is guaranteed
 when the corpus is partitioned by range before building each batch.
 
 ```go
-m := storage.Merger{TempDir: "/tmp"} // temp files written here during merge
+m := storage.Merger{TempDir: "/tmp"} // scratch files written here during merge
 
 err := m.Merge("merged.bin", &a, &b)
 
@@ -152,6 +201,15 @@ var merged Storage
 err = merged.Load("merged.bin")
 defer merged.Close()
 ```
+
+The output is written like `SaveTo`: to a temporary file next to
+`merged.bin`, with a checksum footer, synced and renamed into place, so a
+failed or interrupted merge never leaves a partial `merged.bin` and never
+touches its inputs. Every write error is checked. Set `NoReplace: true` to make
+`Merge` refuse to replace an existing file. A damaged input (an out-of-range
+reference or a posting list that does not decode) makes `Merge` return an
+error wrapping `ErrCorrupt` instead of panicking or copying the damage into a
+new file with a fresh checksum.
 
 ### Merge semantics
 

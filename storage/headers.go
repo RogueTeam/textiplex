@@ -16,8 +16,27 @@ func MaxPostingListHeadersBatch(l int) (n int) {
 const MagicNumber uint64 = 0x7E7127E9
 
 const (
+	// Original format: no footer, no checksum.
 	VersionV1 uint16 = iota
+	// Adds a Footer with an xxh3 checksum of every byte before it.
+	VersionV2
 )
+
+// Version written by SaveTo and Merge. Load accepts every version up to this one.
+const CurrentVersion = VersionV2
+
+// Marks the end of a complete VersionV2 file. A file without it was truncated
+// or never finished writing.
+const FooterMagic uint64 = 0x7E7127E9F007E2
+
+const FooterSize = unsafe.Sizeof(Footer{})
+
+// Footer is the last FooterSize bytes of a VersionV2 file.
+type Footer struct {
+	// xxh3 of every byte of the file before the footer
+	Checksum uint64
+	Magic    uint64
+}
 
 const HeaderSize = unsafe.Sizeof(Header{})
 
@@ -105,9 +124,19 @@ func CompareTokens(a, b Token) (cmp int) {
 	return bytes.Compare(a.Value.Bytes(), b.Value.Bytes())
 }
 
+// RawValueFrom copies b into a RawValue. Only the first MaxRawValueSize bytes
+// fit; Size keeps the original length so a longer value can be detected with
+// Truncated (BuildFrom rejects such values instead of storing them cut short).
 func RawValueFrom[T ~string | ~[]byte](b T) (v RawValue) {
-	v.Size = uint64(copy(v.Data[:], b))
+	copy(v.Data[:], b)
+	v.Size = uint64(len(b))
 	return v
+}
+
+// Truncated reports whether the value was longer than MaxRawValueSize and so
+// lost bytes when it was stored.
+func (v *RawValue) Truncated() bool {
+	return v.Size > MaxRawValueSize
 }
 
 func (v *RawValue) Bytes() (b []byte) {

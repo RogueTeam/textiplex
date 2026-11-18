@@ -152,8 +152,14 @@ Queries, same 1,000-document corpus as above:
 │  followed by total_posting_lists_data_size bytes    │
 │  of roaring bitmaps (offsets relative to the        │
 │  start of the bitmap bytes)                         │
+├─────────────────────────────────────────────────────┤
+│                  FOOTER (version 2)                 │
+│  checksum (8B, xxh3 of every byte before it)        │
+│  footer magic (8B)                                  │
 └─────────────────────────────────────────────────────┘
 ```
+
+Files are written in format version 2, which adds the footer. Version 1 files (no footer) are still read, so existing indexes keep working; merging them produces version 2 output. `Load` rejects files with the wrong magic number (including files written on a machine of the other byte order), a newer version, or a version 2 file whose footer is missing, i.e. one that was truncated or never finished writing.
 
 ### Invariants
 
@@ -237,6 +243,10 @@ if err := writer.Batch(batch); err != nil {
 
 `Batch` is safe to call from multiple goroutines. Each call writes an independent segment to `Directory`. You can call it as many times as needed before merging.
 
+Each segment is written under a temporary name, synced, and renamed into place, so a crash never leaves a partial segment. Segment numbers continue after the highest segment already in `Directory`, and a segment never replaces an existing file, so a restarted process cannot overwrite earlier batches. Only one process should write to a `Directory` at a time.
+
+`Batch` returns `storage.ErrValueTooLong` if a document ID or a token is longer than 128 bytes (`storage.MaxRawValueSize`), instead of storing it cut short.
+
 #### Merging segments
 
 ```go
@@ -245,7 +255,11 @@ if err := writer.Merge(); err != nil {
 }
 ```
 
-`Merge` performs a parallel bottom-up pairwise merge with `runtime.NumCPU()` workers until exactly one segment remains. The `MaxWorkers` field currently has no effect. Each merged segment is written directly into `Directory`, and both of its input segments are deleted once that merge returns. `TemporaryDirectory` only holds scratch files used while a merge runs.
+`Merge` performs a parallel bottom-up pairwise merge until at most one segment remains, with up to `MaxWorkers` merges at a time (default `runtime.NumCPU()`). Lower `MaxWorkers` to bound peak memory. `TemporaryDirectory` only holds scratch files used while a merge runs; merged segments are written into `Directory`.
+
+Merging is crash-safe. Each pairwise merge first records its two inputs in a `<output>.seg.parents` file, writes the output under a temporary name, syncs it and renames it into place, and only then deletes the inputs and the record. If the process dies at any point, the next `Merge` finishes or discards the interrupted merge, so no documents are lost or duplicated. `Directory` only counts `*.seg` files as segments; temporary and record files are ignored.
+
+Set `VerifySegments: true` to check every input with `storage.Verify` (checksum and internal references) before merging it. A damaged segment is then reported instead of merged and deleted. It costs one extra full read of each input.
 
 Call `Merge` after all `Batch` calls are done. Do not call it while background batching goroutines are still running.
 
@@ -301,7 +315,9 @@ for docId := range seq {
 }
 ```
 
-`QueryString` returns an `iter.Seq[[]byte]` of raw document IDs in score order. The sequence is lazy: documents are scored on iteration, so breaking early is cheap.
+`QueryString` returns an `iter.Seq[[]byte]` of raw document IDs in score order. The sequence is lazy: documents are scored on iteration, so breaking early is cheap. Each yielded ID is a copy, so you can keep it after the loop or after `Close`.
+
+`Close` and `Reset` wait for queries that are reading the index. An iteration that is still running when the reader is closed or reset stops early rather than reading the closed index. It is safe to call them from inside the loop.
 
 `skip` is a zero-based offset that skips the first N results — use it for pagination. `reverse` inverts the iteration order over the scored result set.
 
@@ -455,7 +471,11 @@ textiplex makes deliberate trade-offs you should know before building on it.
 
 **No delete or update.** Once a document is indexed it cannot be removed or modified in place. To reflect changes, re-index the affected segment and merge. For most batch-oriented workloads (ETL pipelines, crawlers, periodic sync jobs) the re-index cost is low enough that this is not a practical constraint. If your workload requires per-document mutation at query time, textiplex is not the right fit.
 
-**Single segment required at query time.** `Reader` expects exactly one segment in the directory. Before opening a reader, merge all outstanding segments with `Writer.Merge()`. This is enforced at runtime: `Reset` returns an error if the directory contains more than one entry.
+**Single segment required at query time.** `Reader` expects exactly one segment in the directory. Before opening a reader, merge all outstanding segments with `Writer.Merge()`. This is enforced at runtime: `Reset` returns an error if the directory contains more than one `*.seg` file.
+
+**128-byte document IDs and tokens.** Document IDs and tokens are stored in fixed 128-byte slots. Longer values are rejected with `storage.ErrValueTooLong`; hash or shorten long IDs (URLs, paths) before indexing them.
+
+**Integrity checks are opt-in.** `Load` checks a file's structure but does not read every byte, so it stays fast on large indexes. Call `Storage.Verify()` to check the checksum and every internal reference, for example after copying an index from another machine. A damaged index never crashes a query; results from the damaged parts are dropped.
 
 **AGPL-3.0.** textiplex is free to use under the terms of the GNU Affero General Public License v3. If you run textiplex as part of a networked service, the AGPL requires you to make the complete corresponding source of that service available to users. Commercial licensing is available; contact antoniodonis.job.contact@gmail.com.
 

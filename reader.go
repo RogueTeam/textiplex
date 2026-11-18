@@ -1,12 +1,13 @@
 package textiplex
 
 import (
+	"bytes"
 	"fmt"
 	"iter"
-	"os"
 	"path"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/RogueTeam/textiplex/dorks"
 	"github.com/RogueTeam/textiplex/query"
@@ -32,6 +33,13 @@ type Reader struct {
 	// Caller should not populate the storage
 	// Use Reset(dir)
 	Searcher *query.Searcher
+
+	// Guards Storage and Searcher: Close and Reset wait for queries that are
+	// reading the mapped index.
+	mu sync.RWMutex
+	// Incremented by Close and Reset so a lazy query iterator notices the index
+	// it scored against is gone.
+	generation uint64
 }
 
 // Sort field is used as sort parameter
@@ -71,12 +79,27 @@ func (r *Reader) QueryString(skip uint, field SortField, reverse bool, qstr stri
 	return docIds, nil
 }
 
+// Query scores q and returns the matching document ids, best first. The
+// sequence is lazy. Each yielded id is a copy the caller may keep. If the
+// reader is closed or reset while the sequence is being consumed, the
+// sequence stops early.
 func (r *Reader) Query(skip uint, field SortField, reverse bool, q *query.SimpleQuery) (docIds iter.Seq[[]byte], err error) {
-	if r.Searcher == nil {
+	r.mu.RLock()
+	configured := r.Searcher != nil
+	r.mu.RUnlock()
+	if !configured {
 		return nil, fmt.Errorf("no searcher is configured, make sure to use reset to build the reader")
 	}
 
 	docIds = func(yield func([]byte) bool) {
+		// Scoring reads the mapped index: hold the read lock so Close/Reset
+		// cannot unmap it underneath. The scores themselves are heap memory.
+		r.mu.RLock()
+		if r.Searcher == nil {
+			r.mu.RUnlock()
+			return
+		}
+		generation := r.generation
 		var ctx query.QueryContext
 		r.Searcher.FilterDocuments(&ctx, q)
 		if field == SortFieldBM25 {
@@ -84,26 +107,41 @@ func (r *Reader) Query(skip uint, field SortField, reverse bool, q *query.Simple
 		} else {
 			r.Searcher.FieldScore(&ctx, uint64(field))
 		}
-
 		scores := r.Searcher.ResolveScores(&ctx, false)
+		r.mu.RUnlock()
+
+		var ordered iter.Seq[query.Score]
 		if reverse {
-			scores = scores[:max(uint(len(scores))-skip, 0)]
-			for _, score := range slices.Backward(scores) {
-				if score.Value == 0 {
-					return
-				}
-				if !yield(r.Storage.DocumentsIds[score.Index].Value.Bytes()) {
-					return
+			if skip >= uint(len(scores)) {
+				return
+			}
+			kept := scores[:uint(len(scores))-skip]
+			ordered = func(yield func(query.Score) bool) {
+				for _, score := range slices.Backward(kept) {
+					if !yield(score) {
+						return
+					}
 				}
 			}
-			return
+		} else {
+			ordered = slices.Values(scores[min(skip, uint(len(scores))):])
 		}
-		scores = scores[min(skip, uint(len(scores))):]
-		for _, score := range scores {
+
+		for score := range ordered {
 			if score.Value == 0 {
 				return
 			}
-			if !yield(r.Storage.DocumentsIds[score.Index].Value.Bytes()) {
+			// Copy the id out of the mapping under the lock and yield the copy
+			// without it, so the consumer can keep the id and may call Close or
+			// Reset from inside the loop.
+			r.mu.RLock()
+			if r.generation != generation {
+				r.mu.RUnlock()
+				return
+			}
+			id := bytes.Clone(r.Storage.DocumentsIds[score.Index].Value.Bytes())
+			r.mu.RUnlock()
+			if !yield(id) {
 				return
 			}
 		}
@@ -112,26 +150,42 @@ func (r *Reader) Query(skip uint, field SortField, reverse bool, q *query.Simple
 	return docIds, nil
 }
 
+// Close releases the index. It waits for queries that are scoring or copying
+// ids; iterators still being consumed stop early.
 func (r *Reader) Close() (err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.closeLocked()
+}
+
+func (r *Reader) closeLocked() (err error) {
 	r.Searcher = nil
+	r.generation++
 	return r.Storage.Close()
 }
 
+// Reset closes the current index and opens the single segment in dir.
+// Files other than "*.seg" segments are ignored.
 func (r *Reader) Reset(dir string) (err error) {
-	r.Close()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-	entries, err := os.ReadDir(dir)
+	if err = r.closeLocked(); err != nil {
+		return fmt.Errorf("failed to close previous index: %w", err)
+	}
+
+	segments, err := listSegments(dir)
 	if err != nil {
 		return fmt.Errorf("failed to read directory: %w", err)
 	}
 
-	switch len(entries) {
+	switch len(segments) {
 	default:
 		return fmt.Errorf("directory must contain only one segment, merge first all the segments prior opening a reader")
 	case 0:
 		return fmt.Errorf("directory is empty")
 	case 1:
-		err = r.Storage.Load(path.Join(dir, entries[0].Name()))
+		err = r.Storage.Load(path.Join(dir, segments[0]))
 		if err != nil {
 			return fmt.Errorf("failed load storage from segment in directory: %w", err)
 		}

@@ -74,7 +74,7 @@ func (s *Searcher) AVX2AccumulateBM25(ctx *QueryContext, state *ClauseState, sat
 	for _, token := range state.Tokens {
 		docLengths := state.Field.DocumentLengths
 		idf := InverseDocumentFrequency(uint64(len(state.Field.DocumentLengths)), token.FrequencyCount)
-		freqs := s.Storage.TokenFrequencies[token.FrequenciesIndex : token.FrequenciesIndex+token.FrequencyCount]
+		freqs := s.Storage.FrequenciesOf(token)
 		freqDense := len(freqs) == len(s.Storage.DocumentsIds)
 
 		// Hoist boost check: when boost==1 the multiply is a no-op, so we use a
@@ -90,7 +90,7 @@ func (s *Searcher) AVX2AccumulateBM25(ctx *QueryContext, state *ClauseState, sat
 			continue
 		}
 
-		s.Storage.PostingLists[token.PostingListIndex].UnsafeBitmap(&tokenPl)
+		s.Storage.PostingLists.Bitmap(int64(token.PostingListIndex), &tokenPl)
 		if tokenPl.IsEmpty() {
 			continue
 		}

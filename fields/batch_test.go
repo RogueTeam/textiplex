@@ -9,7 +9,6 @@ import (
 	"github.com/RogueTeam/textiplex/pool"
 	"github.com/RogueTeam/textiplex/storage"
 	"github.com/RogueTeam/textiplex/testsuite"
-	"github.com/dustin/go-humanize"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -63,10 +62,10 @@ func TestBatchConstruction(t *testing.T) {
 	runtime.ReadMemStats(&after)
 
 	t.Logf("==================== MEMORY USAGE ====================")
-	t.Logf("Memory usage before batch: %s", humanize.Bytes(before.Alloc))
-	t.Logf("Final batch size: %s", humanize.Bytes(batch.Size))
-	t.Logf("Memory usage after batch: %s", humanize.Bytes(after.Alloc))
-	t.Logf("Memory diff between before and after batch: %s", humanize.Bytes(after.Alloc-before.Alloc))
+	t.Logf("Memory usage before batch: %d", before.Alloc)
+	t.Logf("Final batch size: %d", batch.Size)
+	t.Logf("Memory usage after batch: %d", after.Alloc)
+	t.Logf("Memory diff between before and after batch: %d", after.Alloc-before.Alloc)
 
 	var s storage.Storage
 	s.BuildFrom(batch.Documents...)
@@ -78,8 +77,8 @@ func TestBatchConstruction(t *testing.T) {
 	runtime.ReadMemStats(&final)
 
 	t.Logf("==================== MEMORY USAGE AFTER STORAGE CONSTRUCTION ====================")
-	t.Logf("Memory usage after batch: %s", humanize.Bytes(after.Alloc))
-	t.Logf("Memory usage after storage creation: %s", humanize.Bytes(final.Alloc))
-	t.Logf("Memory diff between after and final: %s", humanize.Bytes(final.Alloc-after.Alloc))
+	t.Logf("Memory usage after batch: %d", after.Alloc)
+	t.Logf("Memory usage after storage creation: %d", final.Alloc)
+	t.Logf("Memory diff between after and final: %d", final.Alloc-after.Alloc)
 
 }

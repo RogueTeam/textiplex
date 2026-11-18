@@ -3,7 +3,7 @@ package numeric
 import (
 	"encoding/binary"
 
-	"golang.org/x/exp/constraints"
+	"github.com/RogueTeam/textiplex/constraints"
 )
 
 // Encodes a int64 so negative numbers can still be sorted before

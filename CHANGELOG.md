@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### 1.9.7 (2026-11-18)
+
+
+### Bug Fixes
+
+* updated deps scripts ([b670519](https://github.com/RogueTeam/textiplex/commit/b6705198df0be3873ec55cbdd18429e4600ec07d))
+
 ### 1.9.6 (2026-11-18)
 
 ### 1.9.5 (2026-11-18)

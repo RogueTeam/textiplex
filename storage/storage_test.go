@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/RoaringBitmap/roaring"
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/RogueTeam/textiplex/storage"
 	"github.com/RogueTeam/textiplex/testsuite"
 	"github.com/stretchr/testify/assert"

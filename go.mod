@@ -3,7 +3,7 @@ module github.com/RogueTeam/textiplex
 go 1.27.4
 
 require (
-	github.com/RoaringBitmap/roaring v1.9.4
+	github.com/RoaringBitmap/roaring/v2 v2.30.0
 	github.com/alecthomas/participle/v2 v2.1.4
 	github.com/stretchr/testify v1.12.1
 	github.com/tidwall/btree/v2 v2.0.0

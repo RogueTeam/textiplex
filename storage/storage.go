@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/RoaringBitmap/roaring"
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/RogueTeam/textiplex/pointers"
 	"github.com/RogueTeam/textiplex/pool"
 	"github.com/tidwall/btree/v2"

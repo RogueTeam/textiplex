@@ -5,7 +5,7 @@ package query
 import (
 	"simd/archsimd"
 
-	"github.com/RoaringBitmap/roaring"
+	"github.com/RoaringBitmap/roaring/v2"
 )
 
 const (

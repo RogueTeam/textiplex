@@ -1,0 +1,127 @@
+goos: linux
+goarch: amd64
+pkg: github.com/RogueTeam/textiplex
+cpu: 12th Gen Intel(R) Core(TM) i7-1280P
+BenchmarkWriter
+BenchmarkWriter-20         	       1	1864917007 ns/op	1748367744 B/op	21244052 allocs/op
+BenchmarkHeavyWriter
+    writer_heavy_bench_test.go:29: Test heavy not set
+--- SKIP: BenchmarkHeavyWriter
+PASS
+ok  	github.com/RogueTeam/textiplex	2.399s
+?   	github.com/RogueTeam/textiplex/constraints	[no test files]
+PASS
+ok  	github.com/RogueTeam/textiplex/dorks	0.004s
+?   	github.com/RogueTeam/textiplex/fastlog	[no test files]
+goos: linux
+goarch: amd64
+pkg: github.com/RogueTeam/textiplex/fields
+cpu: 12th Gen Intel(R) Core(TM) i7-1280P
+BenchmarkDocumentConstruction
+BenchmarkDocumentConstruction-20            	       3	 338079343 ns/op	484980104 B/op	 8599328 allocs/op
+BenchmarkDocumentConstructionAndBuild
+BenchmarkDocumentConstructionAndBuild-20    	       3	 482090691 ns/op	1044669466 B/op	11600476 allocs/op
+BenchmarkDocumentConstructionOnly
+BenchmarkDocumentConstructionOnly-20        	       4	 314820334 ns/op	 111.17 MB/s	484957672 B/op	 8599297 allocs/op
+BenchmarkBuildFromViaFields
+BenchmarkBuildFromViaFields-20              	       7	 157379276 ns/op	559711948 B/op	 3001180 allocs/op
+BenchmarkFieldsVsTestsuite
+BenchmarkFieldsVsTestsuite/via_fields_package
+BenchmarkFieldsVsTestsuite/via_fields_package-20         	       4	 319079872 ns/op	484957652 B/op	 8599296 allocs/op
+BenchmarkFieldsVsTestsuite/via_testsuite_helpers
+BenchmarkFieldsVsTestsuite/via_testsuite_helpers-20      	       2	 540517521 ns/op	576011972 B/op	21999056 allocs/op
+PASS
+ok  	github.com/RogueTeam/textiplex/fields	7.506s
+goos: linux
+goarch: amd64
+pkg: github.com/RogueTeam/textiplex/levenshtein
+cpu: 12th Gen Intel(R) Core(TM) i7-1280P
+BenchmarkLevenshtein
+BenchmarkLevenshtein/short/match/k1
+BenchmarkLevenshtein/short/match/k1-20         	 8342802	       148.3 ns/op
+BenchmarkLevenshtein/short/match_sub/k1
+BenchmarkLevenshtein/short/match_sub/k1-20     	 6870411	       178.7 ns/op
+BenchmarkLevenshtein/short/nomatch/k1
+BenchmarkLevenshtein/short/nomatch/k1-20       	 9220322	       129.1 ns/op
+BenchmarkLevenshtein/short/match/k2
+BenchmarkLevenshtein/short/match/k2-20         	 6003169	       195.1 ns/op
+BenchmarkLevenshtein/short/nomatch/k2
+BenchmarkLevenshtein/short/nomatch/k2-20       	 7943377	       155.6 ns/op
+BenchmarkLevenshtein/medium/match/k1
+BenchmarkLevenshtein/medium/match/k1-20        	 2829294	       416.0 ns/op
+BenchmarkLevenshtein/medium/nomatch/k1
+BenchmarkLevenshtein/medium/nomatch/k1-20      	 3693884	       326.1 ns/op
+BenchmarkLevenshtein/medium/match/k2
+BenchmarkLevenshtein/medium/match/k2-20        	 2365861	       492.9 ns/op
+BenchmarkLevenshtein/long/match/k1
+BenchmarkLevenshtein/long/match/k1-20          	 3167911	       385.5 ns/op
+BenchmarkLevenshtein/long/nomatch/k1
+BenchmarkLevenshtein/long/nomatch/k1-20        	 4167661	       291.6 ns/op
+BenchmarkLevenshtein/exact/k1
+BenchmarkLevenshtein/exact/k1-20               	 6683107	       180.5 ns/op
+BenchmarkLevenshtein/disjoint/k1
+BenchmarkLevenshtein/disjoint/k1-20            	 4297791	       269.4 ns/op
+BenchmarkLevenshtein/disjoint/k2
+BenchmarkLevenshtein/disjoint/k2-20            	 2985888	       393.7 ns/op
+PASS
+ok  	github.com/RogueTeam/textiplex/levenshtein	15.603s
+?   	github.com/RogueTeam/textiplex/numeric	[no test files]
+?   	github.com/RogueTeam/textiplex/options	[no test files]
+?   	github.com/RogueTeam/textiplex/pointers	[no test files]
+?   	github.com/RogueTeam/textiplex/pool	[no test files]
+goos: linux
+goarch: amd64
+pkg: github.com/RogueTeam/textiplex/query
+cpu: 12th Gen Intel(R) Core(TM) i7-1280P
+BenchmarkSearchShould
+BenchmarkSearchShould-20                   	   23925	     49243 ns/op	   36040 B/op	      65 allocs/op
+BenchmarkSearchMust
+BenchmarkSearchMust-20                     	   22689	     49313 ns/op	   34464 B/op	      79 allocs/op
+BenchmarkSearchCombined
+BenchmarkSearchCombined-20                 	  363428	      3751 ns/op	    3488 B/op	      60 allocs/op
+BenchmarkSearchSelective
+BenchmarkSearchSelective-20                	 1000000	      1284 ns/op	     824 B/op	      38 allocs/op
+BenchmarkCustomIndexSearchWithCopy
+    searcher_bm25_custom_index_bench_test.go:101: 
+--- SKIP: BenchmarkCustomIndexSearchWithCopy
+BenchmarkCustomIndexSearchWithNoCopy
+    searcher_bm25_custom_index_bench_test.go:141: 
+--- SKIP: BenchmarkCustomIndexSearchWithNoCopy
+PASS
+ok  	github.com/RogueTeam/textiplex/query	4.997s
+goos: linux
+goarch: amd64
+pkg: github.com/RogueTeam/textiplex/storage
+cpu: 12th Gen Intel(R) Core(TM) i7-1280P
+BenchmarkMerge
+BenchmarkMerge-20        	       2	 750295466 ns/op	1020.93 MB/s
+BenchmarkBuildFrom
+BenchmarkBuildFrom-20    	       1	1775087315 ns/op	1696153456 B/op	21244022 allocs/op
+BenchmarkLoadBytes
+BenchmarkLoadBytes-20    	     378	   3257867 ns/op	235123.23 MB/s	    2120 B/op	       7 allocs/op
+PASS
+ok  	github.com/RogueTeam/textiplex/storage	9.708s
+?   	github.com/RogueTeam/textiplex/testsuite	[no test files]
+PASS
+ok  	github.com/RogueTeam/textiplex/testsuite/wikipedia	0.003s
+?   	github.com/RogueTeam/textiplex/testsuite/wikipedia/cmd/wikipedia	[no test files]
+PASS
+ok  	github.com/RogueTeam/textiplex/tokenizer	0.003s
+?   	github.com/RogueTeam/textiplex/tokenizer/date	[no test files]
+PASS
+ok  	github.com/RogueTeam/textiplex/tokenizer/en	0.003s
+goos: linux
+goarch: amd64
+pkg: github.com/RogueTeam/textiplex/tokenizer/es
+cpu: 12th Gen Intel(R) Core(TM) i7-1280P
+BenchmarkSpanishTokenizer
+BenchmarkSpanishTokenizer-20                    	  342414	      3216 ns/op	 206.18 MB/s	     224 B/op	      24 allocs/op
+BenchmarkSpanishTokenizerWithoutStopwords
+BenchmarkSpanishTokenizerWithoutStopwords-20    	  278742	      4298 ns/op	 154.27 MB/s	     288 B/op	      27 allocs/op
+PASS
+ok  	github.com/RogueTeam/textiplex/tokenizer/es	2.386s
+?   	github.com/RogueTeam/textiplex/tokenizer/floating	[no test files]
+?   	github.com/RogueTeam/textiplex/tokenizer/integer	[no test files]
+?   	github.com/RogueTeam/textiplex/tokenizer/keyword	[no test files]
+?   	github.com/RogueTeam/textiplex/tuple	[no test files]
+?   	github.com/RogueTeam/textiplex/watermark	[no test files]

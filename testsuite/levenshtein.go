@@ -7,20 +7,24 @@ import (
 
 	"github.com/RogueTeam/textiplex/levenshtein"
 	"github.com/RogueTeam/textiplex/storage"
-	"github.com/tidwall/btree"
+	"github.com/tidwall/btree/v2"
 )
 
 // MakeTokenTree builds a byte-sorted token BTree like the one Storage produces,
 // using the same TokenLessFunc and NoLocks options as production. Duplicate
 // terms collapse into a single key.
 func MakeTokenTree(terms ...string) storage.Tokens {
-	tree := btree.NewBTreeGOptions(func(a, b storage.Token) bool { return bytes.Compare(a.Value.Bytes(), b.Value.Bytes()) == -1 }, btree.Options{NoLocks: true})
+	tree := btree.NewTableOptions[storage.Token](
+		btree.TableOptions[storage.Token]{
+			Compare: func(a, b storage.Token) int { return bytes.Compare(a.Value.Bytes(), b.Value.Bytes()) },
+		},
+	)
 
 	for _, term := range terms {
 		tree.Set(storage.Token{Value: storage.RawValueFrom(term)})
 	}
 
-	return tree.Items()
+	return slices.Collect(tree.All())
 }
 
 // CollectLevenshteinMatches builds a token tree from terms, runs the automaton

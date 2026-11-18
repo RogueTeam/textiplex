@@ -14,7 +14,7 @@ import (
 	"github.com/RoaringBitmap/roaring"
 	"github.com/RogueTeam/textiplex/pointers"
 	"github.com/RogueTeam/textiplex/pool"
-	"github.com/tidwall/btree"
+	"github.com/tidwall/btree/v2"
 	"golang.org/x/sys/unix"
 )
 
@@ -329,7 +329,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 		TotalLength                uint64
 		DocumentsCount             uint64
 		DocumentsLengths           []DocumentLengthEntry
-		Tokens                     *btree.BTreeG[*PostingData]
+		Tokens                     *btree.Table[*PostingData]
 		TotalTokenFrequenciesCount uint64
 	}
 
@@ -351,11 +351,10 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 			if !found {
 				fieldAccumulator = fieldAccPool.Get()
 				*fieldAccumulator = FieldAccumulator{
-					Tokens: btree.NewBTreeGOptions(
-						func(a, b *PostingData) bool {
-							return bytes.Compare(a.Value, b.Value) == -1
+					Tokens: btree.NewTableOptions[*PostingData](
+						btree.TableOptions[*PostingData]{
+							Compare: func(pd1, pd2 *PostingData) int { return bytes.Compare(pd1.Value, pd2.Value) },
 						},
-						btree.Options{NoLocks: true},
 					),
 				}
 				fieldsAccumulators[fieldDef.Hash] = fieldAccumulator
@@ -382,7 +381,7 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 					continue
 				}
 				queryPd.Value = tokenDef.Value
-				pd, found := fieldAccumulator.Tokens.Get(&queryPd)
+				pd, found := fieldAccumulator.Tokens.Lookup(&queryPd)
 				if !found {
 					postingListsCounter++
 					pd = pdPool.Get()
@@ -426,12 +425,8 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 			field.AvgDocumentLength = float32(acc.TotalLength) / float32(acc.DocumentsCount)
 		}
 
-		it := acc.Tokens.Iter()
-
 		var tokenIdx int
-		for valid := it.First(); valid; valid = it.Next() {
-			pd := it.Item()
-
+		for pd := range acc.Tokens.All() {
 			// Rebuild the token's document set into the reused bitmap.
 			workBitmap.Clear()
 			if cap(docIDs) < len(pd.Freqs) {
@@ -469,7 +464,6 @@ func (s *Storage) BuildFrom(docs ...*Document) {
 			// pass rather than all at once at the end.
 			pd.Freqs = nil
 		}
-		it.Release()
 
 		s.Fields[fieldHash] = field
 

@@ -6,7 +6,7 @@ require (
 	github.com/RoaringBitmap/roaring v1.9.4
 	github.com/alecthomas/participle/v2 v2.1.4
 	github.com/stretchr/testify v1.12.1
-	github.com/tidwall/btree v1.8.2
+	github.com/tidwall/btree/v2 v2.0.0
 	github.com/zeebo/xxh3 v1.1.0
 	golang.org/x/sys v0.50.0
 )

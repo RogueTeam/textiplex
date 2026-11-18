@@ -257,11 +257,11 @@ if err := writer.Merge(); err != nil {
 
 `Merge` performs a parallel bottom-up pairwise merge until at most one segment remains, with up to `MaxWorkers` merges at a time (default `runtime.NumCPU()`). Lower `MaxWorkers` to bound peak memory. `TemporaryDirectory` only holds scratch files used while a merge runs; merged segments are written into `Directory`.
 
-Merging is crash-safe. Each pairwise merge first records its two inputs in a `<output>.seg.parents` file, writes the output under a temporary name, syncs it and renames it into place, and only then deletes the inputs and the record. If the process dies at any point, the next `Merge` finishes or discards the interrupted merge, so no documents are lost or duplicated. `Directory` only counts `*.seg` files as segments; temporary and record files are ignored.
+Merging is crash-safe. Each pairwise merge first records its two inputs in a `<output>.seg.parents` file, writes the output under a temporary name, syncs it and renames it into place, and only then deletes the inputs and the record. If the process dies at any point, the next `Merge` finishes or discards the interrupted merge, so no documents are lost or duplicated, and deletes temporary segment files the crash left behind. `Directory` only counts `*.seg` files as segments; temporary and record files are ignored. (The test suite kills `Merge` with `SIGKILL` hundreds of times at random points and checks every document survives exactly once.)
 
 Set `VerifySegments: true` to check every input with `storage.Verify` (checksum and internal references) before merging it. A damaged segment is then reported instead of merged and deleted. It costs one extra full read of each input.
 
-Call `Merge` after all `Batch` calls are done. Do not call it while background batching goroutines are still running.
+Call `Merge` after all `Batch` calls are done. Do not call it while background batching goroutines are still running: `Merge` treats unfinished segment files in `Directory` as crash leftovers and deletes them.
 
 ---
 
@@ -475,7 +475,7 @@ textiplex makes deliberate trade-offs you should know before building on it.
 
 **128-byte document IDs and tokens.** Document IDs and tokens are stored in fixed 128-byte slots. Longer values are rejected with `storage.ErrValueTooLong`; hash or shorten long IDs (URLs, paths) before indexing them.
 
-**Integrity checks are opt-in.** `Load` checks a file's structure but does not read every byte, so it stays fast on large indexes. Call `Storage.Verify()` to check the checksum and every internal reference, for example after copying an index from another machine. A damaged index never crashes a query; results from the damaged parts are dropped.
+**Integrity checks are opt-in.** `Load` checks a file's structure but does not read every byte, so it stays fast on large indexes. Call `Storage.Verify()` to check the checksum and every internal reference, for example after copying an index from another machine. A damaged index is not supposed to crash a query: damaged parts are dropped from results. This is fuzz-tested (`FuzzCorruptIndex` in `claude/reviews`) over mutated index files of both format versions.
 
 **AGPL-3.0.** textiplex is free to use under the terms of the GNU Affero General Public License v3. If you run textiplex as part of a networked service, the AGPL requires you to make the complete corresponding source of that service available to users. Commercial licensing is available; contact antoniodonis.job.contact@gmail.com.
 

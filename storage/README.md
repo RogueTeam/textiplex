@@ -97,7 +97,7 @@ err = s.SaveTo("index.bin")   // temp file + buffered writes + checksum footer
 ```
 
 `SaveTo` owns the whole write. It writes to a temporary file next to the
-destination (`.index.bin.*.tmp`): the header, doc ID table, token frequencies and
+destination (`.index.bin.<random>.tmp`): the header, doc ID table, token frequencies and
 field blocks through a 4 MiB buffered writer, then the posting-list headers and
 bitmap bytes, then the footer with the xxh3 checksum of everything before it.
 It then syncs the file, renames it over the destination and syncs the directory.
@@ -105,13 +105,17 @@ It then syncs the file, renames it over the destination and syncs the directory.
 Until the rename, the destination is untouched: a failure or crash leaves any
 existing index intact, and processes that have the old file loaded keep reading
 it (the rename gives the new file a new inode instead of truncating the mapped
-one). `SaveToNew` does the same but refuses to replace an existing file
+one). New files get the usual `0666` minus the umask, like `os.Create`; a
+replaced file keeps its permissions, and a destination that is a symlink has
+its target replaced, not the link. `SaveToNew` does the same but refuses to replace an existing file
 (`errors.Is(err, os.ErrExist)`). There is no separate "write into a
 caller-provided buffer" entry point.
 
 `BuildFrom` returns `ErrValueTooLong` for a document ID or token over
 `MaxRawValueSize` bytes and `ErrTooManyDocuments` past the `uint32` document
-limit, leaving the storage empty. A token listed twice in one document's field
+limit, leaving the storage unchanged. A storage loaded from a file is closed
+only once the new one is built, so documents may point into the old mapping
+(for example to rebuild an index from its own tokens). A token listed twice in one document's field
 has its frequencies summed, and a field listed twice in one document has its
 lengths summed.
 

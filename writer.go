@@ -92,6 +92,20 @@ func (w *Writer) nextSegmentName() (name string, err error) {
 	return path.Join(w.Directory, fmt.Sprintf("%016X%s", w.SegmentCounter.Add(1), SegmentExtension)), nil
 }
 
+// isSegmentTemporaryFile reports whether name is the temporary file of a
+// segment write (Batch or Merge) that never completed.
+func isSegmentTemporaryFile(name string) bool {
+	base, ok := strings.CutPrefix(name, ".")
+	if !ok || len(base) < 16+len(SegmentExtension) {
+		return false
+	}
+	final := base[:16+len(SegmentExtension)]
+	if _, ok := segmentNumber(final); !ok {
+		return false
+	}
+	return storage.IsTemporaryFile(name, final)
+}
+
 // segments lists the segment files in Directory, sorted by name.
 func (w *Writer) segments() (names []string, err error) {
 	return listSegments(w.Directory)
@@ -251,6 +265,12 @@ func (w *Writer) mergePair(nameA, nameB string) (err error) {
 
 		err = merger.Merge(output, &storageA, &storageB)
 		if err != nil {
+			if _, statErr := os.Lstat(output); statErr == nil && !errors.Is(err, os.ErrExist) {
+				// The output exists although Merge failed (it could not undo a
+				// rename). Keep the record: the next Merge deletes the inputs,
+				// which the output already contains, instead of duplicating them.
+				return fmt.Errorf("failed to merge storages (output %s kept for recovery): %w", output, err)
+			}
 			os.Remove(parents)
 			if errors.Is(err, os.ErrExist) {
 				continue
@@ -308,11 +328,20 @@ func finishMerge(dir, parents string, inputs []string) (err error) {
 // recoverInterruptedMerges completes or discards merges a crash interrupted.
 // If a merge's output was committed its inputs are deleted (they are already
 // contained in the output); otherwise the inputs are still authoritative and
-// only the record is removed.
+// only the record is removed. Temporary segment files that a crash left
+// behind are deleted too.
 func (w *Writer) recoverInterruptedMerges() (err error) {
 	entries, err := os.ReadDir(w.Directory)
 	if err != nil {
 		return fmt.Errorf("failed to list directory: %w", err)
+	}
+	for _, entry := range entries {
+		if isSegmentTemporaryFile(entry.Name()) && entry.Type().IsRegular() {
+			err = os.Remove(path.Join(w.Directory, entry.Name()))
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("failed to remove leftover temporary file %s: %w", entry.Name(), err)
+			}
+		}
 	}
 	for _, entry := range entries {
 		record, isRecord := strings.CutSuffix(entry.Name(), parentsExtension)

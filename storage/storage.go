@@ -401,21 +401,29 @@ func (s *Storage) Reset() (err error) {
 // It returns ErrValueTooLong if a document id or a token is longer than
 // MaxRawValueSize bytes (instead of storing it cut short, which would make it
 // unsearchable and could merge distinct values), and ErrTooManyDocuments past
-// the uint32 document limit. On error the storage is left empty.
+// the uint32 document limit. If building fails the storage is left unchanged.
+//
+// If the storage was loaded from a file it is closed only once the new
+// storage is built, so docs may safely point into the old mapping (for
+// example tokens taken from it to rebuild an index).
 //
 // The same token listed twice in one field of one document has its
 // frequencies summed, and the same field listed twice in one document has its
 // lengths summed, so the index stays consistent even if the caller does not
 // deduplicate.
 func (s *Storage) BuildFrom(docs ...*Document) (err error) {
-	if s.Initialized {
-		s.Reset()
+	var built Storage
+	if err = built.buildFrom(docs); err != nil {
+		return err
 	}
-	defer func() {
-		if err != nil {
-			*s = Storage{}
-		}
-	}()
+	if err = s.Close(); err != nil {
+		return fmt.Errorf("failed to close previous storage: %w", err)
+	}
+	*s = built
+	return nil
+}
+
+func (s *Storage) buildFrom(docs []*Document) (err error) {
 	if uint64(len(docs)) > MaxDocuments {
 		return fmt.Errorf("%w: %d documents", ErrTooManyDocuments, len(docs))
 	}
@@ -451,7 +459,11 @@ func (s *Storage) BuildFrom(docs ...*Document) (err error) {
 		if doc.Id.Value.Truncated() {
 			return fmt.Errorf("%w: document %d id is %d bytes", ErrValueTooLong, docIndex, doc.Id.Value.Size)
 		}
-		s.DocumentsIds[docIndex] = doc.Id
+		// Zero the unused tail of the slot so stale bytes from a reused
+		// DocumentId never reach the file.
+		id := doc.Id
+		clear(id.Value.Data[id.Value.Size:])
+		s.DocumentsIds[docIndex] = id
 		docIdxUi32 := uint32(docIndex)
 
 		// doc id header + doc id bytes

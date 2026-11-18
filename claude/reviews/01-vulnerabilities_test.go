@@ -96,7 +96,7 @@ func mkBatch(docs ...*storage.Document) *fields.Batch {
 	return b
 }
 
-func saveIndex(t *testing.T, path string, docs ...*storage.Document) {
+func saveIndex(t testing.TB, path string, docs ...*storage.Document) {
 	t.Helper()
 	var s storage.Storage
 	if err := s.BuildFrom(docs...); err != nil {

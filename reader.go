@@ -92,23 +92,10 @@ func (r *Reader) Query(skip uint, field SortField, reverse bool, q *query.Simple
 	}
 
 	docIds = func(yield func([]byte) bool) {
-		// Scoring reads the mapped index: hold the read lock so Close/Reset
-		// cannot unmap it underneath. The scores themselves are heap memory.
-		r.mu.RLock()
-		if r.Searcher == nil {
-			r.mu.RUnlock()
+		scores, generation, ok := r.score(field, q)
+		if !ok {
 			return
 		}
-		generation := r.generation
-		var ctx query.QueryContext
-		r.Searcher.FilterDocuments(&ctx, q)
-		if field == SortFieldBM25 {
-			r.Searcher.BM25Score(&ctx, q)
-		} else {
-			r.Searcher.FieldScore(&ctx, uint64(field))
-		}
-		scores := r.Searcher.ResolveScores(&ctx, false)
-		r.mu.RUnlock()
 
 		var ordered iter.Seq[query.Score]
 		if reverse {
@@ -134,20 +121,44 @@ func (r *Reader) Query(skip uint, field SortField, reverse bool, q *query.Simple
 			// Copy the id out of the mapping under the lock and yield the copy
 			// without it, so the consumer can keep the id and may call Close or
 			// Reset from inside the loop.
-			r.mu.RLock()
-			if r.generation != generation {
-				r.mu.RUnlock()
-				return
-			}
-			id := bytes.Clone(r.Storage.DocumentsIds[score.Index].Value.Bytes())
-			r.mu.RUnlock()
-			if !yield(id) {
+			id, ok := r.documentId(generation, score.Index)
+			if !ok || !yield(id) {
 				return
 			}
 		}
 	}
 
 	return docIds, nil
+}
+
+// score filters and scores q under the read lock: it reads the mapped index,
+// so Close/Reset must not unmap it meanwhile. The returned scores are heap
+// memory. The deferred unlock keeps the reader usable if scoring panics.
+func (r *Reader) score(field SortField, q *query.SimpleQuery) (scores []query.Score, generation uint64, ok bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.Searcher == nil {
+		return nil, 0, false
+	}
+	var ctx query.QueryContext
+	r.Searcher.FilterDocuments(&ctx, q)
+	if field == SortFieldBM25 {
+		r.Searcher.BM25Score(&ctx, q)
+	} else {
+		r.Searcher.FieldScore(&ctx, uint64(field))
+	}
+	return r.Searcher.ResolveScores(&ctx, false), r.generation, true
+}
+
+// documentId copies a document id out of the mapping, unless the index the
+// scores came from has since been closed or replaced.
+func (r *Reader) documentId(generation uint64, index uint32) (id []byte, ok bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.generation != generation || uint64(index) >= uint64(len(r.Storage.DocumentsIds)) {
+		return nil, false
+	}
+	return bytes.Clone(r.Storage.DocumentsIds[index].Value.Bytes()), true
 }
 
 // Close releases the index. It waits for queries that are scoring or copying

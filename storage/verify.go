@@ -60,8 +60,15 @@ func (s *Storage) Verify() (err error) {
 			if token.Value.Truncated() {
 				return corruptf("field %#x: token %d claims %d bytes", fieldHash, i, token.Value.Size)
 			}
-			if i > 0 && bytes.Compare(field.Tokens[i-1].Value.Bytes(), token.Value.Bytes()) >= 0 {
-				return corruptf("field %#x: tokens not strictly sorted at %d (%q)", fieldHash, i, token.Value.Bytes())
+			if i > 0 {
+				switch bytes.Compare(field.Tokens[i-1].Value.Bytes(), token.Value.Bytes()) {
+				case 0:
+					// Also produced by indexes built before values over
+					// MaxRawValueSize were rejected: they were cut to 128 bytes.
+					return corruptf("field %#x: token %q appears twice (an index built with tokens over %d bytes?)", fieldHash, token.Value.Bytes(), MaxRawValueSize)
+				case 1:
+					return corruptf("field %#x: tokens not sorted at %d (%q)", fieldHash, i, token.Value.Bytes())
+				}
 			}
 
 			freqs, err := s.frequenciesOf(token)

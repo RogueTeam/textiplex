@@ -210,6 +210,18 @@ func writeFrequencies(ctx *MergeContext, token *Token) (err error) {
 	return nil
 }
 
+// checkDocumentLengths rejects document-length entries that name a document
+// the storage does not have (B's would also overflow when shifted).
+func checkDocumentLengths(s *Storage, field *Field) (err error) {
+	documents := uint32(len(s.DocumentsIds))
+	for i := range field.DocumentLengths {
+		if field.DocumentLengths[i].Index >= documents {
+			return corruptf("document length %d references document %d of %d", i, field.DocumentLengths[i].Index, documents)
+		}
+	}
+	return nil
+}
+
 // writeShiftedFrequencies writes B's frequencies for token with every document
 // index shifted past A's documents.
 func writeShiftedFrequencies(ctx *MergeContext, token *Token) (err error) {
@@ -413,6 +425,10 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		}
 		defer unix.Munmap(mmapMemFile)
 
+		// The mapping keeps the scratch file alive; dropping its name now means
+		// a crash cannot leave it behind in TempDir.
+		os.Remove(memFile.Name())
+
 		err = unix.Madvise(mmapMemFile, unix.MADV_SEQUENTIAL)
 		if err != nil {
 			return fmt.Errorf("failed to madvise sequential: %w", err)
@@ -457,6 +473,9 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		_, err = ctx.DstW.Write(ctx.Buffer[:])
 		if err != nil {
 			return fmt.Errorf("failed to write A's documents lengths: %w: %d", err, fieldHash)
+		}
+		if err = checkDocumentLengths(ctx.StorageA, field); err != nil {
+			return fmt.Errorf("storage A: %w", err)
 		}
 		if len(field.DocumentLengths) > 0 {
 			_, err = ctx.DstW.Write(pointers.UnsafeSliceBytes(field.DocumentLengths))
@@ -538,6 +557,9 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 			return fmt.Errorf("failed to write B's documents lengths: %w: %d", err, fieldHash)
 		}
 
+		if err = checkDocumentLengths(ctx.StorageB, field); err != nil {
+			return fmt.Errorf("storage B: %w", err)
+		}
 		for index := range field.DocumentLengths {
 			dl := &field.DocumentLengths[index]
 
@@ -598,7 +620,18 @@ func (m *Merger) Merge(name string, a, b *Storage) (err error) {
 		fieldB := b.Fields[fieldHash]
 
 		var totalDocumentLengths = fieldA.TotalDocumentsLength + fieldB.TotalDocumentsLength
-		var avgDocumentLength = float32(float64(totalDocumentLengths) / float64(len(fieldA.DocumentLengths)+len(fieldB.DocumentLengths)))
+		if err = checkDocumentLengths(ctx.StorageA, fieldA); err != nil {
+			return fmt.Errorf("storage A: %w", err)
+		}
+		if err = checkDocumentLengths(ctx.StorageB, fieldB); err != nil {
+			return fmt.Errorf("storage B: %w", err)
+		}
+		// No document has a length in this field: avoid 0/0 = NaN, which would
+		// make every BM25 score in the field NaN. BuildFrom stores 0 here too.
+		var avgDocumentLength float32
+		if lengths := len(fieldA.DocumentLengths) + len(fieldB.DocumentLengths); lengths > 0 {
+			avgDocumentLength = float32(float64(totalDocumentLengths) / float64(lengths))
+		}
 		var tokensCount = CountTokensBetweenCollisionFields(fieldA, fieldB)
 
 		// Write the field header inmediatly

@@ -6,3 +6,5 @@ go get -u github.com/stretchr/testify@latest
 go get -u github.com/tidwall/btree@latest
 go get -u github.com/zeebo/xxh3@latest
 go get -u golang.org/x/sys@latest
+
+go mod tidy

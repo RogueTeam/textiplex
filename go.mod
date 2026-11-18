@@ -5,11 +5,9 @@ go 1.27.4
 require (
 	github.com/RoaringBitmap/roaring v1.9.4
 	github.com/alecthomas/participle/v2 v2.1.4
-	github.com/dustin/go-humanize v1.1.0
 	github.com/stretchr/testify v1.12.1
 	github.com/tidwall/btree v1.8.2
 	github.com/zeebo/xxh3 v1.1.0
-	golang.org/x/exp v0.0.0-20261117202309-7a49493bfd90
 	golang.org/x/sys v0.50.0
 )
 

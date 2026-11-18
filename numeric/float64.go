@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"math"
 
-	"golang.org/x/exp/constraints"
+	"github.com/RogueTeam/textiplex/constraints"
 )
 
 // Encodes a float64 so negative numbers can still be sorted before

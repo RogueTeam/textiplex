@@ -1,11 +1,11 @@
 package fields
 
 import (
+	"github.com/RogueTeam/textiplex/constraints"
 	"github.com/RogueTeam/textiplex/numeric"
 	"github.com/RogueTeam/textiplex/pool"
 	"github.com/RogueTeam/textiplex/storage"
 	"github.com/zeebo/xxh3"
-	"golang.org/x/exp/constraints"
 )
 
 func IntegerField[T constraints.Signed](dst *storage.FieldDefinition, tokPool *pool.Pool[storage.TokenDefinition], name string, v T) (size uint64) {
